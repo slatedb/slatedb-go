@@ -111,6 +111,7 @@ func CompactedSstIdAddLow(builder *flatbuffers.Builder, low uint64) {
 func CompactedSstIdEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type CompactedSsTable struct {
 	_tab flatbuffers.Table
 }
@@ -184,6 +185,7 @@ func CompactedSsTableAddInfo(builder *flatbuffers.Builder, info flatbuffers.UOff
 func CompactedSsTableEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type SsTableInfo struct {
 	_tab flatbuffers.Table
 }
@@ -340,6 +342,7 @@ func SsTableInfoAddCompressionFormat(builder *flatbuffers.Builder, compressionFo
 func SsTableInfoEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type BlockMeta struct {
 	_tab flatbuffers.Table
 }
@@ -436,6 +439,7 @@ func BlockMetaStartFirstKeyVector(builder *flatbuffers.Builder, numElems int) fl
 func BlockMetaEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type SsTableIndex struct {
 	_tab flatbuffers.Table
 }
@@ -503,6 +507,7 @@ func SsTableIndexStartBlockMetaVector(builder *flatbuffers.Builder, numElems int
 func SsTableIndexEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type ManifestV1 struct {
 	_tab flatbuffers.Table
 }
@@ -713,6 +718,7 @@ func ManifestV1StartSnapshotsVector(builder *flatbuffers.Builder, numElems int) 
 func ManifestV1End(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type SortedRun struct {
 	_tab flatbuffers.Table
 }
@@ -795,6 +801,7 @@ func SortedRunStartSstsVector(builder *flatbuffers.Builder, numElems int) flatbu
 func SortedRunEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
+
 type Snapshot struct {
 	_tab flatbuffers.Table
 }
