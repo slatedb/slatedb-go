@@ -9,7 +9,7 @@ build: fmt vet
 	go build -v -o bin/slatedb ./cmd
 
 test: build
-	go test -count=1 -cover -race ./...
+	go test -v -count=1 -cover -race ./...
 
 test_coverage:
 	go test -coverprofile=coverage.out ./...; \

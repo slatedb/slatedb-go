@@ -8,4 +8,7 @@ To generate `.go` files from `.fbs` files:
 
 1. Install [flatc](https://github.com/google/flatbuffers).
 2. Run `flatc -o gen/ --go --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs` from the project root.
-_NOTE: You can install it with `brew install flatbuffers` if you're using Homebrew._
+
+Step 2 will generate `manifest_generated.go` file under the directory `gen` with package name `flatbuf`
+
+_NOTE: You can install `flatc` with `brew install flatbuffers` if you're using Homebrew._
