@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"unsafe"
 )
 
 func TestSetSpecifiedBitOnly(t *testing.T) {
@@ -81,7 +80,7 @@ func TestComputeProbes(t *testing.T) {
 
 func TestFilterEffective(t *testing.T) {
 	keysToTest := uint32(100000)
-	keySize := unsafe.Sizeof(keysToTest)
+	keySize := SizeOfUint32
 	builder := newBloomFilterBuilder(10)
 
 	var i uint32
