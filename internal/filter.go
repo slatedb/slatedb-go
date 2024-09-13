@@ -36,7 +36,7 @@ func (b *BloomFilter) filterBits() uint32 {
 func (b *BloomFilter) hasKey(key []byte) bool {
 	probes := probesForKey(filterHash(key), b.numProbes, b.filterBits())
 	for _, p := range probes {
-		if !checkBit(uint(p), b.buffer) {
+		if !checkBit(uint64(p), b.buffer) {
 			return false
 		}
 	}
@@ -63,10 +63,10 @@ func (b *BloomFilterBuilder) addKey(key []byte) {
 	b.keyHashes = append(b.keyHashes, filterHash(key))
 }
 
-func (b *BloomFilterBuilder) filterBytes(numKeys uint32, bitsPerKey uint32) uint {
+func (b *BloomFilterBuilder) filterBytes(numKeys uint32, bitsPerKey uint32) uint64 {
 	filterBits := numKeys * bitsPerKey
 	// compute filter bytes rounded up to the number of bytes required to fit the filter
-	return uint((filterBits + 7) / 8)
+	return uint64((filterBits + 7) / 8)
 }
 
 func (b *BloomFilterBuilder) build() BloomFilter {
@@ -78,7 +78,7 @@ func (b *BloomFilterBuilder) build() BloomFilter {
 	for _, k := range b.keyHashes {
 		probes := probesForKey(k, numProbes, filterBits)
 		for _, p := range probes {
-			setBit(uint(p), buffer)
+			setBit(uint64(p), buffer)
 		}
 	}
 
@@ -109,13 +109,13 @@ func probesForKey(keyHash uint64, numProbes uint16, filtrBits uint32) []uint32 {
 	return probes
 }
 
-func checkBit(bit uint, buf []byte) bool {
+func checkBit(bit uint64, buf []byte) bool {
 	byt := bit / 8
 	bitInByte := bit % 8
 	return (buf[byt] & (1 << bitInByte)) != 0
 }
 
-func setBit(bit uint, buf []byte) {
+func setBit(bit uint64, buf []byte) {
 	byt := bit / 8
 	bitInByte := bit % 8
 	buf[byt] |= 1 << bitInByte

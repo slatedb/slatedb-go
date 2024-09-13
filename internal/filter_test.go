@@ -10,7 +10,7 @@ func TestSetSpecifiedBitOnly(t *testing.T) {
 	cases := []struct {
 		buf      []byte
 		expected []byte
-		bit      uint
+		bit      uint64
 	}{
 		{[]byte{0xF0, 0xAB, 0x9C}, []byte{0xF8, 0xAB, 0x9C}, 3},
 		{[]byte{0xF0, 0xAB, 0x9C}, []byte{0xF0, 0xAF, 0x9C}, 10},
@@ -26,7 +26,7 @@ func TestSetSpecifiedBitOnly(t *testing.T) {
 		for i := 0; i < 8; i++ {
 			buf := make([]byte, nBytes)
 			bit := byt*8 + i
-			setBit(uint(bit), buf)
+			setBit(uint64(bit), buf)
 
 			for unset := 0; unset < nBytes; unset++ {
 				if unset != byt {
@@ -43,7 +43,7 @@ func TestSetBitsDoesntUnsetBits(t *testing.T) {
 	buf := []byte{0xFF, 0xFF, 0xFF}
 
 	for i := 0; i < 24; i++ {
-		setBit(uint(i), buf)
+		setBit(uint64(i), buf)
 		for j := 0; j < len(buf); j++ {
 			assert.Equal(t, byte(0xFF), buf[j])
 		}
@@ -58,7 +58,7 @@ func TestCheckBits(t *testing.T) {
 			buf := make([]byte, numBytes)
 			buf[i] = 1 << b
 			for checked := 0; checked < numBytes*8; checked++ {
-				assert.Equal(t, bit == checked, checkBit(uint(checked), buf))
+				assert.Equal(t, bit == checked, checkBit(uint64(checked), buf))
 			}
 		}
 	}

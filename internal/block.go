@@ -8,11 +8,6 @@ import (
 )
 
 const (
-	// uint16 and uint32 sizes are constant as per https://go.dev/ref/spec#Size_and_alignment_guarantees
-
-	SizeOfUint16InBytes = 2
-	SizeOfUint32InBytes = 4
-
 	Tombstone = math.MaxUint32
 )
 
@@ -69,10 +64,10 @@ func decodeBytesToBlock(bytes []byte) Block {
 type BlockBuilder struct {
 	offsets   []uint16
 	data      []byte
-	blockSize uint
+	blockSize uint64
 }
 
-func NewBlockBuilder(blockSize uint) BlockBuilder {
+func NewBlockBuilder(blockSize uint64) BlockBuilder {
 	return BlockBuilder{
 		offsets:   make([]uint16, 0),
 		data:      make([]byte, 0),
@@ -100,7 +95,7 @@ func (b *BlockBuilder) add(key []byte, value mo.Option[[]byte]) bool {
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.
 	// (Unless the block is empty, in which case, allow the block to exceed the limit.)
-	if uint(newSize) > b.blockSize && !b.isEmpty() {
+	if uint64(newSize) > b.blockSize && !b.isEmpty() {
 		return false
 	}
 
@@ -126,7 +121,7 @@ func (b *BlockBuilder) isEmpty() bool {
 
 func (b *BlockBuilder) build() (*Block, error) {
 	if b.isEmpty() {
-		return nil, EmptyBlock
+		return nil, ErrEmptyBlock
 	}
 	return &Block{
 		data:    b.data,
@@ -140,7 +135,7 @@ func (b *BlockBuilder) build() (*Block, error) {
 
 type BlockIterator struct {
 	block       *Block
-	offsetIndex uint
+	offsetIndex uint64
 }
 
 // newBlockIteratorFromKey Construct a BlockIterator that starts at the given key, or at the first
@@ -162,7 +157,7 @@ func newBlockIteratorFromKey(block *Block, key []byte) *BlockIterator {
 	}
 	return &BlockIterator{
 		block:       block,
-		offsetIndex: uint(index),
+		offsetIndex: uint64(index),
 	}
 }
 
@@ -206,7 +201,7 @@ func (b *BlockIterator) advance() {
 }
 
 func (b *BlockIterator) loadAtCurrentOffset() mo.Option[KeyValueDeletable] {
-	if b.offsetIndex >= uint(len(b.block.offsets)) {
+	if b.offsetIndex >= uint64(len(b.block.offsets)) {
 		return mo.None[KeyValueDeletable]()
 	}
 
