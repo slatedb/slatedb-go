@@ -80,7 +80,7 @@ func TestComputeProbes(t *testing.T) {
 
 func TestFilterEffective(t *testing.T) {
 	keysToTest := uint32(100000)
-	keySize := SizeOfUint32
+	keySize := SizeOfUint32InBytes
 	builder := newBloomFilterBuilder(10)
 
 	var i uint32
