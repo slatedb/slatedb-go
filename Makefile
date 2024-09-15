@@ -1,3 +1,6 @@
+gen_flatbuf:
+	flatc -o gen --go --gen-object-api --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs
+
 fmt:
 	go fmt ./...
 
@@ -5,7 +8,7 @@ vet:
 	go vet ./...
 
 .PHONY: build
-build: fmt vet
+build: gen_flatbuf fmt vet
 	go build -v -o bin/slatedb ./cmd
 
 test: build

@@ -7,7 +7,7 @@ This folder contains the generated [flatbuffer](https://flatbuffers.dev/) code. 
 To generate `.go` files from `.fbs` files:
 
 1. Install [flatc](https://github.com/google/flatbuffers).
-2. Run `flatc -o gen/ --go --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs` from the project root.
+2. Run `make gen_flatbuf` from the project root. (This is automatically run when `make build` or `make test` is run)
 
 Step 2 will generate `manifest_generated.go` file under the directory `gen` with package name `flatbuf`
 

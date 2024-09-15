@@ -4,40 +4,35 @@ package flatbuf
 
 import (
 	flatbuffers "github.com/google/flatbuffers/go"
-	"strconv"
 )
 
-type CompressionFormat int8
-
-const (
-	CompressionFormatNone   CompressionFormat = 0
-	CompressionFormatSnappy CompressionFormat = 1
-	CompressionFormatZlib   CompressionFormat = 2
-	CompressionFormatLz4    CompressionFormat = 3
-	CompressionFormatZstd   CompressionFormat = 4
-)
-
-var EnumNamesCompressionFormat = map[CompressionFormat]string{
-	CompressionFormatNone:   "None",
-	CompressionFormatSnappy: "Snappy",
-	CompressionFormatZlib:   "Zlib",
-	CompressionFormatLz4:    "Lz4",
-	CompressionFormatZstd:   "Zstd",
+type CompactedSstIdT struct {
+	High uint64 `json:"high"`
+	Low  uint64 `json:"low"`
 }
 
-var EnumValuesCompressionFormat = map[string]CompressionFormat{
-	"None":   CompressionFormatNone,
-	"Snappy": CompressionFormatSnappy,
-	"Zlib":   CompressionFormatZlib,
-	"Lz4":    CompressionFormatLz4,
-	"Zstd":   CompressionFormatZstd,
-}
-
-func (v CompressionFormat) String() string {
-	if s, ok := EnumNamesCompressionFormat[v]; ok {
-		return s
+func (t *CompactedSstIdT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
 	}
-	return "CompressionFormat(" + strconv.FormatInt(int64(v), 10) + ")"
+	CompactedSstIdStart(builder)
+	CompactedSstIdAddHigh(builder, t.High)
+	CompactedSstIdAddLow(builder, t.Low)
+	return CompactedSstIdEnd(builder)
+}
+
+func (rcv *CompactedSstId) UnPackTo(t *CompactedSstIdT) {
+	t.High = rcv.High()
+	t.Low = rcv.Low()
+}
+
+func (rcv *CompactedSstId) UnPack() *CompactedSstIdT {
+	if rcv == nil {
+		return nil
+	}
+	t := &CompactedSstIdT{}
+	rcv.UnPackTo(t)
+	return t
 }
 
 type CompactedSstId struct {
@@ -110,6 +105,37 @@ func CompactedSstIdAddLow(builder *flatbuffers.Builder, low uint64) {
 }
 func CompactedSstIdEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
+}
+
+type CompactedSsTableT struct {
+	Id   *CompactedSstIdT `json:"id"`
+	Info *SsTableInfoT    `json:"info"`
+}
+
+func (t *CompactedSsTableT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
+	}
+	idOffset := t.Id.Pack(builder)
+	infoOffset := t.Info.Pack(builder)
+	CompactedSsTableStart(builder)
+	CompactedSsTableAddId(builder, idOffset)
+	CompactedSsTableAddInfo(builder, infoOffset)
+	return CompactedSsTableEnd(builder)
+}
+
+func (rcv *CompactedSsTable) UnPackTo(t *CompactedSsTableT) {
+	t.Id = rcv.Id(nil).UnPack()
+	t.Info = rcv.Info(nil).UnPack()
+}
+
+func (rcv *CompactedSsTable) UnPack() *CompactedSsTableT {
+	if rcv == nil {
+		return nil
+	}
+	t := &CompactedSsTableT{}
+	rcv.UnPackTo(t)
+	return t
 }
 
 type CompactedSsTable struct {
@@ -186,6 +212,64 @@ func CompactedSsTableEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
 
+type SsTableInfoT struct {
+	FirstKey     []byte        `json:"first_key"`
+	BlockMeta    []*BlockMetaT `json:"block_meta"`
+	FilterOffset uint64        `json:"filter_offset"`
+	FilterLen    uint64        `json:"filter_len"`
+}
+
+func (t *SsTableInfoT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
+	}
+	firstKeyOffset := flatbuffers.UOffsetT(0)
+	if t.FirstKey != nil {
+		firstKeyOffset = builder.CreateByteString(t.FirstKey)
+	}
+	blockMetaOffset := flatbuffers.UOffsetT(0)
+	if t.BlockMeta != nil {
+		blockMetaLength := len(t.BlockMeta)
+		blockMetaOffsets := make([]flatbuffers.UOffsetT, blockMetaLength)
+		for j := 0; j < blockMetaLength; j++ {
+			blockMetaOffsets[j] = t.BlockMeta[j].Pack(builder)
+		}
+		SsTableInfoStartBlockMetaVector(builder, blockMetaLength)
+		for j := blockMetaLength - 1; j >= 0; j-- {
+			builder.PrependUOffsetT(blockMetaOffsets[j])
+		}
+		blockMetaOffset = builder.EndVector(blockMetaLength)
+	}
+	SsTableInfoStart(builder)
+	SsTableInfoAddFirstKey(builder, firstKeyOffset)
+	SsTableInfoAddBlockMeta(builder, blockMetaOffset)
+	SsTableInfoAddFilterOffset(builder, t.FilterOffset)
+	SsTableInfoAddFilterLen(builder, t.FilterLen)
+	return SsTableInfoEnd(builder)
+}
+
+func (rcv *SsTableInfo) UnPackTo(t *SsTableInfoT) {
+	t.FirstKey = rcv.FirstKeyBytes()
+	blockMetaLength := rcv.BlockMetaLength()
+	t.BlockMeta = make([]*BlockMetaT, blockMetaLength)
+	for j := 0; j < blockMetaLength; j++ {
+		x := BlockMeta{}
+		rcv.BlockMeta(&x, j)
+		t.BlockMeta[j] = x.UnPack()
+	}
+	t.FilterOffset = rcv.FilterOffset()
+	t.FilterLen = rcv.FilterLen()
+}
+
+func (rcv *SsTableInfo) UnPack() *SsTableInfoT {
+	if rcv == nil {
+		return nil
+	}
+	t := &SsTableInfoT{}
+	rcv.UnPackTo(t)
+	return t
+}
+
 type SsTableInfo struct {
 	_tab flatbuffers.Table
 }
@@ -255,19 +339,27 @@ func (rcv *SsTableInfo) MutateFirstKey(j int, n byte) bool {
 	return false
 }
 
-func (rcv *SsTableInfo) IndexOffset() uint64 {
+func (rcv *SsTableInfo) BlockMeta(obj *BlockMeta, j int) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
-		return rcv._tab.GetUint64(o + rcv._tab.Pos)
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *SsTableInfo) BlockMetaLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
 	}
 	return 0
 }
 
-func (rcv *SsTableInfo) MutateIndexOffset(n uint64) bool {
-	return rcv._tab.MutateUint64Slot(6, n)
-}
-
-func (rcv *SsTableInfo) IndexLen() uint64 {
+func (rcv *SsTableInfo) FilterOffset() uint64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
 		return rcv._tab.GetUint64(o + rcv._tab.Pos)
@@ -275,11 +367,11 @@ func (rcv *SsTableInfo) IndexLen() uint64 {
 	return 0
 }
 
-func (rcv *SsTableInfo) MutateIndexLen(n uint64) bool {
+func (rcv *SsTableInfo) MutateFilterOffset(n uint64) bool {
 	return rcv._tab.MutateUint64Slot(8, n)
 }
 
-func (rcv *SsTableInfo) FilterOffset() uint64 {
+func (rcv *SsTableInfo) FilterLen() uint64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
 	if o != 0 {
 		return rcv._tab.GetUint64(o + rcv._tab.Pos)
@@ -287,36 +379,12 @@ func (rcv *SsTableInfo) FilterOffset() uint64 {
 	return 0
 }
 
-func (rcv *SsTableInfo) MutateFilterOffset(n uint64) bool {
+func (rcv *SsTableInfo) MutateFilterLen(n uint64) bool {
 	return rcv._tab.MutateUint64Slot(10, n)
 }
 
-func (rcv *SsTableInfo) FilterLen() uint64 {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
-	if o != 0 {
-		return rcv._tab.GetUint64(o + rcv._tab.Pos)
-	}
-	return 0
-}
-
-func (rcv *SsTableInfo) MutateFilterLen(n uint64) bool {
-	return rcv._tab.MutateUint64Slot(12, n)
-}
-
-func (rcv *SsTableInfo) CompressionFormat() CompressionFormat {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
-	if o != 0 {
-		return CompressionFormat(rcv._tab.GetInt8(o + rcv._tab.Pos))
-	}
-	return 0
-}
-
-func (rcv *SsTableInfo) MutateCompressionFormat(n CompressionFormat) bool {
-	return rcv._tab.MutateInt8Slot(14, int8(n))
-}
-
 func SsTableInfoStart(builder *flatbuffers.Builder) {
-	builder.StartObject(6)
+	builder.StartObject(4)
 }
 func SsTableInfoAddFirstKey(builder *flatbuffers.Builder, firstKey flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(firstKey), 0)
@@ -324,23 +392,53 @@ func SsTableInfoAddFirstKey(builder *flatbuffers.Builder, firstKey flatbuffers.U
 func SsTableInfoStartFirstKeyVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
 }
-func SsTableInfoAddIndexOffset(builder *flatbuffers.Builder, indexOffset uint64) {
-	builder.PrependUint64Slot(1, indexOffset, 0)
+func SsTableInfoAddBlockMeta(builder *flatbuffers.Builder, blockMeta flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(1, flatbuffers.UOffsetT(blockMeta), 0)
 }
-func SsTableInfoAddIndexLen(builder *flatbuffers.Builder, indexLen uint64) {
-	builder.PrependUint64Slot(2, indexLen, 0)
+func SsTableInfoStartBlockMetaVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
 }
 func SsTableInfoAddFilterOffset(builder *flatbuffers.Builder, filterOffset uint64) {
-	builder.PrependUint64Slot(3, filterOffset, 0)
+	builder.PrependUint64Slot(2, filterOffset, 0)
 }
 func SsTableInfoAddFilterLen(builder *flatbuffers.Builder, filterLen uint64) {
-	builder.PrependUint64Slot(4, filterLen, 0)
-}
-func SsTableInfoAddCompressionFormat(builder *flatbuffers.Builder, compressionFormat CompressionFormat) {
-	builder.PrependInt8Slot(5, int8(compressionFormat), 0)
+	builder.PrependUint64Slot(3, filterLen, 0)
 }
 func SsTableInfoEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
+}
+
+type BlockMetaT struct {
+	Offset   uint64 `json:"offset"`
+	FirstKey []byte `json:"first_key"`
+}
+
+func (t *BlockMetaT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
+	}
+	firstKeyOffset := flatbuffers.UOffsetT(0)
+	if t.FirstKey != nil {
+		firstKeyOffset = builder.CreateByteString(t.FirstKey)
+	}
+	BlockMetaStart(builder)
+	BlockMetaAddOffset(builder, t.Offset)
+	BlockMetaAddFirstKey(builder, firstKeyOffset)
+	return BlockMetaEnd(builder)
+}
+
+func (rcv *BlockMeta) UnPackTo(t *BlockMetaT) {
+	t.Offset = rcv.Offset()
+	t.FirstKey = rcv.FirstKeyBytes()
+}
+
+func (rcv *BlockMeta) UnPack() *BlockMetaT {
+	if rcv == nil {
+		return nil
+	}
+	t := &BlockMetaT{}
+	rcv.UnPackTo(t)
+	return t
 }
 
 type BlockMeta struct {
@@ -440,72 +538,112 @@ func BlockMetaEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
 
-type SsTableIndex struct {
-	_tab flatbuffers.Table
+type ManifestV1T struct {
+	ManifestId         uint64               `json:"manifest_id"`
+	WriterEpoch        uint64               `json:"writer_epoch"`
+	CompactorEpoch     uint64               `json:"compactor_epoch"`
+	WalIdLastCompacted uint64               `json:"wal_id_last_compacted"`
+	WalIdLastSeen      uint64               `json:"wal_id_last_seen"`
+	L0LastCompacted    *CompactedSstIdT     `json:"l0_last_compacted"`
+	L0                 []*CompactedSsTableT `json:"l0"`
+	Compacted          []*SortedRunT        `json:"compacted"`
+	Snapshots          []*SnapshotT         `json:"snapshots"`
 }
 
-func GetRootAsSsTableIndex(buf []byte, offset flatbuffers.UOffsetT) *SsTableIndex {
-	n := flatbuffers.GetUOffsetT(buf[offset:])
-	x := &SsTableIndex{}
-	x.Init(buf, n+offset)
-	return x
-}
-
-func FinishSsTableIndexBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
-	builder.Finish(offset)
-}
-
-func GetSizePrefixedRootAsSsTableIndex(buf []byte, offset flatbuffers.UOffsetT) *SsTableIndex {
-	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
-	x := &SsTableIndex{}
-	x.Init(buf, n+offset+flatbuffers.SizeUint32)
-	return x
-}
-
-func FinishSizePrefixedSsTableIndexBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
-	builder.FinishSizePrefixed(offset)
-}
-
-func (rcv *SsTableIndex) Init(buf []byte, i flatbuffers.UOffsetT) {
-	rcv._tab.Bytes = buf
-	rcv._tab.Pos = i
-}
-
-func (rcv *SsTableIndex) Table() flatbuffers.Table {
-	return rcv._tab
-}
-
-func (rcv *SsTableIndex) BlockMeta(obj *BlockMeta, j int) bool {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
-	if o != 0 {
-		x := rcv._tab.Vector(o)
-		x += flatbuffers.UOffsetT(j) * 4
-		x = rcv._tab.Indirect(x)
-		obj.Init(rcv._tab.Bytes, x)
-		return true
+func (t *ManifestV1T) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
 	}
-	return false
-}
-
-func (rcv *SsTableIndex) BlockMetaLength() int {
-	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
-	if o != 0 {
-		return rcv._tab.VectorLen(o)
+	l0LastCompactedOffset := t.L0LastCompacted.Pack(builder)
+	l0Offset := flatbuffers.UOffsetT(0)
+	if t.L0 != nil {
+		l0Length := len(t.L0)
+		l0Offsets := make([]flatbuffers.UOffsetT, l0Length)
+		for j := 0; j < l0Length; j++ {
+			l0Offsets[j] = t.L0[j].Pack(builder)
+		}
+		ManifestV1StartL0Vector(builder, l0Length)
+		for j := l0Length - 1; j >= 0; j-- {
+			builder.PrependUOffsetT(l0Offsets[j])
+		}
+		l0Offset = builder.EndVector(l0Length)
 	}
-	return 0
+	compactedOffset := flatbuffers.UOffsetT(0)
+	if t.Compacted != nil {
+		compactedLength := len(t.Compacted)
+		compactedOffsets := make([]flatbuffers.UOffsetT, compactedLength)
+		for j := 0; j < compactedLength; j++ {
+			compactedOffsets[j] = t.Compacted[j].Pack(builder)
+		}
+		ManifestV1StartCompactedVector(builder, compactedLength)
+		for j := compactedLength - 1; j >= 0; j-- {
+			builder.PrependUOffsetT(compactedOffsets[j])
+		}
+		compactedOffset = builder.EndVector(compactedLength)
+	}
+	snapshotsOffset := flatbuffers.UOffsetT(0)
+	if t.Snapshots != nil {
+		snapshotsLength := len(t.Snapshots)
+		snapshotsOffsets := make([]flatbuffers.UOffsetT, snapshotsLength)
+		for j := 0; j < snapshotsLength; j++ {
+			snapshotsOffsets[j] = t.Snapshots[j].Pack(builder)
+		}
+		ManifestV1StartSnapshotsVector(builder, snapshotsLength)
+		for j := snapshotsLength - 1; j >= 0; j-- {
+			builder.PrependUOffsetT(snapshotsOffsets[j])
+		}
+		snapshotsOffset = builder.EndVector(snapshotsLength)
+	}
+	ManifestV1Start(builder)
+	ManifestV1AddManifestId(builder, t.ManifestId)
+	ManifestV1AddWriterEpoch(builder, t.WriterEpoch)
+	ManifestV1AddCompactorEpoch(builder, t.CompactorEpoch)
+	ManifestV1AddWalIdLastCompacted(builder, t.WalIdLastCompacted)
+	ManifestV1AddWalIdLastSeen(builder, t.WalIdLastSeen)
+	ManifestV1AddL0LastCompacted(builder, l0LastCompactedOffset)
+	ManifestV1AddL0(builder, l0Offset)
+	ManifestV1AddCompacted(builder, compactedOffset)
+	ManifestV1AddSnapshots(builder, snapshotsOffset)
+	return ManifestV1End(builder)
 }
 
-func SsTableIndexStart(builder *flatbuffers.Builder) {
-	builder.StartObject(1)
+func (rcv *ManifestV1) UnPackTo(t *ManifestV1T) {
+	t.ManifestId = rcv.ManifestId()
+	t.WriterEpoch = rcv.WriterEpoch()
+	t.CompactorEpoch = rcv.CompactorEpoch()
+	t.WalIdLastCompacted = rcv.WalIdLastCompacted()
+	t.WalIdLastSeen = rcv.WalIdLastSeen()
+	t.L0LastCompacted = rcv.L0LastCompacted(nil).UnPack()
+	l0Length := rcv.L0Length()
+	t.L0 = make([]*CompactedSsTableT, l0Length)
+	for j := 0; j < l0Length; j++ {
+		x := CompactedSsTable{}
+		rcv.L0(&x, j)
+		t.L0[j] = x.UnPack()
+	}
+	compactedLength := rcv.CompactedLength()
+	t.Compacted = make([]*SortedRunT, compactedLength)
+	for j := 0; j < compactedLength; j++ {
+		x := SortedRun{}
+		rcv.Compacted(&x, j)
+		t.Compacted[j] = x.UnPack()
+	}
+	snapshotsLength := rcv.SnapshotsLength()
+	t.Snapshots = make([]*SnapshotT, snapshotsLength)
+	for j := 0; j < snapshotsLength; j++ {
+		x := Snapshot{}
+		rcv.Snapshots(&x, j)
+		t.Snapshots[j] = x.UnPack()
+	}
 }
-func SsTableIndexAddBlockMeta(builder *flatbuffers.Builder, blockMeta flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(blockMeta), 0)
-}
-func SsTableIndexStartBlockMetaVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
-	return builder.StartVector(4, numElems, 4)
-}
-func SsTableIndexEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
-	return builder.EndObject()
+
+func (rcv *ManifestV1) UnPack() *ManifestV1T {
+	if rcv == nil {
+		return nil
+	}
+	t := &ManifestV1T{}
+	rcv.UnPackTo(t)
+	return t
 }
 
 type ManifestV1 struct {
@@ -719,6 +857,54 @@ func ManifestV1End(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
 
+type SortedRunT struct {
+	Id   uint32               `json:"id"`
+	Ssts []*CompactedSsTableT `json:"ssts"`
+}
+
+func (t *SortedRunT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
+	}
+	sstsOffset := flatbuffers.UOffsetT(0)
+	if t.Ssts != nil {
+		sstsLength := len(t.Ssts)
+		sstsOffsets := make([]flatbuffers.UOffsetT, sstsLength)
+		for j := 0; j < sstsLength; j++ {
+			sstsOffsets[j] = t.Ssts[j].Pack(builder)
+		}
+		SortedRunStartSstsVector(builder, sstsLength)
+		for j := sstsLength - 1; j >= 0; j-- {
+			builder.PrependUOffsetT(sstsOffsets[j])
+		}
+		sstsOffset = builder.EndVector(sstsLength)
+	}
+	SortedRunStart(builder)
+	SortedRunAddId(builder, t.Id)
+	SortedRunAddSsts(builder, sstsOffset)
+	return SortedRunEnd(builder)
+}
+
+func (rcv *SortedRun) UnPackTo(t *SortedRunT) {
+	t.Id = rcv.Id()
+	sstsLength := rcv.SstsLength()
+	t.Ssts = make([]*CompactedSsTableT, sstsLength)
+	for j := 0; j < sstsLength; j++ {
+		x := CompactedSsTable{}
+		rcv.Ssts(&x, j)
+		t.Ssts[j] = x.UnPack()
+	}
+}
+
+func (rcv *SortedRun) UnPack() *SortedRunT {
+	if rcv == nil {
+		return nil
+	}
+	t := &SortedRunT{}
+	rcv.UnPackTo(t)
+	return t
+}
+
 type SortedRun struct {
 	_tab flatbuffers.Table
 }
@@ -800,6 +986,38 @@ func SortedRunStartSstsVector(builder *flatbuffers.Builder, numElems int) flatbu
 }
 func SortedRunEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
+}
+
+type SnapshotT struct {
+	Id                  uint64 `json:"id"`
+	ManifestId          uint64 `json:"manifest_id"`
+	SnapshotExpireTimeS uint32 `json:"snapshot_expire_time_s"`
+}
+
+func (t *SnapshotT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+	if t == nil {
+		return 0
+	}
+	SnapshotStart(builder)
+	SnapshotAddId(builder, t.Id)
+	SnapshotAddManifestId(builder, t.ManifestId)
+	SnapshotAddSnapshotExpireTimeS(builder, t.SnapshotExpireTimeS)
+	return SnapshotEnd(builder)
+}
+
+func (rcv *Snapshot) UnPackTo(t *SnapshotT) {
+	t.Id = rcv.Id()
+	t.ManifestId = rcv.ManifestId()
+	t.SnapshotExpireTimeS = rcv.SnapshotExpireTimeS()
+}
+
+func (rcv *Snapshot) UnPack() *SnapshotT {
+	if rcv == nil {
+		return nil
+	}
+	t := &SnapshotT{}
+	rcv.UnPackTo(t)
+	return t
 }
 
 type Snapshot struct {
