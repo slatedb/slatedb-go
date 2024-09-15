@@ -25,5 +25,6 @@ go.work.sum
 .env
 
 .idea/
+.vscode/
 bin/
 .DS_Store

@@ -17,7 +17,7 @@ func TestBlock(t *testing.T) {
 	block, err := builder.build()
 	assert.Nil(t, err)
 
-	encoded := block.encode()
+	encoded := block.encodeToBytes()
 	decoded := decodeBytesToBlock(encoded)
 	assert.Equal(t, block.data, decoded.data)
 	assert.Equal(t, block.offsets, decoded.offsets)
@@ -32,7 +32,7 @@ func TestBlockWithTombstone(t *testing.T) {
 	block, err := builder.build()
 	assert.Nil(t, err)
 
-	encoded := block.encode()
+	encoded := block.encodeToBytes()
 	decoded := decodeBytesToBlock(encoded)
 	assert.Equal(t, block.data, decoded.data)
 	assert.Equal(t, block.offsets, decoded.offsets)

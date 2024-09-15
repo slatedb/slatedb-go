@@ -1,5 +1,6 @@
 gen_flatbuf:
 	flatc -o gen --go --gen-object-api --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs
+	go fmt ./gen/*.go
 
 fmt:
 	go fmt ./...

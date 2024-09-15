@@ -3,8 +3,9 @@ package internal
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/samber/mo"
 	"math"
+
+	"github.com/samber/mo"
 )
 
 const (
@@ -24,7 +25,7 @@ type Block struct {
 // data is added to the first len(data) bytes
 // offsets are added to the next len(offsets) * SizeOfUint16InBytes bytes
 // the last 2 bytes hold the number of offsets
-func (b *Block) encode() []byte {
+func (b *Block) encodeToBytes() []byte {
 	bufSize := len(b.data) + len(b.offsets)*SizeOfUint16InBytes + SizeOfUint16InBytes
 
 	buf := make([]byte, 0, bufSize)
@@ -39,7 +40,7 @@ func (b *Block) encode() []byte {
 
 // decode converts byte slice to a Block
 func decodeBytesToBlock(bytes []byte) Block {
-	// the last 2 bytes hold the number of offsets
+	// the last 2 bytes hold the offset count
 	offsetCountIndex := len(bytes) - SizeOfUint16InBytes
 	offsetCount := binary.BigEndian.Uint16(bytes[offsetCountIndex:])
 
@@ -82,9 +83,7 @@ func (b *BlockBuilder) estimatedSize() int {
 }
 
 func (b *BlockBuilder) add(key []byte, value mo.Option[[]byte]) bool {
-	if len(key) == 0 {
-		panic("key must not be empty")
-	}
+	assertTrue(len(key) > 0, "key must not be empty")
 
 	valueLen := 0
 	val, ok := value.Get()
@@ -119,11 +118,11 @@ func (b *BlockBuilder) isEmpty() bool {
 	return len(b.offsets) == 0
 }
 
-func (b *BlockBuilder) build() (*Block, error) {
+func (b *BlockBuilder) build() (Block, error) {
 	if b.isEmpty() {
-		return nil, ErrEmptyBlock
+		return Block{}, ErrEmptyBlock
 	}
-	return &Block{
+	return Block{
 		data:    b.data,
 		offsets: b.offsets,
 	}, nil
@@ -220,19 +219,11 @@ func (b *BlockIterator) loadAtCurrentOffset() mo.Option[KeyValueDeletable] {
 	offset += SizeOfUint32InBytes
 
 	if valueLen != Tombstone {
-		valueDel = ValueDeletable{
-			value:       data[offset : uint32(offset)+valueLen],
-			isTombstone: false,
-		}
+		value := data[offset : uint32(offset)+valueLen]
+		valueDel = ValueDeletable{value, false}
 	} else {
-		valueDel = ValueDeletable{
-			value:       nil,
-			isTombstone: true,
-		}
+		valueDel = ValueDeletable{nil, true}
 	}
 
-	return mo.Some(KeyValueDeletable{
-		key:      key,
-		valueDel: valueDel,
-	})
+	return mo.Some(KeyValueDeletable{key, valueDel})
 }

@@ -14,7 +14,7 @@ type BloomFilter struct {
 	buffer    []byte
 }
 
-func (b *BloomFilter) decode(buf []byte) BloomFilter {
+func decodeBytesToBloomFilter(buf []byte) BloomFilter {
 	numProbes := binary.BigEndian.Uint16(buf)
 	return BloomFilter{
 		numProbes: numProbes,
@@ -22,7 +22,7 @@ func (b *BloomFilter) decode(buf []byte) BloomFilter {
 	}
 }
 
-func (b *BloomFilter) encode() []byte {
+func (b *BloomFilter) encodeToBytes() []byte {
 	buf := make([]byte, 0)
 	binary.BigEndian.PutUint16(buf, b.numProbes)
 	buf = append(buf, b.buffer...)
