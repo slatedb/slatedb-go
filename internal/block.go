@@ -39,7 +39,7 @@ func (b *Block) encodeToBytes() []byte {
 }
 
 // decode converts byte slice to a Block
-func decodeBytesToBlock(bytes []byte) Block {
+func decodeBytesToBlock(bytes []byte) *Block {
 	// the last 2 bytes hold the offset count
 	offsetCountIndex := len(bytes) - SizeOfUint16InBytes
 	offsetCount := binary.BigEndian.Uint16(bytes[offsetCountIndex:])
@@ -52,7 +52,7 @@ func decodeBytesToBlock(bytes []byte) Block {
 		offsets = append(offsets, binary.BigEndian.Uint16(bytes[index:]))
 	}
 
-	return Block{
+	return &Block{
 		data:    bytes[:offsetStartIndex],
 		offsets: offsets,
 	}
@@ -68,8 +68,8 @@ type BlockBuilder struct {
 	blockSize uint64
 }
 
-func NewBlockBuilder(blockSize uint64) BlockBuilder {
-	return BlockBuilder{
+func newBlockBuilder(blockSize uint64) *BlockBuilder {
+	return &BlockBuilder{
 		offsets:   make([]uint16, 0),
 		data:      make([]byte, 0),
 		blockSize: blockSize,
@@ -118,11 +118,11 @@ func (b *BlockBuilder) isEmpty() bool {
 	return len(b.offsets) == 0
 }
 
-func (b *BlockBuilder) build() (Block, error) {
+func (b *BlockBuilder) build() (*Block, error) {
 	if b.isEmpty() {
-		return Block{}, ErrEmptyBlock
+		return nil, ErrEmptyBlock
 	}
-	return Block{
+	return &Block{
 		data:    b.data,
 		offsets: b.offsets,
 	}, nil

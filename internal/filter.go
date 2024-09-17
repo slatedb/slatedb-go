@@ -14,9 +14,9 @@ type BloomFilter struct {
 	buffer    []byte
 }
 
-func decodeBytesToBloomFilter(buf []byte) BloomFilter {
+func decodeBytesToBloomFilter(buf []byte) *BloomFilter {
 	numProbes := binary.BigEndian.Uint16(buf)
-	return BloomFilter{
+	return &BloomFilter{
 		numProbes: numProbes,
 		buffer:    buf[2:],
 	}
@@ -24,7 +24,7 @@ func decodeBytesToBloomFilter(buf []byte) BloomFilter {
 
 func (b *BloomFilter) encodeToBytes() []byte {
 	buf := make([]byte, 0)
-	binary.BigEndian.PutUint16(buf, b.numProbes)
+	buf = binary.BigEndian.AppendUint16(buf, b.numProbes)
 	buf = append(buf, b.buffer...)
 	return buf
 }
@@ -69,7 +69,7 @@ func (b *BloomFilterBuilder) filterBytes(numKeys uint32, bitsPerKey uint32) uint
 	return uint64((filterBits + 7) / 8)
 }
 
-func (b *BloomFilterBuilder) build() BloomFilter {
+func (b *BloomFilterBuilder) build() *BloomFilter {
 	numProbes := optimalNumProbes(b.bitsPerKey)
 	filtrBytes := b.filterBytes(uint32(len(b.keyHashes)), b.bitsPerKey)
 	filterBits := uint32(filtrBytes * 8)
@@ -82,7 +82,7 @@ func (b *BloomFilterBuilder) build() BloomFilter {
 		}
 	}
 
-	return BloomFilter{
+	return &BloomFilter{
 		numProbes: numProbes,
 		buffer:    buffer,
 	}

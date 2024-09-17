@@ -8,7 +8,7 @@ import (
 )
 
 func TestBlock(t *testing.T) {
-	builder := NewBlockBuilder(4096)
+	builder := newBlockBuilder(4096)
 	assert.True(t, builder.isEmpty())
 	assert.True(t, builder.add([]byte("key1"), mo.Some([]byte("value1"))))
 	assert.True(t, builder.add([]byte("key2"), mo.Some([]byte("value2"))))
@@ -24,7 +24,7 @@ func TestBlock(t *testing.T) {
 }
 
 func TestBlockWithTombstone(t *testing.T) {
-	builder := NewBlockBuilder(4096)
+	builder := newBlockBuilder(4096)
 	assert.True(t, builder.add([]byte("key1"), mo.Some([]byte("value1"))))
 	assert.True(t, builder.add([]byte("key2"), mo.None[[]byte]()))
 	assert.True(t, builder.add([]byte("key3"), mo.Some([]byte("value3"))))
@@ -45,7 +45,7 @@ func TestBlockIterator(t *testing.T) {
 		{[]byte("super"), []byte("mario")},
 	}
 
-	builder := NewBlockBuilder(1024)
+	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
 		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
 	}
@@ -72,7 +72,7 @@ func TestIterFromExistingKey(t *testing.T) {
 		{[]byte("super"), []byte("mario")},
 	}
 
-	builder := NewBlockBuilder(1024)
+	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
 		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
 	}
@@ -100,7 +100,7 @@ func TestIterFromNonExistingKey(t *testing.T) {
 		{[]byte("super"), []byte("mario")},
 	}
 
-	builder := NewBlockBuilder(1024)
+	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
 		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
 	}
@@ -128,7 +128,7 @@ func TestIterFromEnd(t *testing.T) {
 		{[]byte("super"), []byte("mario")},
 	}
 
-	builder := NewBlockBuilder(1024)
+	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
 		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
 	}
