@@ -55,13 +55,16 @@ func TestBlockIterator(t *testing.T) {
 
 	iter := newBlockIteratorFromFirstKey(block)
 	for i := 0; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.True(t, bytes.Equal(kv.key, kv.key))
 		assert.True(t, bytes.Equal(kv.value, kv.value))
 	}
 
-	kv := iter.Next()
+	kv, err := iter.Next()
+	assert.NoError(t, err)
 	assert.Equal(t, mo.None[KeyValue](), kv)
 }
 
@@ -83,13 +86,16 @@ func TestIterFromExistingKey(t *testing.T) {
 	iter := newBlockIteratorFromKey(block, []byte("kratos"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.True(t, bytes.Equal(kv.key, kv.key))
 		assert.True(t, bytes.Equal(kv.value, kv.value))
 	}
 
-	kv := iter.Next()
+	kv, err := iter.Next()
+	assert.NoError(t, err)
 	assert.Equal(t, mo.None[KeyValue](), kv)
 }
 
@@ -111,13 +117,16 @@ func TestIterFromNonExistingKey(t *testing.T) {
 	iter := newBlockIteratorFromKey(block, []byte("ka"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.True(t, bytes.Equal(kv.key, kv.key))
 		assert.True(t, bytes.Equal(kv.value, kv.value))
 	}
 
-	kv := iter.Next()
+	kv, err := iter.Next()
+	assert.NoError(t, err)
 	assert.Equal(t, mo.None[KeyValue](), kv)
 }
 
@@ -138,6 +147,7 @@ func TestIterFromEnd(t *testing.T) {
 
 	iter := newBlockIteratorFromKey(block, []byte("zzz"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
-	kv := iter.Next()
+	kv, err := iter.Next()
+	assert.NoError(t, err)
 	assert.Equal(t, mo.None[KeyValue](), kv)
 }

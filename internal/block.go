@@ -167,9 +167,13 @@ func newBlockIteratorFromFirstKey(block *Block) *BlockIterator {
 	}
 }
 
-func (b *BlockIterator) Next() mo.Option[KeyValue] {
+func (b *BlockIterator) Next() (mo.Option[KeyValue], error) {
 	for {
-		keyVal, ok := b.NextEntry().Get()
+		entry, err := b.NextEntry()
+		if err != nil {
+			return mo.None[KeyValue](), err
+		}
+		keyVal, ok := entry.Get()
 		if ok {
 			if keyVal.valueDel.isTombstone {
 				continue
@@ -178,21 +182,21 @@ func (b *BlockIterator) Next() mo.Option[KeyValue] {
 			return mo.Some[KeyValue](KeyValue{
 				key:   keyVal.key,
 				value: keyVal.valueDel.value,
-			})
+			}), nil
 		} else {
-			return mo.None[KeyValue]()
+			return mo.None[KeyValue](), nil
 		}
 	}
 }
 
-func (b *BlockIterator) NextEntry() mo.Option[KeyValueDeletable] {
+func (b *BlockIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
 	keyValue, ok := b.loadAtCurrentOffset().Get()
 	if !ok {
-		return mo.None[KeyValueDeletable]()
+		return mo.None[KeyValueDeletable](), nil
 	}
 
 	b.advance()
-	return mo.Some(keyValue)
+	return mo.Some(keyValue), nil
 }
 
 func (b *BlockIterator) advance() {

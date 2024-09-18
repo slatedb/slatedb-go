@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -31,7 +32,9 @@ func nextBlockToIter(builder *EncodedSSTableBuilder) *BlockIterator {
 }
 
 func assertIterNextEntry(t *testing.T, iter *BlockIterator, key []byte, value []byte) {
-	entry, ok := iter.NextEntry().Get()
+	nextEntry, err := iter.NextEntry()
+	assert.NoError(t, err)
+	entry, ok := nextEntry.Get()
 	assert.True(t, ok, "expected iterator to return a value")
 	assert.Equal(t, key, entry.key)
 	assert.Equal(t, value, entry.valueDel.value)
@@ -48,18 +51,24 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 
 	iter := nextBlockToIter(builder)
 	assertIterNextEntry(t, iter, []byte("aaaaaaaa"), []byte("11111111"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err := iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	iter = nextBlockToIter(builder)
 	assertIterNextEntry(t, iter, []byte("bbbbbbbb"), []byte("22222222"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err = iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	assert.True(t, builder.nextBlock().IsAbsent())
 	builder.add([]byte("dddddddd"), mo.Some([]byte("44444444")))
 
 	iter = nextBlockToIter(builder)
 	assertIterNextEntry(t, iter, []byte("cccccccc"), []byte("33333333"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err = iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	assert.True(t, builder.nextBlock().IsAbsent())
 }
@@ -97,7 +106,9 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 		assert.NoError(t, err)
 		iter := newBlockIteratorFromFirstKey(block)
 		assertIterNextEntry(t, iter, kv.key, kv.value)
-		assert.True(t, iter.NextEntry().IsAbsent())
+		nextEntry, err := iter.NextEntry()
+		assert.NoError(t, err)
+		assert.True(t, nextEntry.IsAbsent())
 	}
 }
 
@@ -209,11 +220,15 @@ func TestReadBlocks(t *testing.T) {
 	iter := newBlockIteratorFromFirstKey(&blocks[0])
 	assertIterNextEntry(t, iter, []byte("aa"), []byte("11"))
 	assertIterNextEntry(t, iter, []byte("bb"), []byte("22"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err := iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	iter = newBlockIteratorFromFirstKey(&blocks[1])
 	assertIterNextEntry(t, iter, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err = iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 }
 
 func TestReadAllBlocks(t *testing.T) {
@@ -244,13 +259,90 @@ func TestReadAllBlocks(t *testing.T) {
 	iter := newBlockIteratorFromFirstKey(&blocks[0])
 	assertIterNextEntry(t, iter, []byte("aa"), []byte("11"))
 	assertIterNextEntry(t, iter, []byte("bb"), []byte("22"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err := iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	iter = newBlockIteratorFromFirstKey(&blocks[1])
 	assertIterNextEntry(t, iter, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err = iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 
 	iter = newBlockIteratorFromFirstKey(&blocks[2])
 	assertIterNextEntry(t, iter, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
-	assert.True(t, iter.NextEntry().IsAbsent())
+	nextEntry, err = iter.NextEntry()
+	assert.NoError(t, err)
+	assert.True(t, nextEntry.IsAbsent())
 }
+
+// SSTIterator tests
+
+func assertNext(t *testing.T, iter *SSTIterator, key []byte, value []byte) {
+	next, err := iter.Next()
+	assert.NoError(t, err)
+	assert.True(t, next.IsPresent())
+	kv, _ := next.Get()
+	assert.Equal(t, key, kv.key)
+	assert.Equal(t, value, kv.value)
+}
+
+func TestOneBlockSSTIter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := newSSTableFormat(4096, 3, CompressionNone)
+	tableStore := newTableStore(bucket, format, "")
+	builder := tableStore.tableBuilder()
+
+	builder.add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.add([]byte("key2"), mo.Some([]byte("value2")))
+	builder.add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.add([]byte("key4"), mo.Some([]byte("value4")))
+
+	encodedSST, err := builder.build()
+	assert.NoError(t, err)
+	tableStore.writeSST(ssTableIdWal(0), encodedSST)
+	sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+	assert.Equal(t, 1, sstHandle.info.borrow().BlockMetaLength())
+
+	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
+	assertNext(t, iter, []byte("key1"), []byte("value1"))
+	assertNext(t, iter, []byte("key2"), []byte("value2"))
+	assertNext(t, iter, []byte("key3"), []byte("value3"))
+	assertNext(t, iter, []byte("key4"), []byte("value4"))
+
+	next, err := iter.Next()
+	assert.NoError(t, err)
+	assert.False(t, next.IsPresent())
+}
+
+func TestManyBlockSSTIter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := newSSTableFormat(4096, 3, CompressionNone)
+	tableStore := newTableStore(bucket, format, "")
+	builder := tableStore.tableBuilder()
+
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value%d", i))
+		builder.add(key, mo.Some(value))
+	}
+
+	encodedSST, err := builder.build()
+	assert.NoError(t, err)
+	tableStore.writeSST(ssTableIdWal(0), encodedSST)
+	sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+	assert.Equal(t, 6, sstHandle.info.borrow().BlockMetaLength())
+
+	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value%d", i))
+		assertNext(t, iter, key, value)
+	}
+
+	next, err := iter.Next()
+	assert.NoError(t, err)
+	assert.False(t, next.IsPresent())
+}
+
+// TODO: add more tests

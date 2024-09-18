@@ -32,7 +32,9 @@ func TestMemtableIter(t *testing.T) {
 
 	// Verify that iterator returns keys in sorted order
 	for i := 0; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.Equal(t, kvPairs[i].key, kv.key)
 		assert.Equal(t, kvPairs[i].value, kv.value)
@@ -61,7 +63,9 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 
 	// Verify that iterator starts from index 2 which contains key abc333
 	for i := 2; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.Equal(t, kvPairs[i].key, kv.key)
 		assert.Equal(t, kvPairs[i].value, kv.value)
@@ -90,7 +94,9 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 
 	// Verify that iterator starts from index 3 which contains key abc444
 	for i := 3; i < len(kvPairs); i++ {
-		kv, ok := iter.Next().Get()
+		next, err := iter.Next()
+		assert.NoError(t, err)
+		kv, ok := next.Get()
 		assert.True(t, ok)
 		assert.Equal(t, kvPairs[i].key, kv.key)
 		assert.Equal(t, kvPairs[i].value, kv.value)
@@ -101,10 +107,12 @@ func TestMemtableIterDelete(t *testing.T) {
 	table := newWritableKVTable()
 
 	table.put([]byte("abc333"), []byte("value3"))
-	iter := table.table.iter()
-	assert.True(t, iter.Next().IsPresent())
+	next, err := table.table.iter().Next()
+	assert.NoError(t, err)
+	assert.True(t, next.IsPresent())
 
 	table.delete([]byte("abc333"))
-	iter = table.table.iter()
-	assert.False(t, iter.Next().IsPresent())
+	next, err = table.table.iter().Next()
+	assert.NoError(t, err)
+	assert.False(t, next.IsPresent())
 }

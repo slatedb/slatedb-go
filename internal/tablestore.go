@@ -79,6 +79,14 @@ func (ts *TableStore) path(id SSTableId) string {
 	return ""
 }
 
+func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange Range) ([]Block, error) {
+	obj := ReadOnlyObject{
+		bucket: ts.bucket,
+		path:   ts.path(sstHandle.id),
+	}
+	return ts.sstFormat.readBlocks(sstHandle.info, blocksRange, obj)
+}
+
 // ------------------------------------------------
 // ReadOnlyObject
 // ------------------------------------------------

@@ -192,9 +192,13 @@ func newMemTableIterator(element *skiplist.Element) *MemTableIterator {
 	}
 }
 
-func (m *MemTableIterator) Next() mo.Option[KeyValue] {
+func (m *MemTableIterator) Next() (mo.Option[KeyValue], error) {
 	for {
-		keyVal, ok := m.NextEntry().Get()
+		entry, err := m.NextEntry()
+		if err != nil {
+			return mo.None[KeyValue](), err
+		}
+		keyVal, ok := entry.Get()
 		if ok {
 			if keyVal.valueDel.isTombstone {
 				continue
@@ -203,17 +207,17 @@ func (m *MemTableIterator) Next() mo.Option[KeyValue] {
 			return mo.Some[KeyValue](KeyValue{
 				key:   keyVal.key,
 				value: keyVal.valueDel.value,
-			})
+			}), nil
 		} else {
-			return mo.None[KeyValue]()
+			return mo.None[KeyValue](), nil
 		}
 	}
 }
 
-func (m *MemTableIterator) NextEntry() mo.Option[KeyValueDeletable] {
+func (m *MemTableIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
 	elem := m.element
 	if elem == nil {
-		return mo.None[KeyValueDeletable]()
+		return mo.None[KeyValueDeletable](), nil
 	}
 
 	m.element = m.element.Next()
@@ -221,5 +225,5 @@ func (m *MemTableIterator) NextEntry() mo.Option[KeyValueDeletable] {
 	return mo.Some(KeyValueDeletable{
 		key:      elem.Key().([]byte),
 		valueDel: elem.Value.(ValueDeletable),
-	})
+	}), nil
 }

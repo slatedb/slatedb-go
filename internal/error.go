@@ -17,4 +17,5 @@ var (
 	ErrInvalidCompressionCodec = errors.New("invalid compression codec")
 	ErrBlockDecompression      = errors.New("error Decompressing Block")
 	ErrBlockCompression        = errors.New("error Compressing Block")
+	ErrReadBlocks              = errors.New("error Reading Blocks")
 )

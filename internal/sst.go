@@ -7,6 +7,7 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 	"hash/crc32"
 	"io"
+	"math"
 
 	"github.com/golang/snappy"
 	flatbuf "github.com/naveen246/slatedb-go/gen"
@@ -423,4 +424,195 @@ func decodeBytesToSSTableInfo(rawBlockMeta []byte) (*SSTableInfoOwned, error) {
 	}
 
 	return newSSTableInfoOwned(data), nil
+}
+
+// ------------------------------------------------
+// SSTIterator
+// ------------------------------------------------
+
+type SSTIterator struct {
+	table               *SSTableHandle
+	tableStore          *TableStore
+	currentBlockIter    mo.Option[*BlockIterator]
+	fromKey             mo.Option[[]byte]
+	nextBlockIdxToFetch uint64
+	fetchTasks          chan chan mo.Option[[]Block]
+	maxFetchTasks       uint64
+	numBlocksToFetch    uint64
+}
+
+func newSSTIterator(
+	table *SSTableHandle,
+	tableStore *TableStore,
+	maxFetchTasks uint64,
+	numBlocksToFetch uint64,
+) *SSTIterator {
+	return &SSTIterator{
+		table:               table,
+		tableStore:          tableStore,
+		currentBlockIter:    mo.None[*BlockIterator](),
+		fromKey:             mo.None[[]byte](),
+		nextBlockIdxToFetch: 0,
+		fetchTasks:          make(chan chan mo.Option[[]Block], maxFetchTasks),
+		maxFetchTasks:       maxFetchTasks,
+		numBlocksToFetch:    numBlocksToFetch,
+	}
+}
+
+func newSSTIteratorFromKey(
+	table *SSTableHandle,
+	tableStore *TableStore,
+	fromKey []byte,
+	maxFetchTasks uint64,
+	numBlocksToFetch uint64,
+) *SSTIterator {
+	iter := &SSTIterator{
+		table:            table,
+		tableStore:       tableStore,
+		currentBlockIter: mo.None[*BlockIterator](),
+		fromKey:          mo.Some(fromKey),
+		fetchTasks:       make(chan chan mo.Option[[]Block], maxFetchTasks),
+		maxFetchTasks:    maxFetchTasks,
+		numBlocksToFetch: numBlocksToFetch,
+	}
+	iter.nextBlockIdxToFetch = iter.firstBlockWithDataIncludingOrAfterKey(table, fromKey)
+	return iter
+}
+
+func (iter *SSTIterator) Next() (mo.Option[KeyValue], error) {
+	for {
+		kvDel, err := iter.NextEntry()
+		if err != nil {
+			return mo.None[KeyValue](), err
+		}
+		keyVal, ok := kvDel.Get()
+		if ok {
+			if keyVal.valueDel.isTombstone {
+				continue
+			}
+
+			return mo.Some[KeyValue](KeyValue{
+				key:   keyVal.key,
+				value: keyVal.valueDel.value,
+			}), nil
+		} else {
+			return mo.None[KeyValue](), nil
+		}
+	}
+}
+
+func (iter *SSTIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
+	for {
+		if iter.currentBlockIter.IsAbsent() {
+			nextBlockIter, err := iter.nextBlockIter()
+			if err != nil {
+				return mo.None[KeyValueDeletable](), err
+			}
+
+			if nextBlockIter.IsPresent() {
+				iter.currentBlockIter = nextBlockIter
+			} else {
+				return mo.None[KeyValueDeletable](), nil
+			}
+		}
+
+		currentBlockIter, _ := iter.currentBlockIter.Get()
+		kv, err := currentBlockIter.NextEntry()
+		if err != nil {
+			return mo.None[KeyValueDeletable](), err
+		}
+
+		if kv.IsPresent() {
+			return kv, nil
+		} else {
+			// We have exhausted the current block, but not necessarily the entire SST,
+			// so we fall back to the top to check if we have more blocks to read.
+			iter.currentBlockIter = mo.None[*BlockIterator]()
+		}
+	}
+}
+
+func (iter *SSTIterator) spawnFetches() {
+	numBlocks := iter.table.info.borrow().BlockMetaLength()
+	for len(iter.fetchTasks) < int(iter.maxFetchTasks) && int(iter.nextBlockIdxToFetch) < numBlocks {
+		numBlocksToFetch := math.Min(
+			float64(iter.numBlocksToFetch),
+			float64(numBlocks-int(iter.nextBlockIdxToFetch)),
+		)
+		blocksStart := iter.nextBlockIdxToFetch
+		blocksEnd := iter.nextBlockIdxToFetch + uint64(numBlocksToFetch)
+
+		blocksCh := make(chan mo.Option[[]Block], 1)
+		iter.fetchTasks <- blocksCh
+
+		go func(table SSTableHandle, store TableStore, blocksStart uint64, blocksEnd uint64) {
+			blocks, err := store.readBlocks(&table, Range{blocksStart, blocksEnd})
+			if err != nil {
+				blocksCh <- mo.None[[]Block]()
+			} else {
+				blocksCh <- mo.Some(blocks)
+			}
+		}(*iter.table, *iter.tableStore, blocksStart, blocksEnd)
+
+		iter.nextBlockIdxToFetch = blocksEnd
+	}
+}
+
+func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
+	for {
+		iter.spawnFetches()
+		if len(iter.fetchTasks) == 0 {
+			assertTrue(int(iter.nextBlockIdxToFetch) == iter.table.info.borrow().BlockMetaLength(), "")
+			return mo.None[*BlockIterator](), nil
+		}
+
+		blocksCh := <-iter.fetchTasks
+		blocks := <-blocksCh
+		if blocks.IsPresent() {
+			blks, _ := blocks.Get()
+			if len(blks) == 0 {
+				continue
+			}
+
+			block := &blks[0]
+			fromKey, _ := iter.fromKey.Get()
+			if iter.fromKey.IsPresent() {
+				return mo.Some(newBlockIteratorFromKey(block, fromKey)), nil
+			} else {
+				return mo.Some(newBlockIteratorFromFirstKey(block)), nil
+			}
+		} else {
+			return mo.None[*BlockIterator](), ErrReadBlocks
+		}
+	}
+}
+
+func (iter *SSTIterator) firstBlockWithDataIncludingOrAfterKey(sst *SSTableHandle, key []byte) uint64 {
+	handle := sst.info.borrow()
+	low := 0
+	high := handle.BlockMetaLength() - 1
+	// if the key is less than all the blocks' first key, scan the whole sst
+	foundBlockID := 0
+
+loop:
+	for low <= high {
+		mid := low + (high-low)/2
+		midBlockFirstKey := handle.UnPack().BlockMeta[mid].FirstKey
+		cmp := bytes.Compare(midBlockFirstKey, key)
+		switch cmp {
+		case -1:
+			low = mid + 1
+			foundBlockID = mid
+		case 1:
+			if mid > 0 {
+				high = mid - 1
+			} else {
+				break loop
+			}
+		case 0:
+			return uint64(mid)
+		}
+	}
+
+	return uint64(foundBlockID)
 }
