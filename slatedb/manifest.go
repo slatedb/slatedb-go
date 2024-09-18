@@ -1,4 +1,4 @@
-package internal
+package slatedb
 
 type Manifest struct {
 	core           CoreDbState

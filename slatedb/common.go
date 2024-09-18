@@ -1,4 +1,4 @@
-package internal
+package slatedb
 
 const (
 	// uint16 and uint32 sizes are constant as per https://go.dev/ref/spec#Size_and_alignment_guarantees

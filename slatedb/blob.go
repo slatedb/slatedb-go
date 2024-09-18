@@ -1,4 +1,4 @@
-package internal
+package slatedb
 
 type ReadOnlyBlob interface {
 	len() (int, error)

@@ -1,4 +1,4 @@
-package internal
+package slatedb
 
 import (
 	"github.com/stretchr/testify/assert"
