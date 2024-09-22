@@ -7,7 +7,6 @@ import (
 	"github.com/samber/mo"
 	"github.com/thanos-io/objstore"
 	"io"
-	"log"
 	"path"
 	"slices"
 	"strconv"
@@ -61,12 +60,6 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 }
 
 func (ts *TableStore) tableWriter(sstID SSTableID) *EncodedSSTableWriter {
-	sstPath := ts.sstPath(sstID)
-	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader([]byte{}))
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	return &EncodedSSTableWriter{
 		sstID:         sstID,
 		builder:       ts.sstFormat.tableBuilder(),
@@ -161,9 +154,14 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 // ------------------------------------------------
 
 type EncodedSSTableWriter struct {
-	sstID         SSTableID
-	builder       *EncodedSSTableBuilder
-	tableStore    *TableStore
+	sstID      SSTableID
+	builder    *EncodedSSTableBuilder
+	tableStore *TableStore
+
+	// TODO: we are using a slice of byte as buffer.
+	// add a capacity for buffer and when buffer reaches the capacity
+	// it should be written to object storage
+	buffer        []byte
 	blocksWritten uint64
 }
 
@@ -173,21 +171,15 @@ func (w *EncodedSSTableWriter) add(key []byte, value mo.Option[[]byte]) error {
 		return err
 	}
 
-	blocksData := make([]byte, 0)
 	for {
 		block, ok := w.builder.nextBlock().Get()
 		if !ok {
 			break
 		}
-		blocksData = append(blocksData, block...)
+		w.buffer = append(w.buffer, block...)
 		w.blocksWritten += 1
 	}
 
-	sstPath := w.tableStore.sstPath(w.sstID)
-	err = w.tableStore.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
-	if err != nil {
-		return ErrObjectStore
-	}
 	return nil
 }
 
@@ -197,7 +189,7 @@ func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
 		return nil, err
 	}
 
-	blocksData := make([]byte, 0)
+	blocksData := w.buffer
 	for {
 		if encodedSST.unconsumedBlocks.Len() == 0 {
 			break

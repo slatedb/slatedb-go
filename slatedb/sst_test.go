@@ -40,7 +40,7 @@ func assertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value 
 	assert.Equal(t, key, entry.key)
 	if value == nil {
 		assert.True(t, entry.valueDel.isTombstone)
-		assert.Equal(t, nil, entry.valueDel.value)
+		assert.Equal(t, []byte(nil), entry.valueDel.value)
 	} else {
 		assert.False(t, entry.valueDel.isTombstone)
 		assert.Equal(t, value, entry.valueDel.value)
