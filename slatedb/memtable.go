@@ -77,6 +77,8 @@ func (k *KVTable) delete(key []byte) int64 {
 }
 
 func (k *KVTable) isEmpty() bool {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
 	return k.skl.Len() == 0
 }
 
@@ -137,16 +139,16 @@ func (w *WritableKVTable) maybeSubtractOldValFromSize(key []byte) {
 }
 
 // ------------------------------------------------
-// ImmutableWal
+// ImmutableWAL
 // ------------------------------------------------
 
-type ImmutableWal struct {
+type ImmutableWAL struct {
 	id    uint64
 	table *KVTable
 }
 
-func newImmutableWal(id uint64, table *WritableKVTable) *ImmutableWal {
-	return &ImmutableWal{
+func newImmutableWal(id uint64, table *WritableKVTable) ImmutableWAL {
+	return ImmutableWAL{
 		id:    id,
 		table: table.table,
 	}
@@ -162,8 +164,8 @@ type ImmutableMemtable struct {
 	flushNotify chan string
 }
 
-func newImmutableMemtable(table *WritableKVTable, lastWalID uint64) *ImmutableMemtable {
-	return &ImmutableMemtable{
+func newImmutableMemtable(table *WritableKVTable, lastWalID uint64) ImmutableMemtable {
+	return ImmutableMemtable{
 		table:       table.table,
 		lastWalID:   lastWalID,
 		flushNotify: make(chan string),

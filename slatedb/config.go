@@ -7,3 +7,10 @@ const (
 	CompressionSnappy
 	CompressionZlib
 )
+
+type DBOptions struct {
+}
+
+func DefaultOptions() DBOptions {
+	return DBOptions{}
+}

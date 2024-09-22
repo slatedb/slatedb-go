@@ -31,13 +31,30 @@ func nextBlockToIter(builder *EncodedSSTableBuilder) *BlockIterator {
 	return newBlockIteratorFromFirstKey(block)
 }
 
-func assertIterNextEntry(t *testing.T, iter *BlockIterator, key []byte, value []byte) {
+func assertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
 	nextEntry, err := iter.NextEntry()
 	assert.NoError(t, err)
-	entry, ok := nextEntry.Get()
-	assert.True(t, ok, "expected iterator to return a value")
+	assert.True(t, nextEntry.IsPresent())
+
+	entry, _ := nextEntry.Get()
 	assert.Equal(t, key, entry.key)
-	assert.Equal(t, value, entry.valueDel.value)
+	if value == nil {
+		assert.True(t, entry.valueDel.isTombstone)
+		assert.Equal(t, nil, entry.valueDel.value)
+	} else {
+		assert.False(t, entry.valueDel.isTombstone)
+		assert.Equal(t, value, entry.valueDel.value)
+	}
+}
+
+func assertIterNext(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
+	next, err := iter.Next()
+	assert.NoError(t, err)
+	assert.True(t, next.IsPresent())
+
+	kv, _ := next.Get()
+	assert.Equal(t, key, kv.key)
+	assert.Equal(t, value, kv.value)
 }
 
 func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
@@ -93,12 +110,11 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 	encodedSST, err := builder.build()
 	assert.NoError(t, err)
 	rawSST := firstBlock
-	blockCount := len(encodedSST.unconsumedBlocks)
+	blockCount := encodedSST.unconsumedBlocks.Len()
 	assert.Equal(t, 2, blockCount)
 
 	for i := 0; i < blockCount; i++ {
-		rawSST = append(rawSST, encodedSST.unconsumedBlocks[0]...)
-		encodedSST.unconsumedBlocks = encodedSST.unconsumedBlocks[1:]
+		rawSST = append(rawSST, encodedSST.unconsumedBlocks.PopFront()...)
 	}
 
 	for i, kv := range kvList {
@@ -126,7 +142,7 @@ func TestSSTable(t *testing.T) {
 	encodedInfo := encodedSST.sstInfo
 
 	// write sst and validate that the handle returned has the correct content.
-	sstHandle, err := tableStore.writeSST(ssTableIdWal(0), encodedSST)
+	sstHandle, err := tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
 	sstInfo := sstHandle.info.borrow()
@@ -135,7 +151,7 @@ func TestSSTable(t *testing.T) {
 	assert.Equal(t, []byte("key1"), sstInfo.UnPack().BlockMeta[0].FirstKey)
 
 	// construct sst info from the raw bytes and validate that it matches the original info.
-	sstHandleFromStore, err := tableStore.openSST(ssTableIdWal(0))
+	sstHandleFromStore, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandleFromStore.info)
 
@@ -158,9 +174,9 @@ func TestSSTableNoFilter(t *testing.T) {
 	assert.NoError(t, err)
 	encodedInfo := encodedSST.sstInfo
 
-	_, err = tableStore.writeSST(ssTableIdWal(0), encodedSST)
+	_, err = tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	assert.NoError(t, err)
-	sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
 	assert.Equal(t, uint64(0), sstHandle.info.borrow().FilterLen())
@@ -181,9 +197,9 @@ func TestSSTableWithCompression(t *testing.T) {
 		assert.NoError(t, err)
 		encodedInfo := encodedSST.sstInfo
 
-		_, err = tableStore.writeSST(ssTableIdWal(0), encodedSST)
+		_, err = tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 		assert.NoError(t, err)
-		sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+		sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 		assert.NoError(t, err)
 		assert.Equal(t, encodedInfo, sstHandle.info)
 		sstInfo := sstHandle.info.borrow()
@@ -208,8 +224,8 @@ func TestReadBlocks(t *testing.T) {
 	encodedInfo := encodedSST.sstInfo
 
 	data := make([]byte, 0)
-	for _, b := range encodedSST.unconsumedBlocks {
-		data = append(data, b...)
+	for i := 0; i < encodedSST.unconsumedBlocks.Len(); i++ {
+		data = append(data, encodedSST.unconsumedBlocks.At(i)...)
 	}
 
 	blob := BytesBlob{data}
@@ -247,8 +263,8 @@ func TestReadAllBlocks(t *testing.T) {
 	encodedInfo := encodedSST.sstInfo
 
 	data := make([]byte, 0)
-	for _, b := range encodedSST.unconsumedBlocks {
-		data = append(data, b...)
+	for i := 0; i < encodedSST.unconsumedBlocks.Len(); i++ {
+		data = append(data, encodedSST.unconsumedBlocks.At(i)...)
 	}
 
 	blob := BytesBlob{data}
@@ -278,15 +294,6 @@ func TestReadAllBlocks(t *testing.T) {
 
 // SSTIterator tests
 
-func assertNext(t *testing.T, iter *SSTIterator, key []byte, value []byte) {
-	next, err := iter.Next()
-	assert.NoError(t, err)
-	assert.True(t, next.IsPresent())
-	kv, _ := next.Get()
-	assert.Equal(t, key, kv.key)
-	assert.Equal(t, value, kv.value)
-}
-
 func TestOneBlockSSTIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	format := newSSTableFormat(4096, 3, CompressionNone)
@@ -300,15 +307,15 @@ func TestOneBlockSSTIter(t *testing.T) {
 
 	encodedSST, err := builder.build()
 	assert.NoError(t, err)
-	tableStore.writeSST(ssTableIdWal(0), encodedSST)
-	sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+	tableStore.writeSST(newSSTableIDWal(0), encodedSST)
+	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.Equal(t, 1, sstHandle.info.borrow().BlockMetaLength())
 
 	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
-	assertNext(t, iter, []byte("key1"), []byte("value1"))
-	assertNext(t, iter, []byte("key2"), []byte("value2"))
-	assertNext(t, iter, []byte("key3"), []byte("value3"))
-	assertNext(t, iter, []byte("key4"), []byte("value4"))
+	assertIterNext(t, iter, []byte("key1"), []byte("value1"))
+	assertIterNext(t, iter, []byte("key2"), []byte("value2"))
+	assertIterNext(t, iter, []byte("key3"), []byte("value3"))
+	assertIterNext(t, iter, []byte("key4"), []byte("value4"))
 
 	next, err := iter.Next()
 	assert.NoError(t, err)
@@ -329,15 +336,15 @@ func TestManyBlockSSTIter(t *testing.T) {
 
 	encodedSST, err := builder.build()
 	assert.NoError(t, err)
-	tableStore.writeSST(ssTableIdWal(0), encodedSST)
-	sstHandle, err := tableStore.openSST(ssTableIdWal(0))
+	tableStore.writeSST(newSSTableIDWal(0), encodedSST)
+	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.Equal(t, 6, sstHandle.info.borrow().BlockMetaLength())
 
 	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value%d", i))
-		assertNext(t, iter, key, value)
+		assertIterNext(t, iter, key, value)
 	}
 
 	next, err := iter.Next()

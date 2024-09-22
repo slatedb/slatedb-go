@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"github.com/gammazero/deque"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"hash/crc32"
 	"io"
@@ -206,7 +207,7 @@ func (f *SSTableFormat) tableBuilder() *EncodedSSTableBuilder {
 type EncodedSSTable struct {
 	sstInfo          *SSTableInfoOwned
 	filter           mo.Option[BloomFilter]
-	unconsumedBlocks [][]byte
+	unconsumedBlocks *deque.Deque[[]byte]
 }
 
 type EncodedSSTableBuilder struct {
@@ -218,7 +219,7 @@ type EncodedSSTableBuilder struct {
 	sstFirstKey   mo.Option[[]byte]
 	blockMetaList []*flatbuf.BlockMetaT
 
-	blocks        [][]byte
+	blocks        *deque.Deque[[]byte]
 	blockSize     uint64
 	currentLen    uint64
 	minFilterKeys uint32
@@ -242,7 +243,7 @@ func newEncodedSSTableBuilder(
 		sstFirstKey:   mo.None[[]byte](),
 		blockMetaList: []*flatbuf.BlockMetaT{},
 
-		blocks:        [][]byte{},
+		blocks:        deque.New[[]byte](0),
 		blockSize:     blockSize,
 		currentLen:    0,
 		minFilterKeys: minFilterKeys,
@@ -284,7 +285,7 @@ func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
 		block, ok := blockBytes.Get()
 		if ok {
 			b.currentLen += uint64(len(block))
-			b.blocks = append(b.blocks, block)
+			b.blocks.PushBack(block)
 		}
 
 		addSuccess := b.blockBuilder.add(key, value)
@@ -300,11 +301,10 @@ func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
 }
 
 func (b *EncodedSSTableBuilder) nextBlock() mo.Option[[]byte] {
-	if len(b.blocks) == 0 {
+	if b.blocks.Len() == 0 {
 		return mo.None[[]byte]()
 	}
-	block := b.blocks[0]
-	b.blocks = b.blocks[1:]
+	block := b.blocks.PopFront()
 	return mo.Some(block)
 }
 
@@ -380,7 +380,7 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 
 	// write the metadata offset at the end of the file.
 	buf = binary.BigEndian.AppendUint32(buf, uint32(metaOffset))
-	b.blocks = append(b.blocks, buf)
+	b.blocks.PushBack(buf)
 
 	return &EncodedSSTable{
 		sstInfo:          info,
@@ -545,14 +545,14 @@ func (iter *SSTIterator) spawnFetches() {
 		blocksCh := make(chan mo.Option[[]Block], 1)
 		iter.fetchTasks <- blocksCh
 
-		go func(table SSTableHandle, store TableStore, blocksStart uint64, blocksEnd uint64) {
-			blocks, err := store.readBlocks(&table, Range{blocksStart, blocksEnd})
+		go func(table *SSTableHandle, store *TableStore, blocksStart uint64, blocksEnd uint64) {
+			blocks, err := store.readBlocks(table, Range{blocksStart, blocksEnd})
 			if err != nil {
 				blocksCh <- mo.None[[]Block]()
 			} else {
 				blocksCh <- mo.Some(blocks)
 			}
-		}(*iter.table, *iter.tableStore, blocksStart, blocksEnd)
+		}(iter.table, iter.tableStore, blocksStart, blocksEnd)
 
 		iter.nextBlockIdxToFetch = blocksEnd
 	}
