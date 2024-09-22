@@ -5,11 +5,6 @@ import (
 	"testing"
 )
 
-type kv struct {
-	key   []byte
-	value []byte
-}
-
 func TestMemtableIter(t *testing.T) {
 	kvPairs := []kv{
 		{[]byte("abc111"), []byte("value1")},

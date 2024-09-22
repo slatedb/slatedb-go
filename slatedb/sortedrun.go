@@ -42,16 +42,128 @@ func (s *SortedRun) sstWithKey(key []byte) mo.Option[SSTableHandle] {
 // ------------------------------------------------
 
 type SortedRunIterator struct {
-	currentIter       mo.Option[SSTIterator]
+	currentKVIter     mo.Option[*SSTIterator]
+	sstListIter       *SSTListIterator
 	tableStore        *TableStore
 	numBlocksToFetch  uint64
 	numBlocksToBuffer uint64
 }
 
-func newSortedRunIterator(run SortedRun, store *TableStore, maxFetchTasks uint64, numBlocksToFetch uint64) *SortedRunIterator {
-	return nil
+func newSortedRunIterator(
+	sortedRun SortedRun,
+	tableStore *TableStore,
+	maxFetchTasks uint64,
+	numBlocksToFetch uint64,
+) *SortedRunIterator {
+	return newSortedRunIter(sortedRun.sstList, tableStore, maxFetchTasks, numBlocksToFetch)
 }
 
-func newSortedRunIteratorFromKey(run SortedRun, store *TableStore) {
+func newSortedRunIteratorFromKey(
+	key []byte,
+	sortedRun SortedRun,
+	tableStore *TableStore,
+	maxFetchTasks uint64,
+	numBlocksToFetch uint64,
+) *SortedRunIterator {
+	sstList := sortedRun.sstList
+	idx, ok := sortedRun.indexOfSSTWithKey(key).Get()
+	if ok {
+		sstList = sortedRun.sstList[idx:]
+	}
 
+	return newSortedRunIter(sstList, tableStore, maxFetchTasks, numBlocksToFetch)
+}
+
+func newSortedRunIter(
+	sstList []SSTableHandle,
+	tableStore *TableStore,
+	maxFetchTasks uint64,
+	numBlocksToFetch uint64,
+) *SortedRunIterator {
+
+	sstListIter := newSSTListIterator(sstList)
+	currentKVIter := mo.None[*SSTIterator]()
+	sst, ok := sstListIter.Next()
+	if ok {
+		iter := newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+		currentKVIter = mo.Some(iter)
+	}
+
+	return &SortedRunIterator{
+		currentKVIter:     currentKVIter,
+		sstListIter:       sstListIter,
+		tableStore:        tableStore,
+		numBlocksToFetch:  maxFetchTasks,
+		numBlocksToBuffer: numBlocksToFetch,
+	}
+}
+
+func (iter *SortedRunIterator) Next() (mo.Option[KeyValue], error) {
+	for {
+		kvDel, err := iter.NextEntry()
+		if err != nil {
+			return mo.None[KeyValue](), err
+		}
+		keyVal, ok := kvDel.Get()
+		if ok {
+			if keyVal.valueDel.isTombstone {
+				continue
+			}
+
+			return mo.Some[KeyValue](KeyValue{
+				key:   keyVal.key,
+				value: keyVal.valueDel.value,
+			}), nil
+		} else {
+			return mo.None[KeyValue](), nil
+		}
+	}
+}
+
+func (iter *SortedRunIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
+	for {
+		if iter.currentKVIter.IsAbsent() {
+			return mo.None[KeyValueDeletable](), nil
+		}
+
+		kvIter, _ := iter.currentKVIter.Get()
+		next, err := kvIter.NextEntry()
+		if err != nil {
+			return mo.None[KeyValueDeletable](), err
+		}
+
+		if next.IsPresent() {
+			kv, _ := next.Get()
+			return mo.Some(kv), nil
+		}
+
+		sst, ok := iter.sstListIter.Next()
+		if !ok {
+			return mo.None[KeyValueDeletable](), nil
+		}
+		newKVIter := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
+		iter.currentKVIter = mo.Some(newKVIter)
+	}
+}
+
+// ------------------------------------------------
+// SSTListIterator
+// ------------------------------------------------
+
+type SSTListIterator struct {
+	sstList []SSTableHandle
+	current int
+}
+
+func newSSTListIterator(sstList []SSTableHandle) *SSTListIterator {
+	return &SSTListIterator{sstList, 0}
+}
+
+func (iter *SSTListIterator) Next() (SSTableHandle, bool) {
+	if iter.current >= len(iter.sstList) {
+		return SSTableHandle{}, false
+	}
+	sst := iter.sstList[iter.current]
+	iter.current++
+	return sst, true
 }
