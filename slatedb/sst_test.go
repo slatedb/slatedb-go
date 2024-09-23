@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,22 @@ func nextBlockToIter(builder *EncodedSSTableBuilder) *BlockIterator {
 	assertTrue(ok, "Block should not be empty")
 	block := decodeBytesToBlock(blockBytes[:len(blockBytes)-SizeOfUint32InBytes])
 	return newBlockIteratorFromFirstKey(block)
+}
+
+func buildSSTWithNBlocks(
+	n uint64,
+	tableStore *TableStore,
+	keyGen OrderedBytesGenerator,
+	valGen OrderedBytesGenerator,
+) (*SSTableHandle, int) {
+	writer := tableStore.tableWriter(newSSTableIDWal(0))
+	nKeys := 0
+	for writer.blocksWritten < n {
+		writer.add(keyGen.next(), mo.Some(valGen.next()))
+		nKeys += 1
+	}
+	sst, _ := writer.close()
+	return sst, nKeys
 }
 
 func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
@@ -65,7 +82,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 }
 
 func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
-	kvList := []kv{
+	kvList := []KeyValue{
 		{[]byte("aaaaaaaa"), []byte("11111111")},
 		{[]byte("bbbbbbbb"), []byte("22222222")},
 		{[]byte("cccccccc"), []byte("33333333")},
@@ -326,4 +343,115 @@ func TestManyBlockSSTIter(t *testing.T) {
 	assert.False(t, next.IsPresent())
 }
 
-// TODO: add more tests
+func TestIterFromKey(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := newSSTableFormat(128, 1, CompressionNone)
+	tableStore := newTableStore(bucket, format, "")
+
+	firstKey := []byte("aaaaaaaaaaaaaaaa")
+	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
+	testCaseKeyGen := keyGen.clone()
+
+	firstVal := []byte("1111111111111111")
+	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	testCaseValGen := valGen.clone()
+
+	sst, nKeys := buildSSTWithNBlocks(3, tableStore, keyGen, valGen)
+
+	for i := 0; i < nKeys; i++ {
+		expectedKeyGen := testCaseKeyGen.clone()
+		expectedValGen := testCaseValGen.clone()
+		fromKey := testCaseKeyGen.next()
+		testCaseValGen.next()
+		kvIter := newSSTIteratorFromKey(sst, tableStore, fromKey, 1, 1)
+
+		for j := 0; j < nKeys-i; j++ {
+			assertIterNext(t, kvIter, expectedKeyGen.next(), expectedValGen.next())
+		}
+		next, err := kvIter.Next()
+		assert.NoError(t, err)
+		assert.False(t, next.IsPresent())
+	}
+}
+
+func TestIterFromKeySmallerThanFirst(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := newSSTableFormat(128, 1, CompressionNone)
+	tableStore := newTableStore(bucket, format, "")
+
+	firstKey := []byte("bbbbbbbbbbbbbbbb")
+	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('y'))
+	expectedKeyGen := keyGen.clone()
+
+	firstVal := []byte("2222222222222222")
+	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	expectedValGen := valGen.clone()
+
+	sst, nKeys := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	kvIter := newSSTIteratorFromKey(sst, tableStore, []byte("aaaaaaaaaaaaaaaa"), 1, 1)
+
+	for i := 0; i < nKeys; i++ {
+		assertIterNext(t, kvIter, expectedKeyGen.next(), expectedValGen.next())
+	}
+	next, err := kvIter.Next()
+	assert.NoError(t, err)
+	assert.False(t, next.IsPresent())
+}
+
+func TestIterFromKeyLargerThanLast(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := newSSTableFormat(128, 1, CompressionNone)
+	tableStore := newTableStore(bucket, format, "")
+
+	firstKey := []byte("bbbbbbbbbbbbbbbb")
+	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('y'))
+
+	firstVal := []byte("2222222222222222")
+	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+
+	sst, _ := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	kvIter := newSSTIteratorFromKey(sst, tableStore, []byte("zzzzzzzzzzzzzzzz"), 1, 1)
+
+	next, err := kvIter.Next()
+	assert.NoError(t, err)
+	assert.False(t, next.IsPresent())
+}
+
+func TestShouldGenerateOrderedBytes(t *testing.T) {
+	suffix := make([]byte, SizeOfUint32InBytes)
+	binary.BigEndian.PutUint32(suffix, 3735928559)
+	start := []byte{0, 0, 0}
+	gen := newOrderedBytesGenerator(suffix, start, 0, 2)
+	expected := [][]byte{
+		{0, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+	}
+
+	for _, b := range expected {
+		assert.Equal(t, b, gen.next())
+	}
+}

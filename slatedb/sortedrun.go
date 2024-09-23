@@ -21,6 +21,9 @@ func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 		if bytes.Compare(firstKey, key) > 0 {
 			index = i
 			break
+		} else if i == len(s.sstList)-1 {
+			index = i + 1
+			break
 		}
 	}
 	if index > 0 {
@@ -55,7 +58,7 @@ func newSortedRunIterator(
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
 ) *SortedRunIterator {
-	return newSortedRunIter(sortedRun.sstList, tableStore, maxFetchTasks, numBlocksToFetch)
+	return newSortedRunIter(sortedRun.sstList, tableStore, maxFetchTasks, numBlocksToFetch, mo.None[[]byte]())
 }
 
 func newSortedRunIteratorFromKey(
@@ -71,7 +74,7 @@ func newSortedRunIteratorFromKey(
 		sstList = sortedRun.sstList[idx:]
 	}
 
-	return newSortedRunIter(sstList, tableStore, maxFetchTasks, numBlocksToFetch)
+	return newSortedRunIter(sstList, tableStore, maxFetchTasks, numBlocksToFetch, mo.Some(key))
 }
 
 func newSortedRunIter(
@@ -79,13 +82,21 @@ func newSortedRunIter(
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
+	fromKey mo.Option[[]byte],
 ) *SortedRunIterator {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*SSTIterator]()
 	sst, ok := sstListIter.Next()
 	if ok {
-		iter := newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+		var iter *SSTIterator
+		if fromKey.IsPresent() {
+			key, _ := fromKey.Get()
+			iter = newSSTIteratorFromKey(&sst, tableStore, key, maxFetchTasks, numBlocksToFetch)
+		} else {
+			iter = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+		}
+
 		currentKVIter = mo.Some(iter)
 	}
 

@@ -158,9 +158,9 @@ type EncodedSSTableWriter struct {
 	builder    *EncodedSSTableBuilder
 	tableStore *TableStore
 
-	// TODO: we are using a slice of byte as buffer.
-	// add a capacity for buffer and when buffer reaches the capacity
-	// it should be written to object storage
+	// TODO: we are using an unbounded slice of byte as buffer.
+	//  add a capacity for buffer and when buffer reaches the capacity
+	//  it should be written to object storage
 	buffer        []byte
 	blocksWritten uint64
 }

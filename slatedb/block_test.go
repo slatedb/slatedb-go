@@ -39,7 +39,7 @@ func TestBlockWithTombstone(t *testing.T) {
 }
 
 func TestBlockIterator(t *testing.T) {
-	kvPairs := []kv{
+	kvPairs := []KeyValue{
 		{[]byte("donkey"), []byte("kong")},
 		{[]byte("kratos"), []byte("atreus")},
 		{[]byte("super"), []byte("mario")},
@@ -69,7 +69,7 @@ func TestBlockIterator(t *testing.T) {
 }
 
 func TestIterFromExistingKey(t *testing.T) {
-	kvPairs := []kv{
+	kvPairs := []KeyValue{
 		{[]byte("donkey"), []byte("kong")},
 		{[]byte("kratos"), []byte("atreus")},
 		{[]byte("super"), []byte("mario")},
@@ -100,7 +100,7 @@ func TestIterFromExistingKey(t *testing.T) {
 }
 
 func TestIterFromNonExistingKey(t *testing.T) {
-	kvPairs := []kv{
+	kvPairs := []KeyValue{
 		{[]byte("donkey"), []byte("kong")},
 		{[]byte("kratos"), []byte("atreus")},
 		{[]byte("super"), []byte("mario")},
@@ -131,7 +131,7 @@ func TestIterFromNonExistingKey(t *testing.T) {
 }
 
 func TestIterFromEnd(t *testing.T) {
-	kvPairs := []kv{
+	kvPairs := []KeyValue{
 		{[]byte("donkey"), []byte("kong")},
 		{[]byte("kratos"), []byte("atreus")},
 		{[]byte("super"), []byte("mario")},

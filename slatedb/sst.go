@@ -533,6 +533,7 @@ func (iter *SSTIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
 }
 
 func (iter *SSTIterator) spawnFetches() {
+
 	numBlocks := iter.table.info.borrow().BlockMetaLength()
 	for len(iter.fetchTasks) < int(iter.maxFetchTasks) && int(iter.nextBlockIdxToFetch) < numBlocks {
 		numBlocksToFetch := math.Min(
