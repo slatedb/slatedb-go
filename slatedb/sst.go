@@ -484,11 +484,11 @@ func newSSTIteratorFromKey(
 	return iter
 }
 
-func (iter *SSTIterator) Next() (mo.Option[common.KeyValue], error) {
+func (iter *SSTIterator) Next() (mo.Option[common.KV], error) {
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
@@ -496,35 +496,35 @@ func (iter *SSTIterator) Next() (mo.Option[common.KeyValue], error) {
 				continue
 			}
 
-			return mo.Some[common.KeyValue](common.KeyValue{
+			return mo.Some(common.KV{
 				Key:   keyVal.Key,
 				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[common.KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *SSTIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
+func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	for {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
-				return mo.None[common.KeyValueDeletable](), err
+				return mo.None[common.KVDeletable](), err
 			}
 
 			if nextBlockIter.IsPresent() {
 				iter.currentBlockIter = nextBlockIter
 			} else {
-				return mo.None[common.KeyValueDeletable](), nil
+				return mo.None[common.KVDeletable](), nil
 			}
 		}
 
 		currentBlockIter, _ := iter.currentBlockIter.Get()
 		kv, err := currentBlockIter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValueDeletable](), err
+			return mo.None[common.KVDeletable](), err
 		}
 
 		if kv.IsPresent() {

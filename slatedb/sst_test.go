@@ -83,7 +83,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 }
 
 func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
-	kvList := []common.KeyValue{
+	kvList := []common.KV{
 		{Key: []byte("aaaaaaaa"), Value: []byte("11111111")},
 		{Key: []byte("bbbbbbbb"), Value: []byte("22222222")},
 		{Key: []byte("cccccccc"), Value: []byte("33333333")},

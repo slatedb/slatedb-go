@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func AssertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
+func AssertIterNextEntry(t *testing.T, iter KVIterator, key []byte, value []byte) {
 	nextEntry, err := iter.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsPresent())
@@ -22,7 +22,7 @@ func AssertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value 
 	}
 }
 
-func AssertIterNext(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
+func AssertIterNext(t *testing.T, iter KVIterator, key []byte, value []byte) {
 	next, err := iter.Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())

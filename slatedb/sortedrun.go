@@ -110,11 +110,11 @@ func newSortedRunIter(
 	}
 }
 
-func (iter *SortedRunIterator) Next() (mo.Option[common.KeyValue], error) {
+func (iter *SortedRunIterator) Next() (mo.Option[common.KV], error) {
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
@@ -122,26 +122,26 @@ func (iter *SortedRunIterator) Next() (mo.Option[common.KeyValue], error) {
 				continue
 			}
 
-			return mo.Some[common.KeyValue](common.KeyValue{
+			return mo.Some(common.KV{
 				Key:   keyVal.Key,
 				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[common.KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
+func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
-			return mo.None[common.KeyValueDeletable](), nil
+			return mo.None[common.KVDeletable](), nil
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
 		next, err := kvIter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValueDeletable](), err
+			return mo.None[common.KVDeletable](), err
 		}
 
 		if next.IsPresent() {
@@ -151,7 +151,7 @@ func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KeyValueDeletable],
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
-			return mo.None[common.KeyValueDeletable](), nil
+			return mo.None[common.KVDeletable](), nil
 		}
 		newKVIter := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		iter.currentKVIter = mo.Some(newKVIter)

@@ -168,11 +168,11 @@ func newBlockIteratorFromFirstKey(block *Block) *BlockIterator {
 	}
 }
 
-func (iter *BlockIterator) Next() (mo.Option[common.KeyValue], error) {
+func (iter *BlockIterator) Next() (mo.Option[common.KV], error) {
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
@@ -180,20 +180,20 @@ func (iter *BlockIterator) Next() (mo.Option[common.KeyValue], error) {
 				continue
 			}
 
-			return mo.Some[common.KeyValue](common.KeyValue{
+			return mo.Some(common.KV{
 				Key:   keyVal.Key,
 				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[common.KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *BlockIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
+func (iter *BlockIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	keyValue, ok := iter.loadAtCurrentOffset().Get()
 	if !ok {
-		return mo.None[common.KeyValueDeletable](), nil
+		return mo.None[common.KVDeletable](), nil
 	}
 
 	iter.advance()
@@ -204,9 +204,9 @@ func (iter *BlockIterator) advance() {
 	iter.offsetIndex += 1
 }
 
-func (iter *BlockIterator) loadAtCurrentOffset() mo.Option[common.KeyValueDeletable] {
+func (iter *BlockIterator) loadAtCurrentOffset() mo.Option[common.KVDeletable] {
 	if iter.offsetIndex >= uint64(len(iter.block.offsets)) {
-		return mo.None[common.KeyValueDeletable]()
+		return mo.None[common.KVDeletable]()
 	}
 
 	data := iter.block.data
@@ -230,5 +230,5 @@ func (iter *BlockIterator) loadAtCurrentOffset() mo.Option[common.KeyValueDeleta
 		valueDel = common.ValueDeletable{Value: nil, IsTombstone: true}
 	}
 
-	return mo.Some(common.KeyValueDeletable{Key: key, ValueDel: valueDel})
+	return mo.Some(common.KVDeletable{Key: key, ValueDel: valueDel})
 }

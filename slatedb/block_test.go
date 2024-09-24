@@ -40,7 +40,7 @@ func TestBlockWithTombstone(t *testing.T) {
 }
 
 func TestBlockIterator(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -66,11 +66,11 @@ func TestBlockIterator(t *testing.T) {
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromExistingKey(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -97,11 +97,11 @@ func TestIterFromExistingKey(t *testing.T) {
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromNonExistingKey(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -128,11 +128,11 @@ func TestIterFromNonExistingKey(t *testing.T) {
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromEnd(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -150,5 +150,5 @@ func TestIterFromEnd(t *testing.T) {
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }

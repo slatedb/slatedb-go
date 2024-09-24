@@ -45,7 +45,7 @@ func (k *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
 	if elem == nil {
 		return mo.None[common.ValueDeletable]()
 	}
-	return mo.Some[common.ValueDeletable](elem.Value.(common.ValueDeletable))
+	return mo.Some(elem.Value.(common.ValueDeletable))
 }
 
 func (k *KVTable) put(key []byte, value []byte) int64 {
@@ -195,11 +195,11 @@ func newMemTableIterator(element *skiplist.Element) *MemTableIterator {
 	}
 }
 
-func (iter *MemTableIterator) Next() (mo.Option[common.KeyValue], error) {
+func (iter *MemTableIterator) Next() (mo.Option[common.KV], error) {
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[common.KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
@@ -207,25 +207,25 @@ func (iter *MemTableIterator) Next() (mo.Option[common.KeyValue], error) {
 				continue
 			}
 
-			return mo.Some[common.KeyValue](common.KeyValue{
+			return mo.Some(common.KV{
 				Key:   keyVal.Key,
 				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[common.KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *MemTableIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
+func (iter *MemTableIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	elem := iter.element
 	if elem == nil {
-		return mo.None[common.KeyValueDeletable](), nil
+		return mo.None[common.KVDeletable](), nil
 	}
 
 	iter.element = iter.element.Next()
 
-	return mo.Some(common.KeyValueDeletable{
+	return mo.Some(common.KVDeletable{
 		Key:      elem.Key().([]byte),
 		ValueDel: elem.Value.(common.ValueDeletable),
 	}), nil

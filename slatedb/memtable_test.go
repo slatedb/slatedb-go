@@ -7,7 +7,7 @@ import (
 )
 
 func TestMemtableIter(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -38,7 +38,7 @@ func TestMemtableIter(t *testing.T) {
 }
 
 func TestMemtableRangeFromExistingKey(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -69,7 +69,7 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 }
 
 func TestMemtableRangeFromNonExistingKey(t *testing.T) {
-	kvPairs := []common.KeyValue{
+	kvPairs := []common.KV{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},

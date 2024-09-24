@@ -5,14 +5,14 @@ import (
 	"unsafe"
 )
 
-// KeyValue Represents a key-value pair known not to be a tombstone.
-type KeyValue struct {
+// KV Represents a key-value pair known not to be a tombstone.
+type KV struct {
 	Key   []byte
 	Value []byte
 }
 
-// KeyValueDeletable Represents a key-value pair that may be a tombstone.
-type KeyValueDeletable struct {
+// KVDeletable Represents a key-value pair that may be a tombstone.
+type KVDeletable struct {
 	Key      []byte
 	ValueDel ValueDeletable
 }
@@ -31,5 +31,5 @@ func (v ValueDeletable) IntoOption() mo.Option[[]byte] {
 	if v.IsTombstone {
 		return mo.None[[]byte]()
 	}
-	return mo.Some[[]byte](v.Value)
+	return mo.Some(v.Value)
 }
