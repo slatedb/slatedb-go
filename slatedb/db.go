@@ -1,8 +1,13 @@
 package slatedb
 
-import "github.com/thanos-io/objstore"
+import (
+	"github.com/thanos-io/objstore"
+)
 
 type DB struct {
+	state      DBState
+	options    DBOptions
+	tableStore TableStore
 }
 
 func Open(options DBOptions, path string, bucket objstore.Bucket) (DB, error) {

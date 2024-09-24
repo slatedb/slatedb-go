@@ -1,6 +1,8 @@
-package slatedb
+package common
 
-import "github.com/samber/mo"
+import (
+	"github.com/samber/mo"
+)
 
 type KeyValueIterator interface {
 	// Next Returns the next non-deleted key-value pair in the iterator.

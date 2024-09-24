@@ -1,27 +1,28 @@
 package slatedb
 
 import (
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestMemtableIter(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("abc111"), []byte("value1")},
-		{[]byte("abc222"), []byte("value2")},
-		{[]byte("abc333"), []byte("value3")},
-		{[]byte("abc444"), []byte("value4")},
-		{[]byte("abc555"), []byte("value5")},
+	kvPairs := []common.KeyValue{
+		{Key: []byte("abc111"), Value: []byte("value1")},
+		{Key: []byte("abc222"), Value: []byte("value2")},
+		{Key: []byte("abc333"), Value: []byte("value3")},
+		{Key: []byte("abc444"), Value: []byte("value4")},
+		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
 	table := newWritableKVTable()
 
 	// Put keys in random order
-	table.put(kvPairs[2].key, kvPairs[2].value)
-	table.put(kvPairs[0].key, kvPairs[0].value)
-	table.put(kvPairs[4].key, kvPairs[4].value)
-	table.put(kvPairs[3].key, kvPairs[3].value)
-	table.put(kvPairs[1].key, kvPairs[1].value)
+	table.put(kvPairs[2].Key, kvPairs[2].Value)
+	table.put(kvPairs[0].Key, kvPairs[0].Value)
+	table.put(kvPairs[4].Key, kvPairs[4].Value)
+	table.put(kvPairs[3].Key, kvPairs[3].Value)
+	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
 	iter := table.table.iter()
 
@@ -31,28 +32,28 @@ func TestMemtableIter(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.Equal(t, kvPairs[i].key, kv.key)
-		assert.Equal(t, kvPairs[i].value, kv.value)
+		assert.Equal(t, kvPairs[i].Key, kv.Key)
+		assert.Equal(t, kvPairs[i].Value, kv.Value)
 	}
 }
 
 func TestMemtableRangeFromExistingKey(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("abc111"), []byte("value1")},
-		{[]byte("abc222"), []byte("value2")},
-		{[]byte("abc333"), []byte("value3")},
-		{[]byte("abc444"), []byte("value4")},
-		{[]byte("abc555"), []byte("value5")},
+	kvPairs := []common.KeyValue{
+		{Key: []byte("abc111"), Value: []byte("value1")},
+		{Key: []byte("abc222"), Value: []byte("value2")},
+		{Key: []byte("abc333"), Value: []byte("value3")},
+		{Key: []byte("abc444"), Value: []byte("value4")},
+		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
 	table := newWritableKVTable()
 
 	// Put keys in random order
-	table.put(kvPairs[2].key, kvPairs[2].value)
-	table.put(kvPairs[0].key, kvPairs[0].value)
-	table.put(kvPairs[4].key, kvPairs[4].value)
-	table.put(kvPairs[3].key, kvPairs[3].value)
-	table.put(kvPairs[1].key, kvPairs[1].value)
+	table.put(kvPairs[2].Key, kvPairs[2].Value)
+	table.put(kvPairs[0].Key, kvPairs[0].Value)
+	table.put(kvPairs[4].Key, kvPairs[4].Value)
+	table.put(kvPairs[3].Key, kvPairs[3].Value)
+	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
 	iter := table.table.rangeFrom([]byte("abc333"))
 
@@ -62,28 +63,28 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.Equal(t, kvPairs[i].key, kv.key)
-		assert.Equal(t, kvPairs[i].value, kv.value)
+		assert.Equal(t, kvPairs[i].Key, kv.Key)
+		assert.Equal(t, kvPairs[i].Value, kv.Value)
 	}
 }
 
 func TestMemtableRangeFromNonExistingKey(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("abc111"), []byte("value1")},
-		{[]byte("abc222"), []byte("value2")},
-		{[]byte("abc333"), []byte("value3")},
-		{[]byte("abc444"), []byte("value4")},
-		{[]byte("abc555"), []byte("value5")},
+	kvPairs := []common.KeyValue{
+		{Key: []byte("abc111"), Value: []byte("value1")},
+		{Key: []byte("abc222"), Value: []byte("value2")},
+		{Key: []byte("abc333"), Value: []byte("value3")},
+		{Key: []byte("abc444"), Value: []byte("value4")},
+		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
 	table := newWritableKVTable()
 
 	// Put keys in random order
-	table.put(kvPairs[2].key, kvPairs[2].value)
-	table.put(kvPairs[0].key, kvPairs[0].value)
-	table.put(kvPairs[4].key, kvPairs[4].value)
-	table.put(kvPairs[3].key, kvPairs[3].value)
-	table.put(kvPairs[1].key, kvPairs[1].value)
+	table.put(kvPairs[2].Key, kvPairs[2].Value)
+	table.put(kvPairs[0].Key, kvPairs[0].Value)
+	table.put(kvPairs[4].Key, kvPairs[4].Value)
+	table.put(kvPairs[3].Key, kvPairs[3].Value)
+	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
 	iter := table.table.rangeFrom([]byte("abc345"))
 
@@ -93,8 +94,8 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.Equal(t, kvPairs[i].key, kv.key)
-		assert.Equal(t, kvPairs[i].value, kv.value)
+		assert.Equal(t, kvPairs[i].Key, kv.Key)
+		assert.Equal(t, kvPairs[i].Value, kv.Value)
 	}
 }
 

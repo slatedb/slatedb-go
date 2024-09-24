@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gammazero/deque"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"sync"
@@ -114,7 +115,7 @@ func (s *DBState) moveImmMemtableToL0(immMemtable ImmutableMemtable, sstHandle S
 	defer s.Unlock()
 
 	popped := s.state.immMemtable.PopBack()
-	assertTrue(popped.lastWalID == immMemtable.lastWalID, "")
+	common.AssertTrue(popped.lastWalID == immMemtable.lastWalID, "")
 
 	s.state.core.l0.PushFront(sstHandle)
 	s.state.core.lastCompactedWalSSTID = immMemtable.lastWalID

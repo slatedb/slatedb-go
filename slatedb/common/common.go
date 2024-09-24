@@ -1,4 +1,4 @@
-package slatedb
+package common
 
 const (
 	// uint16 and uint32 sizes are constant as per https://go.dev/ref/spec#Size_and_alignment_guarantees
@@ -9,13 +9,13 @@ const (
 
 type Range struct {
 	// The lower bound of the range (inclusive).
-	start uint64
+	Start uint64
 
 	// The upper bound of the range (exclusive).
-	end uint64
+	End uint64
 }
 
-func assertTrue(condition bool, errMsg string) {
+func AssertTrue(condition bool, errMsg string) {
 	if !condition {
 		panic(errMsg)
 	}

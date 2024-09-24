@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
@@ -23,10 +24,10 @@ func TestSSTWriter(t *testing.T) {
 	assert.NoError(t, err)
 
 	iter := newSSTIterator(sst, tableStore, 1, 1)
-	assertIterNextEntry(t, iter, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
-	assertIterNextEntry(t, iter, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
-	assertIterNextEntry(t, iter, []byte("cccccccccccccccc"), nil)
-	assertIterNextEntry(t, iter, []byte("dddddddddddddddd"), []byte("4444444444444444"))
+	common.AssertIterNextEntry(t, iter, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
+	common.AssertIterNextEntry(t, iter, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
+	common.AssertIterNextEntry(t, iter, []byte("cccccccccccccccc"), nil)
+	common.AssertIterNextEntry(t, iter, []byte("dddddddddddddddd"), []byte("4444444444444444"))
 	nextEntry, err := iter.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())

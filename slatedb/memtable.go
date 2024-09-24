@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"github.com/huandu/skiplist"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 	"sync"
 	"sync/atomic"
@@ -36,27 +37,27 @@ func newKVTable() *KVTable {
 	}
 }
 
-func (k *KVTable) get(key []byte) mo.Option[ValueDeletable] {
+func (k *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
 	elem := k.skl.Get(key)
 	if elem == nil {
-		return mo.None[ValueDeletable]()
+		return mo.None[common.ValueDeletable]()
 	}
-	return mo.Some[ValueDeletable](elem.Value.(ValueDeletable))
+	return mo.Some[common.ValueDeletable](elem.Value.(common.ValueDeletable))
 }
 
 func (k *KVTable) put(key []byte, value []byte) int64 {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
-	valueDel := ValueDeletable{
-		value:       value,
-		isTombstone: false,
+	valueDel := common.ValueDeletable{
+		Value:       value,
+		IsTombstone: false,
 	}
 	k.skl.Set(key, valueDel)
-	return int64(len(key)) + valueDel.size()
+	return int64(len(key)) + valueDel.Size()
 }
 
 func (k *KVTable) delete(key []byte) int64 {
@@ -68,12 +69,12 @@ func (k *KVTable) delete(key []byte) int64 {
 		return 0
 	}
 
-	valueDel := ValueDeletable{
-		value:       nil,
-		isTombstone: true,
+	valueDel := common.ValueDeletable{
+		Value:       nil,
+		IsTombstone: true,
 	}
 	k.skl.Set(key, valueDel)
-	return int64(len(key)) + valueDel.size()
+	return int64(len(key)) + valueDel.Size()
 }
 
 func (k *KVTable) isEmpty() bool {
@@ -133,7 +134,7 @@ func (w *WritableKVTable) delete(key []byte) {
 func (w *WritableKVTable) maybeSubtractOldValFromSize(key []byte) {
 	oldDeletable, ok := w.table.get(key).Get()
 	if ok {
-		oldSize := int64(len(key)) + oldDeletable.size()
+		oldSize := int64(len(key)) + oldDeletable.Size()
 		w.size.Add(-oldSize)
 	}
 }
@@ -194,38 +195,38 @@ func newMemTableIterator(element *skiplist.Element) *MemTableIterator {
 	}
 }
 
-func (m *MemTableIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *MemTableIterator) Next() (mo.Option[common.KeyValue], error) {
 	for {
-		entry, err := m.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KeyValue](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some[common.KeyValue](common.KeyValue{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KeyValue](), nil
 		}
 	}
 }
 
-func (m *MemTableIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
-	elem := m.element
+func (iter *MemTableIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
+	elem := iter.element
 	if elem == nil {
-		return mo.None[KeyValueDeletable](), nil
+		return mo.None[common.KeyValueDeletable](), nil
 	}
 
-	m.element = m.element.Next()
+	iter.element = iter.element.Next()
 
-	return mo.Some(KeyValueDeletable{
-		key:      elem.Key().([]byte),
-		valueDel: elem.Value.(ValueDeletable),
+	return mo.Some(common.KeyValueDeletable{
+		Key:      elem.Key().([]byte),
+		ValueDel: elem.Value.(common.ValueDeletable),
 	}), nil
 }

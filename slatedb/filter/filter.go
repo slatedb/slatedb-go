@@ -1,4 +1,4 @@
-package slatedb
+package filter
 
 import (
 	"encoding/binary"
@@ -14,7 +14,7 @@ type BloomFilter struct {
 	buffer    []byte
 }
 
-func decodeBytesToBloomFilter(buf []byte) *BloomFilter {
+func DecodeBytesToBloomFilter(buf []byte) *BloomFilter {
 	numProbes := binary.BigEndian.Uint16(buf)
 	return &BloomFilter{
 		numProbes: numProbes,
@@ -22,7 +22,7 @@ func decodeBytesToBloomFilter(buf []byte) *BloomFilter {
 	}
 }
 
-func (b *BloomFilter) encodeToBytes() []byte {
+func (b *BloomFilter) EncodeToBytes() []byte {
 	buf := make([]byte, 0)
 	buf = binary.BigEndian.AppendUint16(buf, b.numProbes)
 	buf = append(buf, b.buffer...)
@@ -52,14 +52,14 @@ type BloomFilterBuilder struct {
 	keyHashes  []uint64
 }
 
-func newBloomFilterBuilder(bitsPerKey uint32) *BloomFilterBuilder {
+func NewBloomFilterBuilder(bitsPerKey uint32) *BloomFilterBuilder {
 	return &BloomFilterBuilder{
 		bitsPerKey: bitsPerKey,
 		keyHashes:  make([]uint64, 0),
 	}
 }
 
-func (b *BloomFilterBuilder) addKey(key []byte) {
+func (b *BloomFilterBuilder) AddKey(key []byte) {
 	b.keyHashes = append(b.keyHashes, filterHash(key))
 }
 
@@ -69,7 +69,7 @@ func (b *BloomFilterBuilder) filterBytes(numKeys uint32, bitsPerKey uint32) uint
 	return uint64((filterBits + 7) / 8)
 }
 
-func (b *BloomFilterBuilder) build() *BloomFilter {
+func (b *BloomFilterBuilder) Build() *BloomFilter {
 	numProbes := optimalNumProbes(b.bitsPerKey)
 	filtrBytes := b.filterBytes(uint32(len(b.keyHashes)), b.bitsPerKey)
 	filterBits := uint32(filtrBytes * 8)

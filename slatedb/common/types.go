@@ -1,4 +1,4 @@
-package slatedb
+package common
 
 import (
 	"github.com/samber/mo"
@@ -7,29 +7,29 @@ import (
 
 // KeyValue Represents a key-value pair known not to be a tombstone.
 type KeyValue struct {
-	key   []byte
-	value []byte
+	Key   []byte
+	Value []byte
 }
 
 // KeyValueDeletable Represents a key-value pair that may be a tombstone.
 type KeyValueDeletable struct {
-	key      []byte
-	valueDel ValueDeletable
+	Key      []byte
+	ValueDel ValueDeletable
 }
 
 // ValueDeletable Represents a value that may be a tombstone.
 type ValueDeletable struct {
-	value       []byte
-	isTombstone bool
+	Value       []byte
+	IsTombstone bool
 }
 
-func (v ValueDeletable) size() int64 {
+func (v ValueDeletable) Size() int64 {
 	return int64(unsafe.Sizeof(v))
 }
 
-func (v ValueDeletable) intoOption() mo.Option[[]byte] {
-	if v.isTombstone {
+func (v ValueDeletable) IntoOption() mo.Option[[]byte] {
+	if v.IsTombstone {
 		return mo.None[[]byte]()
 	}
-	return mo.Some[[]byte](v.value)
+	return mo.Some[[]byte](v.Value)
 }

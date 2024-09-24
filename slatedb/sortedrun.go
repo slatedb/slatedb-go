@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 )
 
@@ -109,38 +110,38 @@ func newSortedRunIter(
 	}
 }
 
-func (iter *SortedRunIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *SortedRunIterator) Next() (mo.Option[common.KeyValue], error) {
 	for {
-		kvDel, err := iter.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KeyValue](), err
 		}
-		keyVal, ok := kvDel.Get()
+		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some[common.KeyValue](common.KeyValue{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KeyValue](), nil
 		}
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
+func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KeyValueDeletable], error) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
-			return mo.None[KeyValueDeletable](), nil
+			return mo.None[common.KeyValueDeletable](), nil
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
 		next, err := kvIter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValueDeletable](), err
+			return mo.None[common.KeyValueDeletable](), err
 		}
 
 		if next.IsPresent() {
@@ -150,7 +151,7 @@ func (iter *SortedRunIterator) NextEntry() (mo.Option[KeyValueDeletable], error)
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
-			return mo.None[KeyValueDeletable](), nil
+			return mo.None[common.KeyValueDeletable](), nil
 		}
 		newKVIter := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		iter.currentKVIter = mo.Some(newKVIter)

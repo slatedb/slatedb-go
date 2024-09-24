@@ -1,4 +1,4 @@
-package slatedb
+package common
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -6,30 +6,30 @@ import (
 	"testing"
 )
 
-func assertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
+func AssertIterNextEntry(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
 	nextEntry, err := iter.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsPresent())
 
 	entry, _ := nextEntry.Get()
-	assert.Equal(t, key, entry.key)
+	assert.Equal(t, key, entry.Key)
 	if value == nil {
-		assert.True(t, entry.valueDel.isTombstone)
-		assert.Equal(t, []byte(nil), entry.valueDel.value)
+		assert.True(t, entry.ValueDel.IsTombstone)
+		assert.Equal(t, []byte(nil), entry.ValueDel.Value)
 	} else {
-		assert.False(t, entry.valueDel.isTombstone)
-		assert.Equal(t, value, entry.valueDel.value)
+		assert.False(t, entry.ValueDel.IsTombstone)
+		assert.Equal(t, value, entry.ValueDel.Value)
 	}
 }
 
-func assertIterNext(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
+func AssertIterNext(t *testing.T, iter KeyValueIterator, key []byte, value []byte) {
 	next, err := iter.Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
 	kv, _ := next.Get()
-	assert.Equal(t, key, kv.key)
-	assert.Equal(t, value, kv.value)
+	assert.Equal(t, key, kv.Key)
+	assert.Equal(t, value, kv.Value)
 }
 
 type OrderedBytesGenerator struct {
@@ -43,22 +43,22 @@ func newOrderedBytesGeneratorWithSuffix(suffix, data []byte) OrderedBytesGenerat
 	return OrderedBytesGenerator{suffix, data, 0, math.MaxUint8}
 }
 
-func newOrderedBytesGeneratorWithByteRange(data []byte, min byte, max byte) OrderedBytesGenerator {
-	return OrderedBytesGenerator{[]byte{}, data, 0, math.MaxUint8}
+func NewOrderedBytesGeneratorWithByteRange(data []byte, min byte, max byte) OrderedBytesGenerator {
+	return OrderedBytesGenerator{[]byte{}, data, min, max}
 }
 
-func newOrderedBytesGenerator(suffix, data []byte, min, max byte) OrderedBytesGenerator {
+func NewOrderedBytesGenerator(suffix, data []byte, min, max byte) OrderedBytesGenerator {
 	return OrderedBytesGenerator{suffix, data, min, max}
 }
 
-func (g OrderedBytesGenerator) clone() OrderedBytesGenerator {
-	new := g
-	new.suffix = append([]byte{}, g.suffix...)
-	new.data = append([]byte{}, g.data...)
-	return new
+func (g OrderedBytesGenerator) Clone() OrderedBytesGenerator {
+	newGen := g
+	newGen.suffix = append([]byte{}, g.suffix...)
+	newGen.data = append([]byte{}, g.data...)
+	return newGen
 }
 
-func (g OrderedBytesGenerator) next() []byte {
+func (g OrderedBytesGenerator) Next() []byte {
 	result := make([]byte, 0, len(g.data)+SizeOfUint32InBytes)
 	result = append(result, g.data...)
 	result = append(result, g.suffix...)
