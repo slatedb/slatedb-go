@@ -1,7 +1,7 @@
 package slatedb
 
 type Manifest struct {
-	core           CoreDBState
+	core           *CoreDBState
 	writerEpoch    uint64
 	compactorEpoch uint64
 }

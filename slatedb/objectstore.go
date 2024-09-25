@@ -31,7 +31,7 @@ func (d *DelegatingObjectStore) getPath(objPath string) string {
 	return path.Join(d.rootPath, objPath)
 }
 
-func (d *DelegatingObjectStore) stripRoot(objPath string) string {
+func basePath(objPath string) string {
 	return path.Base(objPath)
 }
 

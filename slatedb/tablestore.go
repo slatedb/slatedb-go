@@ -146,8 +146,9 @@ func (ts *TableStore) sstPath(id SSTableID) string {
 func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, error) {
 	common.AssertTrue(path.Ext(filepath) == expectedExt, "invalid wal file")
 
-	name := path.Base(filepath)
-	id, err := strconv.ParseUint(name, 10, 64)
+	base := path.Base(filepath)
+	idStr := strings.Replace(base, expectedExt, "", 1)
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		return 0, common.ErrInvalidDBState
 	}

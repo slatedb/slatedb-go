@@ -29,7 +29,7 @@ type COWDBState struct {
 
 type CoreDBState struct {
 	l0LastCompacted       mo.Option[ulid.ULID]
-	l0                    *deque.Deque[SSTableHandle]
+	l0                    []SSTableHandle
 	compacted             []SortedRun
 	nextWalSstID          uint64
 	lastCompactedWalSSTID uint64
@@ -44,7 +44,7 @@ type DBStateSnapshot struct {
 func newCoreDBState() *CoreDBState {
 	return &CoreDBState{
 		l0LastCompacted:       mo.None[ulid.ULID](),
-		l0:                    deque.New[SSTableHandle](0),
+		l0:                    make([]SSTableHandle, 0),
 		compacted:             []SortedRun{},
 		nextWalSstID:          1,
 		lastCompactedWalSSTID: 0,
@@ -117,7 +117,7 @@ func (s *DBState) moveImmMemtableToL0(immMemtable ImmutableMemtable, sstHandle S
 	popped := s.state.immMemtable.PopBack()
 	common.AssertTrue(popped.lastWalID == immMemtable.lastWalID, "")
 
-	s.state.core.l0.PushFront(sstHandle)
+	s.state.core.l0 = append([]SSTableHandle{sstHandle}, s.state.core.l0...)
 	s.state.core.lastCompactedWalSSTID = immMemtable.lastWalID
 }
 
@@ -134,16 +134,16 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 
 	// copy over L0 up to l0_last_compacted
 	l0LastCompacted := compactorState.l0LastCompacted
-	newL0 := deque.New[SSTableHandle](0)
-	for i := 0; i < s.state.core.l0.Len(); i++ {
-		sst := s.state.core.l0.At(i)
+	newL0 := make([]SSTableHandle, 0)
+	for i := 0; i < len(s.state.core.l0); i++ {
+		sst := s.state.core.l0[i]
 		if l0LastCompacted.IsPresent() {
 			lastCompacted, _ := l0LastCompacted.Get()
 			if sst.id.typ == Compacted && sst.id.value == lastCompacted.String() {
 				break
 			}
 		}
-		newL0.PushBack(sst)
+		newL0 = append(newL0, sst)
 	}
 
 	s.state.core.l0LastCompacted = l0LastCompacted
