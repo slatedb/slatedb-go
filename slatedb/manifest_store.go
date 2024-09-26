@@ -14,7 +14,7 @@ import (
 type EpochType int
 
 const (
-	WriterEpoch EpochType = iota
+	WriterEpoch EpochType = iota + 1
 	CompactorEpoch
 )
 

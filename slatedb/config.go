@@ -3,7 +3,7 @@ package slatedb
 type CompressionCodec int
 
 const (
-	CompressionNone CompressionCodec = iota
+	CompressionNone CompressionCodec = iota + 1
 	CompressionSnappy
 	CompressionZlib
 )

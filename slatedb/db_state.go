@@ -7,6 +7,7 @@ import (
 	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"strconv"
 	"sync"
 )
 
@@ -158,7 +159,7 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 type SSTableIDType int
 
 const (
-	WAL SSTableIDType = iota
+	WAL SSTableIDType = iota + 1
 	Compacted
 )
 
@@ -173,6 +174,28 @@ func newSSTableIDWal(id uint64) SSTableID {
 
 func newSSTableIDCompacted(id ulid.ULID) SSTableID {
 	return SSTableID{typ: Compacted, value: id.String()}
+}
+
+func (s *SSTableID) walID() mo.Option[uint64] {
+	if s.typ != WAL {
+		return mo.None[uint64]()
+	}
+	val, err := strconv.Atoi(s.value)
+	if err != nil {
+		return mo.None[uint64]()
+	}
+	return mo.Some(uint64(val))
+}
+
+func (s *SSTableID) compactedID() mo.Option[ulid.ULID] {
+	if s.typ != Compacted {
+		return mo.None[ulid.ULID]()
+	}
+	val, err := ulid.Parse(s.value)
+	if err != nil {
+		return mo.None[ulid.ULID]()
+	}
+	return mo.Some(val)
 }
 
 // ------------------------------------------------
