@@ -5,6 +5,7 @@ import (
 	"github.com/huandu/skiplist"
 	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -24,16 +25,17 @@ func (b Bytes) CalcScore(key interface{}) float64 {
 // ------------------------------------------------
 
 type KVTable struct {
-	mu sync.RWMutex
+	mu            sync.RWMutex
+	flushNotifyCh chan chan bool
 
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
-	skl           *skiplist.SkipList
-	durableNotify chan string
+	skl *skiplist.SkipList
 }
 
 func newKVTable() *KVTable {
 	return &KVTable{
-		skl: skiplist.New(Bytes{}),
+		skl:           skiplist.New(Bytes{}),
+		flushNotifyCh: make(chan chan bool, math.MaxUint8),
 	}
 }
 
@@ -96,12 +98,21 @@ func (k *KVTable) rangeFrom(start []byte) *MemTableIterator {
 	return newMemTableIterator(elem)
 }
 
-func (k *KVTable) awaitDurable() {
-	<-k.durableNotify
+func (k *KVTable) awaitFlush() <-chan bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	done := make(chan bool)
+	k.flushNotifyCh <- done
+	return done
 }
 
-func (k *KVTable) notifyDurable() {
-	k.durableNotify <- "durable"
+func (k *KVTable) notifyFlush() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	for done := range k.flushNotifyCh {
+		done <- true
+	}
+	k.flushNotifyCh = make(chan chan bool, math.MaxUint8)
 }
 
 // ------------------------------------------------
@@ -160,25 +171,15 @@ func newImmutableWal(id uint64, table *WritableKVTable) ImmutableWAL {
 // ------------------------------------------------
 
 type ImmutableMemtable struct {
-	lastWalID   uint64
-	table       *KVTable
-	flushNotify chan string
+	lastWalID uint64
+	table     *KVTable
 }
 
 func newImmutableMemtable(table *WritableKVTable, lastWalID uint64) ImmutableMemtable {
 	return ImmutableMemtable{
-		table:       table.table,
-		lastWalID:   lastWalID,
-		flushNotify: make(chan string),
+		table:     table.table,
+		lastWalID: lastWalID,
 	}
-}
-
-func (im *ImmutableMemtable) awaitFlushToL0() {
-	<-im.flushNotify
-}
-
-func (im *ImmutableMemtable) notifyFlushToL0() {
-	im.flushNotify <- "flush"
 }
 
 // ------------------------------------------------

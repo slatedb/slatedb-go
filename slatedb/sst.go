@@ -551,6 +551,7 @@ func (iter *SSTIterator) spawnFetches() {
 		blocksCh := make(chan mo.Option[[]Block], 1)
 		iter.fetchTasks <- blocksCh
 
+		// TODO: ensure goroutine does not leak. use context ?
 		go func(table *SSTableHandle, store *TableStore, blocksStart uint64, blocksEnd uint64) {
 			blocks, err := store.readBlocks(table, common.Range{Start: blocksStart, End: blocksEnd})
 			if err != nil {

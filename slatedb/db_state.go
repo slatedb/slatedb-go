@@ -64,6 +64,12 @@ func newDBState(coreDBState *CoreDBState) *DBState {
 	}
 }
 
+func (s *DBState) getState() *COWDBState {
+	s.RLock()
+	defer s.RUnlock()
+	return s.state
+}
+
 func (s *DBState) snapshot() *DBStateSnapshot {
 	s.RLock()
 	defer s.RUnlock()
@@ -111,14 +117,14 @@ func (s *DBState) popImmWAL() {
 	s.state.immWAL.PopBack()
 }
 
-func (s *DBState) moveImmMemtableToL0(immMemtable ImmutableMemtable, sstHandle SSTableHandle) {
+func (s *DBState) moveImmMemtableToL0(immMemtable ImmutableMemtable, sstHandle *SSTableHandle) {
 	s.Lock()
 	defer s.Unlock()
 
 	popped := s.state.immMemtable.PopBack()
 	common.AssertTrue(popped.lastWalID == immMemtable.lastWalID, "")
 
-	s.state.core.l0 = append([]SSTableHandle{sstHandle}, s.state.core.l0...)
+	s.state.core.l0 = append([]SSTableHandle{*sstHandle}, s.state.core.l0...)
 	s.state.core.lastCompactedWalSSTID = immMemtable.lastWalID
 }
 
