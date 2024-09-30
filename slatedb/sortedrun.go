@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 )
 
@@ -40,6 +41,17 @@ func (s *SortedRun) sstWithKey(key []byte) mo.Option[SSTableHandle] {
 	return mo.None[SSTableHandle]()
 }
 
+func (s *SortedRun) clone() *SortedRun {
+	sstList := make([]SSTableHandle, 0, len(s.sstList))
+	for _, sst := range s.sstList {
+		sstList = append(sstList, *sst.clone())
+	}
+	return &SortedRun{
+		id:      s.id,
+		sstList: sstList,
+	}
+}
+
 // ------------------------------------------------
 // SortedRunIterator
 // ------------------------------------------------
@@ -62,8 +74,8 @@ func newSortedRunIterator(
 }
 
 func newSortedRunIteratorFromKey(
-	key []byte,
 	sortedRun SortedRun,
+	key []byte,
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
@@ -92,7 +104,7 @@ func newSortedRunIter(
 		var iter *SSTIterator
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter = newSSTIteratorFromKey(&sst, tableStore, key, maxFetchTasks, numBlocksToFetch)
+			iter = newSSTIteratorFromKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
 		} else {
 			iter = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
 		}
@@ -109,38 +121,38 @@ func newSortedRunIter(
 	}
 }
 
-func (iter *SortedRunIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *SortedRunIterator) Next() (mo.Option[common.KV], error) {
 	for {
-		kvDel, err := iter.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KV](), err
 		}
-		keyVal, ok := kvDel.Get()
+		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some(common.KV{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
+func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
-			return mo.None[KeyValueDeletable](), nil
+			return mo.None[common.KVDeletable](), nil
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
 		next, err := kvIter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValueDeletable](), err
+			return mo.None[common.KVDeletable](), err
 		}
 
 		if next.IsPresent() {
@@ -150,7 +162,7 @@ func (iter *SortedRunIterator) NextEntry() (mo.Option[KeyValueDeletable], error)
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
-			return mo.None[KeyValueDeletable](), nil
+			return mo.None[common.KVDeletable](), nil
 		}
 		newKVIter := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		iter.currentKVIter = mo.Some(newKVIter)

@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -39,15 +40,15 @@ func TestBlockWithTombstone(t *testing.T) {
 }
 
 func TestBlockIterator(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("donkey"), []byte("kong")},
-		{[]byte("kratos"), []byte("atreus")},
-		{[]byte("super"), []byte("mario")},
+	kvPairs := []common.KV{
+		{Key: []byte("donkey"), Value: []byte("kong")},
+		{Key: []byte("kratos"), Value: []byte("atreus")},
+		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
 	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
+		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
 	}
 
 	block, err := builder.build()
@@ -59,25 +60,25 @@ func TestBlockIterator(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.key, kv.key))
-		assert.True(t, bytes.Equal(kv.value, kv.value))
+		assert.True(t, bytes.Equal(kv.Key, kv.Key))
+		assert.True(t, bytes.Equal(kv.Value, kv.Value))
 	}
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromExistingKey(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("donkey"), []byte("kong")},
-		{[]byte("kratos"), []byte("atreus")},
-		{[]byte("super"), []byte("mario")},
+	kvPairs := []common.KV{
+		{Key: []byte("donkey"), Value: []byte("kong")},
+		{Key: []byte("kratos"), Value: []byte("atreus")},
+		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
 	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
+		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
 	}
 
 	block, err := builder.build()
@@ -90,25 +91,25 @@ func TestIterFromExistingKey(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.key, kv.key))
-		assert.True(t, bytes.Equal(kv.value, kv.value))
+		assert.True(t, bytes.Equal(kv.Key, kv.Key))
+		assert.True(t, bytes.Equal(kv.Value, kv.Value))
 	}
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromNonExistingKey(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("donkey"), []byte("kong")},
-		{[]byte("kratos"), []byte("atreus")},
-		{[]byte("super"), []byte("mario")},
+	kvPairs := []common.KV{
+		{Key: []byte("donkey"), Value: []byte("kong")},
+		{Key: []byte("kratos"), Value: []byte("atreus")},
+		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
 	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
+		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
 	}
 
 	block, err := builder.build()
@@ -121,25 +122,25 @@ func TestIterFromNonExistingKey(t *testing.T) {
 		assert.NoError(t, err)
 		kv, ok := next.Get()
 		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.key, kv.key))
-		assert.True(t, bytes.Equal(kv.value, kv.value))
+		assert.True(t, bytes.Equal(kv.Key, kv.Key))
+		assert.True(t, bytes.Equal(kv.Value, kv.Value))
 	}
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }
 
 func TestIterFromEnd(t *testing.T) {
-	kvPairs := []KeyValue{
-		{[]byte("donkey"), []byte("kong")},
-		{[]byte("kratos"), []byte("atreus")},
-		{[]byte("super"), []byte("mario")},
+	kvPairs := []common.KV{
+		{Key: []byte("donkey"), Value: []byte("kong")},
+		{Key: []byte("kratos"), Value: []byte("atreus")},
+		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
 	builder := newBlockBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.key, mo.Some(kv.value)))
+		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
 	}
 
 	block, err := builder.build()
@@ -149,5 +150,5 @@ func TestIterFromEnd(t *testing.T) {
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	kv, err := iter.Next()
 	assert.NoError(t, err)
-	assert.Equal(t, mo.None[KeyValue](), kv)
+	assert.Equal(t, mo.None[common.KV](), kv)
 }

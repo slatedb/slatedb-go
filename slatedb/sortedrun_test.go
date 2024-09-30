@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
@@ -12,15 +13,15 @@ func buildSRWithSSTs(
 	n uint64,
 	keysPerSST uint64,
 	tableStore *TableStore,
-	keyGen OrderedBytesGenerator,
-	valGen OrderedBytesGenerator,
+	keyGen common.OrderedBytesGenerator,
+	valGen common.OrderedBytesGenerator,
 ) SortedRun {
 
 	sstList := make([]SSTableHandle, 0, n)
 	for i := uint64(0); i < n; i++ {
 		writer := tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
 		for j := uint64(0); j < keysPerSST; j++ {
-			writer.add(keyGen.next(), mo.Some(valGen.next()))
+			writer.add(keyGen.Next(), mo.Some(valGen.Next()))
 		}
 
 		sst, _ := writer.close()
@@ -47,9 +48,9 @@ func TestOneSstSRIter(t *testing.T) {
 
 	sr := SortedRun{0, []SSTableHandle{*sstHandle}}
 	iter := newSortedRunIterator(sr, tableStore, 1, 1)
-	assertIterNext(t, iter, []byte("key1"), []byte("value1"))
-	assertIterNext(t, iter, []byte("key2"), []byte("value2"))
-	assertIterNext(t, iter, []byte("key3"), []byte("value3"))
+	common.AssertIterNext(t, iter, []byte("key1"), []byte("value1"))
+	common.AssertIterNext(t, iter, []byte("key2"), []byte("value2"))
+	common.AssertIterNext(t, iter, []byte("key3"), []byte("value3"))
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
@@ -80,9 +81,9 @@ func TestManySstSRIter(t *testing.T) {
 
 	sr := SortedRun{0, []SSTableHandle{*sstHandle, *sstHandle2}}
 	iter := newSortedRunIterator(sr, tableStore, 1, 1)
-	assertIterNext(t, iter, []byte("key1"), []byte("value1"))
-	assertIterNext(t, iter, []byte("key2"), []byte("value2"))
-	assertIterNext(t, iter, []byte("key3"), []byte("value3"))
+	common.AssertIterNext(t, iter, []byte("key1"), []byte("value1"))
+	common.AssertIterNext(t, iter, []byte("key2"), []byte("value2"))
+	common.AssertIterNext(t, iter, []byte("key3"), []byte("value3"))
 
 	kv, err := iter.Next()
 	assert.NoError(t, err)
@@ -95,25 +96,25 @@ func TestSRIterFromKey(t *testing.T) {
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
-	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
-	testCaseKeyGen := keyGen.clone()
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
+	testCaseKeyGen := keyGen.Clone()
 
 	firstVal := []byte("1111111111111111")
-	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
-	testCaseValGen := valGen.clone()
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	testCaseValGen := valGen.Clone()
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 
 	for i := 0; i < 30; i++ {
-		expectedKeyGen := testCaseKeyGen.clone()
-		expectedValGen := testCaseValGen.clone()
-		fromKey := testCaseKeyGen.next()
-		testCaseValGen.next()
+		expectedKeyGen := testCaseKeyGen.Clone()
+		expectedValGen := testCaseValGen.Clone()
+		fromKey := testCaseKeyGen.Next()
+		testCaseValGen.Next()
 
-		kvIter := newSortedRunIteratorFromKey(fromKey, sr, tableStore, 1, 1)
+		kvIter := newSortedRunIteratorFromKey(sr, fromKey, tableStore, 1, 1)
 
 		for j := 0; j < 30-i; j++ {
-			assertIterNext(t, kvIter, expectedKeyGen.next(), expectedValGen.next())
+			common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
 		next, err := kvIter.Next()
 		assert.NoError(t, err)
@@ -127,18 +128,18 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
-	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
-	expectedKeyGen := keyGen.clone()
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
+	expectedKeyGen := keyGen.Clone()
 
 	firstVal := []byte("1111111111111111")
-	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
-	expectedValGen := valGen.clone()
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	expectedValGen := valGen.Clone()
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey([]byte("aaaaaaaaaa"), sr, tableStore, 1, 1)
+	kvIter := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
 
 	for j := 0; j < 30; j++ {
-		assertIterNext(t, kvIter, expectedKeyGen.next(), expectedValGen.next())
+		common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
 	next, err := kvIter.Next()
 	assert.NoError(t, err)
@@ -151,13 +152,13 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
-	keyGen := newOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
 
 	firstVal := []byte("1111111111111111")
-	valGen := newOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey([]byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), sr, tableStore, 1, 1)
+	kvIter := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	next, err := kvIter.Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())

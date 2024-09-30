@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"github.com/maypok86/otter"
+	"github.com/naveen246/slatedb-go/slatedb/common"
+	"github.com/naveen246/slatedb-go/slatedb/filter"
 	"github.com/samber/mo"
 	"github.com/thanos-io/objstore"
 	"io"
@@ -15,7 +17,8 @@ import (
 )
 
 // ------------------------------------------------
-// TableStore
+// TableStore is an abstraction over object storage
+// to read/write data
 // ------------------------------------------------
 
 type TableStore struct {
@@ -25,12 +28,12 @@ type TableStore struct {
 	rootPath      string
 	walPath       string
 	compactedPath string
-	filterCache   otter.Cache[SSTableID, mo.Option[BloomFilter]]
+	filterCache   otter.Cache[SSTableID, mo.Option[filter.BloomFilter]]
 }
 
 func newTableStore(bucket objstore.Bucket, format *SSTableFormat, rootPath string) *TableStore {
-	cache, err := otter.MustBuilder[SSTableID, mo.Option[BloomFilter]](1000).Build()
-	assertTrue(err == nil, "")
+	cache, err := otter.MustBuilder[SSTableID, mo.Option[filter.BloomFilter]](1000).Build()
+	common.AssertTrue(err == nil, "")
 	return &TableStore{
 		bucket:        bucket,
 		sstFormat:     format,
@@ -41,11 +44,12 @@ func newTableStore(bucket objstore.Bucket, format *SSTableFormat, rootPath strin
 	}
 }
 
+// Get list of WALs from object store that are not compacted (walID greater than walIDLastCompacted)
 func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error) {
 	walList := make([]uint64, 0)
 	walPath := path.Join(ts.rootPath, ts.walPath)
 
-	ts.bucket.Iter(context.Background(), walPath, func(filepath string) error {
+	err := ts.bucket.Iter(context.Background(), walPath, func(filepath string) error {
 		if strings.Contains(filepath, ".sst") {
 			walID, err := ts.parseID(filepath, ".sst")
 			if err == nil && walID > walIDLastCompacted {
@@ -53,7 +57,10 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 			}
 		}
 		return nil
-	})
+	}, objstore.WithRecursiveIter)
+	if err != nil {
+		return nil, common.ErrObjectStore
+	}
 
 	slices.Sort(walList)
 	return walList, nil
@@ -82,7 +89,7 @@ func (ts *TableStore) writeSST(id SSTableID, encodedSST *EncodedSSTable) (*SSTab
 
 	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	ts.cacheFilter(id, encodedSST.filter)
@@ -99,18 +106,18 @@ func (ts *TableStore) openSST(id SSTableID) (*SSTableHandle, error) {
 	return newSSTableHandle(id, sstInfo), nil
 }
 
-func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange Range) ([]Block, error) {
+func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange common.Range) ([]Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	return ts.sstFormat.readBlocks(sstHandle.info, blocksRange, obj)
 }
 
-func (ts *TableStore) cacheFilter(sstID SSTableID, filter mo.Option[BloomFilter]) {
+func (ts *TableStore) cacheFilter(sstID SSTableID, filter mo.Option[filter.BloomFilter]) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	ts.filterCache.Set(sstID, filter)
 }
 
-func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[BloomFilter], error) {
+func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[filter.BloomFilter], error) {
 	ts.mu.RLock()
 	val, ok := ts.filterCache.Get(sstHandle.id)
 	ts.mu.RUnlock()
@@ -119,13 +126,13 @@ func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[BloomFilte
 	}
 
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
-	filter, err := ts.sstFormat.readFilter(sstHandle.info, obj)
+	filtr, err := ts.sstFormat.readFilter(sstHandle.info, obj)
 	if err != nil {
-		return mo.None[BloomFilter](), err
+		return mo.None[filter.BloomFilter](), err
 	}
 
-	ts.cacheFilter(sstHandle.id, filter)
-	return filter, nil
+	ts.cacheFilter(sstHandle.id, filtr)
+	return filtr, nil
 }
 
 func (ts *TableStore) sstPath(id SSTableID) string {
@@ -138,15 +145,30 @@ func (ts *TableStore) sstPath(id SSTableID) string {
 }
 
 func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, error) {
-	assertTrue(path.Ext(filepath) == expectedExt, "invalid wal file")
+	common.AssertTrue(path.Ext(filepath) == expectedExt, "invalid wal file")
 
-	name := path.Base(filepath)
-	id, err := strconv.ParseUint(name, 10, 64)
+	base := path.Base(filepath)
+	idStr := strings.Replace(base, expectedExt, "", 1)
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		return 0, ErrInvalidDBState
+		return 0, common.ErrInvalidDBState
 	}
 
 	return id, nil
+}
+
+func (ts *TableStore) clone() *TableStore {
+	cache, err := otter.MustBuilder[SSTableID, mo.Option[filter.BloomFilter]](1000).Build()
+	common.AssertTrue(err == nil, "")
+	return &TableStore{
+		mu:            sync.RWMutex{},
+		bucket:        ts.bucket,
+		sstFormat:     ts.sstFormat.clone(),
+		rootPath:      ts.rootPath,
+		walPath:       ts.walPath,
+		compactedPath: ts.compactedPath,
+		filterCache:   cache,
+	}
 }
 
 // ------------------------------------------------
@@ -200,7 +222,7 @@ func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
 	sstPath := w.tableStore.sstPath(w.sstID)
 	err = w.tableStore.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	w.tableStore.cacheFilter(w.sstID, encodedSST.filter)
@@ -216,37 +238,37 @@ type ReadOnlyObject struct {
 	path   string
 }
 
-func (r ReadOnlyObject) len() (int, error) {
+func (r ReadOnlyObject) Len() (int, error) {
 	attr, err := r.bucket.Attributes(context.Background(), r.path)
 	if err != nil {
-		return 0, ErrObjectStore
+		return 0, common.ErrObjectStore
 	}
 	return int(attr.Size), nil
 }
 
-func (r ReadOnlyObject) readRange(rng Range) ([]byte, error) {
-	read, err := r.bucket.GetRange(context.Background(), r.path, int64(rng.start), int64(rng.end-rng.start))
+func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
+	read, err := r.bucket.GetRange(context.Background(), r.path, int64(rng.Start), int64(rng.End-rng.Start))
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	return data, nil
 }
 
-func (r ReadOnlyObject) read() ([]byte, error) {
+func (r ReadOnlyObject) Read() ([]byte, error) {
 	read, err := r.bucket.Get(context.Background(), r.path)
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
-		return nil, ErrObjectStore
+		return nil, common.ErrObjectStore
 	}
 
 	return data, nil

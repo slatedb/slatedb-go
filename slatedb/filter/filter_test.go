@@ -1,7 +1,8 @@
-package slatedb
+package filter
 
 import (
 	"encoding/binary"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -80,22 +81,22 @@ func TestComputeProbes(t *testing.T) {
 
 func TestFilterEffective(t *testing.T) {
 	keysToTest := uint32(100000)
-	keySize := SizeOfUint32InBytes
-	builder := newBloomFilterBuilder(10)
+	keySize := common.SizeOfUint32InBytes
+	builder := NewBloomFilterBuilder(10)
 
 	var i uint32
 	for i = 0; i < keysToTest; i++ {
 		bytes := make([]byte, keySize)
 		binary.BigEndian.PutUint32(bytes, i)
-		builder.addKey(bytes)
+		builder.AddKey(bytes)
 	}
-	filter := builder.build()
+	filter := builder.Build()
 
 	// check all entries in filter
 	for i = 0; i < keysToTest; i++ {
 		bytes := make([]byte, keySize)
 		binary.BigEndian.PutUint32(bytes, i)
-		assert.True(t, filter.hasKey(bytes))
+		assert.True(t, filter.HasKey(bytes))
 	}
 
 	// check false positives
@@ -103,7 +104,7 @@ func TestFilterEffective(t *testing.T) {
 	for i := keysToTest; i < keysToTest*2; i++ {
 		bytes := make([]byte, keySize)
 		binary.BigEndian.PutUint32(bytes, i)
-		if filter.hasKey(bytes) {
+		if filter.HasKey(bytes) {
 			fp += 1
 		}
 	}

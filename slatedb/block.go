@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"math"
 
 	"github.com/samber/mo"
@@ -26,7 +27,7 @@ type Block struct {
 // offsets are added to the next len(offsets) * SizeOfUint16InBytes bytes
 // the last 2 bytes hold the number of offsets
 func (b *Block) encodeToBytes() []byte {
-	bufSize := len(b.data) + len(b.offsets)*SizeOfUint16InBytes + SizeOfUint16InBytes
+	bufSize := len(b.data) + len(b.offsets)*common.SizeOfUint16InBytes + common.SizeOfUint16InBytes
 
 	buf := make([]byte, 0, bufSize)
 	buf = append(buf, b.data...)
@@ -41,14 +42,14 @@ func (b *Block) encodeToBytes() []byte {
 // decode converts byte slice to a Block
 func decodeBytesToBlock(bytes []byte) *Block {
 	// the last 2 bytes hold the offset count
-	offsetCountIndex := len(bytes) - SizeOfUint16InBytes
+	offsetCountIndex := len(bytes) - common.SizeOfUint16InBytes
 	offsetCount := binary.BigEndian.Uint16(bytes[offsetCountIndex:])
 
-	offsetStartIndex := offsetCountIndex - (int(offsetCount) * SizeOfUint16InBytes)
+	offsetStartIndex := offsetCountIndex - (int(offsetCount) * common.SizeOfUint16InBytes)
 	offsets := make([]uint16, 0, offsetCount)
 
 	for i := 0; i < int(offsetCount); i++ {
-		index := offsetStartIndex + (i * SizeOfUint16InBytes)
+		index := offsetStartIndex + (i * common.SizeOfUint16InBytes)
 		offsets = append(offsets, binary.BigEndian.Uint16(bytes[index:]))
 	}
 
@@ -77,20 +78,20 @@ func newBlockBuilder(blockSize uint64) *BlockBuilder {
 }
 
 func (b *BlockBuilder) estimatedSize() int {
-	return SizeOfUint16InBytes + // number of key-value pairs in the block
-		(len(b.offsets) * SizeOfUint16InBytes) + // offsets
+	return common.SizeOfUint16InBytes + // number of key-value pairs in the block
+		(len(b.offsets) * common.SizeOfUint16InBytes) + // offsets
 		len(b.data) // key-value pairs
 }
 
 func (b *BlockBuilder) add(key []byte, value mo.Option[[]byte]) bool {
-	assertTrue(len(key) > 0, "key must not be empty")
+	common.AssertTrue(len(key) > 0, "key must not be empty")
 
 	valueLen := 0
 	val, ok := value.Get()
 	if ok {
 		valueLen = len(val)
 	}
-	newSize := b.estimatedSize() + len(key) + valueLen + (SizeOfUint16InBytes * 2) + SizeOfUint32InBytes
+	newSize := b.estimatedSize() + len(key) + valueLen + (common.SizeOfUint16InBytes * 2) + common.SizeOfUint32InBytes
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.
 	// (Unless the block is empty, in which case, allow the block to exceed the limit.)
@@ -120,7 +121,7 @@ func (b *BlockBuilder) isEmpty() bool {
 
 func (b *BlockBuilder) build() (*Block, error) {
 	if b.isEmpty() {
-		return nil, ErrEmptyBlock
+		return nil, common.ErrEmptyBlock
 	}
 	return &Block{
 		data:    b.data,
@@ -147,7 +148,7 @@ func newBlockIteratorFromKey(block *Block, key []byte) *BlockIterator {
 	for i, offset := range block.offsets {
 		off := offset
 		keyLen := binary.BigEndian.Uint16(data[off:])
-		off += SizeOfUint16InBytes
+		off += common.SizeOfUint16InBytes
 		curKey := data[off : off+keyLen]
 		if bytes.Compare(curKey, key) >= 0 {
 			index = i
@@ -167,67 +168,67 @@ func newBlockIteratorFromFirstKey(block *Block) *BlockIterator {
 	}
 }
 
-func (b *BlockIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *BlockIterator) Next() (mo.Option[common.KV], error) {
 	for {
-		entry, err := b.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some(common.KV{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (b *BlockIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
-	keyValue, ok := b.loadAtCurrentOffset().Get()
+func (iter *BlockIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+	keyValue, ok := iter.loadAtCurrentOffset().Get()
 	if !ok {
-		return mo.None[KeyValueDeletable](), nil
+		return mo.None[common.KVDeletable](), nil
 	}
 
-	b.advance()
+	iter.advance()
 	return mo.Some(keyValue), nil
 }
 
-func (b *BlockIterator) advance() {
-	b.offsetIndex += 1
+func (iter *BlockIterator) advance() {
+	iter.offsetIndex += 1
 }
 
-func (b *BlockIterator) loadAtCurrentOffset() mo.Option[KeyValueDeletable] {
-	if b.offsetIndex >= uint64(len(b.block.offsets)) {
-		return mo.None[KeyValueDeletable]()
+func (iter *BlockIterator) loadAtCurrentOffset() mo.Option[common.KVDeletable] {
+	if iter.offsetIndex >= uint64(len(iter.block.offsets)) {
+		return mo.None[common.KVDeletable]()
 	}
 
-	data := b.block.data
-	offset := b.block.offsets[b.offsetIndex]
-	var valueDel ValueDeletable
+	data := iter.block.data
+	offset := iter.block.offsets[iter.offsetIndex]
+	var valueDel common.ValueDeletable
 
 	// Read KeyLength(uint16), Key, (ValueLength(uint32), value)/Tombstone(uint32) from data
 	keyLen := binary.BigEndian.Uint16(data[offset:])
-	offset += SizeOfUint16InBytes
+	offset += common.SizeOfUint16InBytes
 
 	key := data[offset : offset+keyLen]
 	offset += keyLen
 
 	valueLen := binary.BigEndian.Uint32(data[offset:])
-	offset += SizeOfUint32InBytes
+	offset += common.SizeOfUint32InBytes
 
 	if valueLen != Tombstone {
 		value := data[offset : uint32(offset)+valueLen]
-		valueDel = ValueDeletable{value, false}
+		valueDel = common.ValueDeletable{Value: value, IsTombstone: false}
 	} else {
-		valueDel = ValueDeletable{nil, true}
+		valueDel = common.ValueDeletable{Value: nil, IsTombstone: true}
 	}
 
-	return mo.Some(KeyValueDeletable{key, valueDel})
+	return mo.Some(common.KVDeletable{Key: key, ValueDel: valueDel})
 }

@@ -1,4 +1,4 @@
-package slatedb
+package common
 
 import "errors"
 
@@ -18,4 +18,6 @@ var (
 	ErrBlockDecompression      = errors.New("error Decompressing Block")
 	ErrBlockCompression        = errors.New("error Compressing Block")
 	ErrReadBlocks              = errors.New("error Reading Blocks")
+	ErrObjectExists            = errors.New("error Object Exists")
+	ErrKeyNotFound             = errors.New("key not found")
 )

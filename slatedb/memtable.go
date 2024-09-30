@@ -1,106 +1,133 @@
 package slatedb
 
 import (
-	"bytes"
 	"github.com/huandu/skiplist"
+	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"math"
 	"sync"
 	"sync/atomic"
 )
-
-type Bytes []byte
-
-func (b Bytes) Compare(lhs, rhs interface{}) int {
-	return bytes.Compare(lhs.([]byte), rhs.([]byte))
-}
-
-func (b Bytes) CalcScore(key interface{}) float64 {
-	return 0
-}
 
 // ------------------------------------------------
 // KVTable
 // ------------------------------------------------
 
 type KVTable struct {
-	mu sync.RWMutex
+	sync.RWMutex
+	flushLock     *sync.Mutex
+	flushNotifyCh chan chan bool
 
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
-	skl           *skiplist.SkipList
-	durableNotify chan string
+	skl *skiplist.SkipList
 }
 
 func newKVTable() *KVTable {
 	return &KVTable{
-		skl: skiplist.New(Bytes{}),
+		skl:           skiplist.New(skiplist.Bytes),
+		flushLock:     &sync.Mutex{},
+		flushNotifyCh: make(chan chan bool, math.MaxUint8),
 	}
 }
 
-func (k *KVTable) get(key []byte) mo.Option[ValueDeletable] {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+func (k *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
+	k.RLock()
+	defer k.RUnlock()
 
 	elem := k.skl.Get(key)
 	if elem == nil {
-		return mo.None[ValueDeletable]()
+		return mo.None[common.ValueDeletable]()
 	}
-	return mo.Some[ValueDeletable](elem.Value.(ValueDeletable))
+	return mo.Some(elem.Value.(common.ValueDeletable))
 }
 
 func (k *KVTable) put(key []byte, value []byte) int64 {
-	k.mu.Lock()
-	defer k.mu.Unlock()
+	k.Lock()
+	defer k.Unlock()
 
-	valueDel := ValueDeletable{
-		value:       value,
-		isTombstone: false,
+	valueDel := common.ValueDeletable{
+		Value:       value,
+		IsTombstone: false,
 	}
 	k.skl.Set(key, valueDel)
-	return int64(len(key)) + valueDel.size()
+	return int64(len(key)) + valueDel.Size()
 }
 
 func (k *KVTable) delete(key []byte) int64 {
-	k.mu.Lock()
-	defer k.mu.Unlock()
+	k.Lock()
+	defer k.Unlock()
 
-	elem := k.skl.Get(key)
-	if elem == nil {
-		return 0
-	}
-
-	valueDel := ValueDeletable{
-		value:       nil,
-		isTombstone: true,
+	valueDel := common.ValueDeletable{
+		Value:       nil,
+		IsTombstone: true,
 	}
 	k.skl.Set(key, valueDel)
-	return int64(len(key)) + valueDel.size()
+	return int64(len(key)) + valueDel.Size()
 }
 
 func (k *KVTable) isEmpty() bool {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	return k.skl.Len() == 0
 }
 
 func (k *KVTable) iter() *MemTableIterator {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	return newMemTableIterator(k.skl.Front())
 }
 
 func (k *KVTable) rangeFrom(start []byte) *MemTableIterator {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	elem := k.skl.Find(start)
 	return newMemTableIterator(elem)
 }
 
-func (k *KVTable) awaitDurable() {
-	<-k.durableNotify
+// we do not expect this to block because flushNotifyCh has a length of math.MaxUint8
+// and we do not expect that many clients waiting on awaitFlush.
+// if this expectation changes in future there is a possibility of deadlock
+func (k *KVTable) awaitFlush() <-chan bool {
+	k.flushLock.Lock()
+	defer k.flushLock.Unlock()
+	done := make(chan bool, 1)
+	k.flushNotifyCh <- done
+	return done
 }
 
-func (k *KVTable) notifyDurable() {
-	k.durableNotify <- "durable"
+func (k *KVTable) notifyFlush() {
+	k.flushLock.Lock()
+	defer k.flushLock.Unlock()
+	if len(k.flushNotifyCh) == 0 {
+		return
+	}
+	for i := 0; i < len(k.flushNotifyCh); i++ {
+		done := <-k.flushNotifyCh
+		if len(done) == 0 {
+			done <- true
+			close(done)
+		}
+	}
+	k.flushNotifyCh = make(chan chan bool, math.MaxUint8)
+}
+
+func (k *KVTable) clone() *KVTable {
+	k.RLock()
+	defer k.RUnlock()
+	skl := skiplist.New(skiplist.Bytes)
+	current := k.skl.Front()
+	for current != nil {
+		key := current.Key().([]byte)
+		val := current.Value.(common.ValueDeletable)
+		skl.Set(key, val)
+		current = current.Next()
+	}
+	return &KVTable{
+		RWMutex:       sync.RWMutex{},
+		flushLock:     k.flushLock,
+		flushNotifyCh: k.flushNotifyCh,
+		skl:           skl,
+	}
 }
 
 // ------------------------------------------------
@@ -108,6 +135,7 @@ func (k *KVTable) notifyDurable() {
 // ------------------------------------------------
 
 type WritableKVTable struct {
+	sync.RWMutex
 	table *KVTable
 	size  atomic.Int64
 }
@@ -119,12 +147,16 @@ func newWritableKVTable() *WritableKVTable {
 }
 
 func (w *WritableKVTable) put(key, value []byte) {
+	w.Lock()
+	defer w.Unlock()
 	w.maybeSubtractOldValFromSize(key)
 	newSize := w.table.put(key, value)
 	w.size.Add(newSize)
 }
 
 func (w *WritableKVTable) delete(key []byte) {
+	w.Lock()
+	defer w.Unlock()
 	w.maybeSubtractOldValFromSize(key)
 	newSize := w.table.delete(key)
 	w.size.Add(newSize)
@@ -133,9 +165,21 @@ func (w *WritableKVTable) delete(key []byte) {
 func (w *WritableKVTable) maybeSubtractOldValFromSize(key []byte) {
 	oldDeletable, ok := w.table.get(key).Get()
 	if ok {
-		oldSize := int64(len(key)) + oldDeletable.size()
+		oldSize := int64(len(key)) + oldDeletable.Size()
 		w.size.Add(-oldSize)
 	}
+}
+
+func (w *WritableKVTable) clone() *WritableKVTable {
+	w.RLock()
+	defer w.RUnlock()
+	kvTable := &WritableKVTable{
+		RWMutex: sync.RWMutex{},
+		table:   w.table.clone(),
+		size:    atomic.Int64{},
+	}
+	kvTable.size.Store(w.size.Load())
+	return kvTable
 }
 
 // ------------------------------------------------
@@ -147,10 +191,17 @@ type ImmutableWAL struct {
 	table *KVTable
 }
 
-func newImmutableWal(id uint64, table *WritableKVTable) ImmutableWAL {
-	return ImmutableWAL{
+func newImmutableWal(id uint64, table *WritableKVTable) *ImmutableWAL {
+	return &ImmutableWAL{
 		id:    id,
 		table: table.table,
+	}
+}
+
+func (i *ImmutableWAL) clone() *ImmutableWAL {
+	return &ImmutableWAL{
+		id:    i.id,
+		table: i.table.clone(),
 	}
 }
 
@@ -159,25 +210,22 @@ func newImmutableWal(id uint64, table *WritableKVTable) ImmutableWAL {
 // ------------------------------------------------
 
 type ImmutableMemtable struct {
-	lastWalID   uint64
-	table       *KVTable
-	flushNotify chan string
+	lastWalID uint64
+	table     *KVTable
 }
 
 func newImmutableMemtable(table *WritableKVTable, lastWalID uint64) ImmutableMemtable {
 	return ImmutableMemtable{
-		table:       table.table,
-		lastWalID:   lastWalID,
-		flushNotify: make(chan string),
+		table:     table.table,
+		lastWalID: lastWalID,
 	}
 }
 
-func (im *ImmutableMemtable) awaitFlushToL0() {
-	<-im.flushNotify
-}
-
-func (im *ImmutableMemtable) notifyFlushToL0() {
-	im.flushNotify <- "flush"
+func (i *ImmutableMemtable) clone() *ImmutableMemtable {
+	return &ImmutableMemtable{
+		lastWalID: i.lastWalID,
+		table:     i.table.clone(),
+	}
 }
 
 // ------------------------------------------------
@@ -194,38 +242,38 @@ func newMemTableIterator(element *skiplist.Element) *MemTableIterator {
 	}
 }
 
-func (m *MemTableIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *MemTableIterator) Next() (mo.Option[common.KV], error) {
 	for {
-		entry, err := m.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KV](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some(common.KV{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (m *MemTableIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
-	elem := m.element
+func (iter *MemTableIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+	elem := iter.element
 	if elem == nil {
-		return mo.None[KeyValueDeletable](), nil
+		return mo.None[common.KVDeletable](), nil
 	}
 
-	m.element = m.element.Next()
+	iter.element = iter.element.Next()
 
-	return mo.Some(KeyValueDeletable{
-		key:      elem.Key().([]byte),
-		valueDel: elem.Value.(ValueDeletable),
+	return mo.Some(common.KVDeletable{
+		Key:      elem.Key().([]byte),
+		ValueDel: elem.Value.(common.ValueDeletable),
 	}), nil
 }

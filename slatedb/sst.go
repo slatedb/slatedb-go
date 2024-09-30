@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"github.com/gammazero/deque"
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/naveen246/slatedb-go/slatedb/common"
+	"github.com/naveen246/slatedb-go/slatedb/filter"
 	"hash/crc32"
 	"io"
 	"math"
@@ -33,24 +35,24 @@ func newSSTableFormat(blockSize uint64, minFilterKeys uint32, compression Compre
 	}
 }
 
-func (f *SSTableFormat) readInfo(obj ReadOnlyBlob) (*SSTableInfoOwned, error) {
-	size, err := obj.len()
+func (f *SSTableFormat) readInfo(obj common.ReadOnlyBlob) (*SSTableInfoOwned, error) {
+	size, err := obj.Len()
 	if err != nil {
 		return nil, err
 	}
 	if size <= 4 {
-		return nil, ErrEmptySSTable
+		return nil, common.ErrEmptySSTable
 	}
 
 	// Get the metadata. Last 4 bytes are the metadata offset of SsTableInfo
 	offsetIndex := uint64(size - 4)
-	offsetBytes, err := obj.readRange(Range{offsetIndex, uint64(size)})
+	offsetBytes, err := obj.ReadRange(common.Range{Start: offsetIndex, End: uint64(size)})
 	if err != nil {
 		return nil, err
 	}
 
 	metadataOffset := binary.BigEndian.Uint32(offsetBytes)
-	metadataBytes, err := obj.readRange(Range{uint64(metadataOffset), offsetIndex})
+	metadataBytes, err := obj.ReadRange(common.Range{Start: uint64(metadataOffset), End: offsetIndex})
 	if err != nil {
 		return nil, err
 	}
@@ -58,20 +60,23 @@ func (f *SSTableFormat) readInfo(obj ReadOnlyBlob) (*SSTableInfoOwned, error) {
 	return decodeBytesToSSTableInfo(metadataBytes)
 }
 
-func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj ReadOnlyBlob) (mo.Option[BloomFilter], error) {
+func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj common.ReadOnlyBlob) (mo.Option[filter.BloomFilter], error) {
 	sstInfo := info.borrow()
 	if sstInfo.FilterLen() < 1 {
-		return mo.None[BloomFilter](), nil
+		return mo.None[filter.BloomFilter](), nil
 	}
 
-	filterOffsetRange := Range{sstInfo.FilterOffset(), sstInfo.FilterOffset() + sstInfo.FilterLen()}
-	filterBytes, err := obj.readRange(filterOffsetRange)
+	filterOffsetRange := common.Range{
+		Start: sstInfo.FilterOffset(),
+		End:   sstInfo.FilterOffset() + sstInfo.FilterLen(),
+	}
+	filterBytes, err := obj.ReadRange(filterOffsetRange)
 	if err != nil {
-		return mo.None[BloomFilter](), err
+		return mo.None[filter.BloomFilter](), err
 	}
 
-	filter := decodeBytesToBloomFilter(filterBytes)
-	return mo.Some(*filter), nil
+	filtr := filter.DecodeBytesToBloomFilter(filterBytes)
+	return mo.Some(*filtr), nil
 }
 
 // decompress the compressed data using the specified compression codec.
@@ -91,49 +96,49 @@ func (f *SSTableFormat) decompress(compressedData []byte, compression Compressio
 		return io.ReadAll(r)
 	}
 
-	return nil, ErrInvalidCompressionCodec
+	return nil, common.ErrInvalidCompressionCodec
 }
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the
 // blocks within blockRange
-func (f *SSTableFormat) getBlockRange(blockRange Range, sstInfo *flatbuf.SsTableInfo) Range {
+func (f *SSTableFormat) getBlockRange(blockRange common.Range, sstInfo *flatbuf.SsTableInfo) common.Range {
 	blockMetaList := sstInfo.UnPack().BlockMeta
-	startOffset := blockMetaList[blockRange.start].Offset
+	startOffset := blockMetaList[blockRange.Start].Offset
 
 	endOffset := sstInfo.FilterOffset()
-	if blockRange.end < uint64(sstInfo.BlockMetaLength()) {
-		endOffset = blockMetaList[blockRange.end].Offset
+	if blockRange.End < uint64(sstInfo.BlockMetaLength()) {
+		endOffset = blockMetaList[blockRange.End].Offset
 	}
 
-	return Range{startOffset, endOffset}
+	return common.Range{Start: startOffset, End: endOffset}
 }
 
 // readBlocks reads the complete data required into a byte slice (dataBytes)
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
 func (f *SSTableFormat) readBlocks(
 	info *SSTableInfoOwned,
-	blockRange Range,
-	obj ReadOnlyBlob,
+	blockRange common.Range,
+	obj common.ReadOnlyBlob,
 ) ([]Block, error) {
 	sstInfo := info.borrow()
-	assertTrue(blockRange.start <= blockRange.end, "block start index cannot be greater than end index")
-	assertTrue(blockRange.end <= uint64(sstInfo.BlockMetaLength()), "block end index out of range")
+	common.AssertTrue(blockRange.Start <= blockRange.End, "block start index cannot be greater than end index")
+	common.AssertTrue(blockRange.End <= uint64(sstInfo.BlockMetaLength()), "block end index out of range")
 
-	if blockRange.start == blockRange.end {
+	if blockRange.Start == blockRange.End {
 		return []Block{}, nil
 	}
 
 	r := f.getBlockRange(blockRange, sstInfo)
-	dataBytes, err := obj.readRange(r)
+	dataBytes, err := obj.ReadRange(r)
 	if err != nil {
 		return nil, err
 	}
 
-	startOffset := r.start
+	startOffset := r.Start
 	decodedBlocks := make([]Block, 0)
 	blockMetaList := sstInfo.UnPack().BlockMeta
 
-	for i := blockRange.start; i < blockRange.end; i++ {
+	for i := blockRange.Start; i < blockRange.End; i++ {
 		bytesStart := blockMetaList[i].Offset - startOffset
 		var blockBytes []byte
 		if i == uint64(sstInfo.BlockMetaLength())-1 {
@@ -154,11 +159,11 @@ func (f *SSTableFormat) readBlocks(
 
 func (f *SSTableFormat) decodeBytesToBlock(bytes []byte) (*Block, error) {
 	// last 4 bytes hold the checksum
-	checksumIndex := len(bytes) - SizeOfUint32InBytes
+	checksumIndex := len(bytes) - common.SizeOfUint32InBytes
 	blockBytes := bytes[:checksumIndex]
 	checksum := binary.BigEndian.Uint32(bytes[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(blockBytes) {
-		return nil, ErrChecksumMismatch
+		return nil, common.ErrChecksumMismatch
 	}
 
 	decodedBlock := decodeBytesToBlock(blockBytes)
@@ -176,9 +181,9 @@ func (f *SSTableFormat) decodeBytesToBlock(bytes []byte) (*Block, error) {
 func (f *SSTableFormat) readBlock(
 	info *SSTableInfoOwned,
 	blockIndex uint64,
-	obj ReadOnlyBlob,
+	obj common.ReadOnlyBlob,
 ) (*Block, error) {
-	blocks, err := f.readBlocks(info, Range{blockIndex, blockIndex + 1}, obj)
+	blocks, err := f.readBlocks(info, common.Range{Start: blockIndex, End: blockIndex + 1}, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +197,20 @@ func (f *SSTableFormat) readBlockRaw(
 	sstBytes []byte,
 ) (*Block, error) {
 	sstInfo := info.borrow()
-	blockRange := f.getBlockRange(Range{blockIndex, blockIndex + 1}, sstInfo)
-	return f.decodeBytesToBlock(sstBytes[blockRange.start:blockRange.end])
+	blockRange := f.getBlockRange(common.Range{Start: blockIndex, End: blockIndex + 1}, sstInfo)
+	return f.decodeBytesToBlock(sstBytes[blockRange.Start:blockRange.End])
 }
 
 func (f *SSTableFormat) tableBuilder() *EncodedSSTableBuilder {
 	return newEncodedSSTableBuilder(f.blockSize, f.minFilterKeys, f.compressionCodec)
+}
+
+func (f *SSTableFormat) clone() *SSTableFormat {
+	return &SSTableFormat{
+		blockSize:        f.blockSize,
+		minFilterKeys:    f.minFilterKeys,
+		compressionCodec: f.compressionCodec,
+	}
 }
 
 // ------------------------------------------------
@@ -206,13 +219,13 @@ func (f *SSTableFormat) tableBuilder() *EncodedSSTableBuilder {
 
 type EncodedSSTable struct {
 	sstInfo          *SSTableInfoOwned
-	filter           mo.Option[BloomFilter]
+	filter           mo.Option[filter.BloomFilter]
 	unconsumedBlocks *deque.Deque[[]byte]
 }
 
 type EncodedSSTableBuilder struct {
 	blockBuilder   *BlockBuilder
-	filterBuilder  *BloomFilterBuilder
+	filterBuilder  *filter.BloomFilterBuilder
 	sstInfoBuilder *flatbuffers.Builder
 
 	firstKey      mo.Option[[]byte]
@@ -236,7 +249,7 @@ func newEncodedSSTableBuilder(
 ) *EncodedSSTableBuilder {
 	return &EncodedSSTableBuilder{
 		blockBuilder:   newBlockBuilder(blockSize),
-		filterBuilder:  newBloomFilterBuilder(10),
+		filterBuilder:  filter.NewBloomFilterBuilder(10),
 		sstInfoBuilder: flatbuffers.NewBuilder(0),
 
 		firstKey:      mo.None[[]byte](),
@@ -270,7 +283,7 @@ func (b *EncodedSSTableBuilder) compress(data []byte, compression CompressionCod
 		return b.Bytes(), nil
 	}
 
-	return nil, ErrInvalidCompressionCodec
+	return nil, common.ErrInvalidCompressionCodec
 }
 
 func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
@@ -289,14 +302,14 @@ func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
 		}
 
 		addSuccess := b.blockBuilder.add(key, value)
-		assertTrue(addSuccess, "BlockBuilder add failed")
+		common.AssertTrue(addSuccess, "BlockBuilder add failed")
 		b.firstKey = mo.Some(key)
 	} else if b.sstFirstKey.IsAbsent() {
 		b.sstFirstKey = mo.Some(key)
 		b.firstKey = mo.Some(key)
 	}
 
-	b.filterBuilder.addKey(key)
+	b.filterBuilder.AddKey(key)
 	return nil
 }
 
@@ -336,7 +349,7 @@ func (b *EncodedSSTableBuilder) finishBlock() (mo.Option[[]byte], error) {
 
 	checksum := crc32.ChecksumIEEE(compressedBlock)
 
-	block := make([]byte, 0, len(compressedBlock)+SizeOfUint32InBytes)
+	block := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32InBytes)
 	block = append(block, compressedBlock...)
 	block = binary.BigEndian.AppendUint32(block, checksum)
 
@@ -353,15 +366,15 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 		buf = []byte{}
 	}
 
-	maybeFilter := mo.None[BloomFilter]()
+	maybeFilter := mo.None[filter.BloomFilter]()
 	filterLen := 0
 	filterOffset := b.currentLen + uint64(len(buf))
 	if b.numKeys >= b.minFilterKeys {
-		filter := b.filterBuilder.build()
-		encodedFilter := filter.encodeToBytes()
+		filtr := b.filterBuilder.Build()
+		encodedFilter := filtr.EncodeToBytes()
 		filterLen = len(encodedFilter)
 		buf = append(buf, encodedFilter...)
-		maybeFilter = mo.Some(*filter)
+		maybeFilter = mo.Some(*filtr)
 	}
 
 	metaOffset := b.currentLen + uint64(len(buf))
@@ -410,17 +423,25 @@ func (info *SSTableInfoOwned) encode(buf *[]byte) {
 	*buf = binary.BigEndian.AppendUint32(*buf, crc32.ChecksumIEEE(info.data))
 }
 
+func (info *SSTableInfoOwned) clone() *SSTableInfoOwned {
+	data := make([]byte, len(info.data))
+	copy(data, info.data)
+	return &SSTableInfoOwned{
+		data: data,
+	}
+}
+
 func decodeBytesToSSTableInfo(rawBlockMeta []byte) (*SSTableInfoOwned, error) {
-	if len(rawBlockMeta) <= SizeOfUint32InBytes {
-		return nil, ErrEmptyBlockMeta
+	if len(rawBlockMeta) <= common.SizeOfUint32InBytes {
+		return nil, common.ErrEmptyBlockMeta
 	}
 
 	// last 4 bytes hold the checksum
-	checksumIndex := len(rawBlockMeta) - SizeOfUint32InBytes
+	checksumIndex := len(rawBlockMeta) - common.SizeOfUint32InBytes
 	data := rawBlockMeta[:checksumIndex]
 	checksum := binary.BigEndian.Uint32(rawBlockMeta[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(data) {
-		return nil, ErrChecksumMismatch
+		return nil, common.ErrChecksumMismatch
 	}
 
 	return newSSTableInfoOwned(data), nil
@@ -461,8 +482,8 @@ func newSSTIterator(
 
 func newSSTIteratorFromKey(
 	table *SSTableHandle,
-	tableStore *TableStore,
 	fromKey []byte,
+	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
 ) *SSTIterator {
@@ -479,47 +500,47 @@ func newSSTIteratorFromKey(
 	return iter
 }
 
-func (iter *SSTIterator) Next() (mo.Option[KeyValue], error) {
+func (iter *SSTIterator) Next() (mo.Option[common.KV], error) {
 	for {
-		kvDel, err := iter.NextEntry()
+		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValue](), err
+			return mo.None[common.KV](), err
 		}
-		keyVal, ok := kvDel.Get()
+		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.valueDel.isTombstone {
+			if keyVal.ValueDel.IsTombstone {
 				continue
 			}
 
-			return mo.Some[KeyValue](KeyValue{
-				key:   keyVal.key,
-				value: keyVal.valueDel.value,
+			return mo.Some(common.KV{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
 			}), nil
 		} else {
-			return mo.None[KeyValue](), nil
+			return mo.None[common.KV](), nil
 		}
 	}
 }
 
-func (iter *SSTIterator) NextEntry() (mo.Option[KeyValueDeletable], error) {
+func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	for {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
-				return mo.None[KeyValueDeletable](), err
+				return mo.None[common.KVDeletable](), err
 			}
 
 			if nextBlockIter.IsPresent() {
 				iter.currentBlockIter = nextBlockIter
 			} else {
-				return mo.None[KeyValueDeletable](), nil
+				return mo.None[common.KVDeletable](), nil
 			}
 		}
 
 		currentBlockIter, _ := iter.currentBlockIter.Get()
 		kv, err := currentBlockIter.NextEntry()
 		if err != nil {
-			return mo.None[KeyValueDeletable](), err
+			return mo.None[common.KVDeletable](), err
 		}
 
 		if kv.IsPresent() {
@@ -546,14 +567,15 @@ func (iter *SSTIterator) spawnFetches() {
 		blocksCh := make(chan mo.Option[[]Block], 1)
 		iter.fetchTasks <- blocksCh
 
+		// TODO: ensure goroutine does not leak.
 		go func(table *SSTableHandle, store *TableStore, blocksStart uint64, blocksEnd uint64) {
-			blocks, err := store.readBlocks(table, Range{blocksStart, blocksEnd})
+			blocks, err := store.readBlocks(table, common.Range{Start: blocksStart, End: blocksEnd})
 			if err != nil {
 				blocksCh <- mo.None[[]Block]()
 			} else {
 				blocksCh <- mo.Some(blocks)
 			}
-		}(iter.table, iter.tableStore, blocksStart, blocksEnd)
+		}(iter.table.clone(), iter.tableStore.clone(), blocksStart, blocksEnd)
 
 		iter.nextBlockIdxToFetch = blocksEnd
 	}
@@ -563,7 +585,7 @@ func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
 	for {
 		iter.spawnFetches()
 		if len(iter.fetchTasks) == 0 {
-			assertTrue(int(iter.nextBlockIdxToFetch) == iter.table.info.borrow().BlockMetaLength(), "")
+			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.table.info.borrow().BlockMetaLength(), "")
 			return mo.None[*BlockIterator](), nil
 		}
 
@@ -583,7 +605,7 @@ func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
 				return mo.Some(newBlockIteratorFromFirstKey(block)), nil
 			}
 		} else {
-			return mo.None[*BlockIterator](), ErrReadBlocks
+			return mo.None[*BlockIterator](), common.ErrReadBlocks
 		}
 	}
 }
