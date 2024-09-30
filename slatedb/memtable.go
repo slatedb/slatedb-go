@@ -6,6 +6,7 @@ import (
 	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 )
@@ -13,6 +14,11 @@ import (
 type Bytes []byte
 
 func (b Bytes) Compare(lhs, rhs interface{}) int {
+	// TODO: skiplist internally calls this method. Find out why it returns
+	// 	rhs type as func() interface{} instead of []byte
+	if reflect.TypeOf(lhs) != reflect.TypeOf(rhs) {
+		return bytes.Compare(lhs.([]byte), rhs.(func() interface{})().([]byte))
+	}
 	return bytes.Compare(lhs.([]byte), rhs.([]byte))
 }
 
@@ -25,7 +31,8 @@ func (b Bytes) CalcScore(key interface{}) float64 {
 // ------------------------------------------------
 
 type KVTable struct {
-	mu            sync.RWMutex
+	sync.RWMutex
+	flushLock     *sync.Mutex
 	flushNotifyCh chan chan bool
 
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
@@ -35,13 +42,14 @@ type KVTable struct {
 func newKVTable() *KVTable {
 	return &KVTable{
 		skl:           skiplist.New(Bytes{}),
+		flushLock:     &sync.Mutex{},
 		flushNotifyCh: make(chan chan bool, math.MaxUint8),
 	}
 }
 
 func (k *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 
 	elem := k.skl.Get(key)
 	if elem == nil {
@@ -51,8 +59,8 @@ func (k *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
 }
 
 func (k *KVTable) put(key []byte, value []byte) int64 {
-	k.mu.Lock()
-	defer k.mu.Unlock()
+	k.Lock()
+	defer k.Unlock()
 
 	valueDel := common.ValueDeletable{
 		Value:       value,
@@ -63,13 +71,8 @@ func (k *KVTable) put(key []byte, value []byte) int64 {
 }
 
 func (k *KVTable) delete(key []byte) int64 {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-
-	elem := k.skl.Get(key)
-	if elem == nil {
-		return 0
-	}
+	k.Lock()
+	defer k.Unlock()
 
 	valueDel := common.ValueDeletable{
 		Value:       nil,
@@ -80,39 +83,66 @@ func (k *KVTable) delete(key []byte) int64 {
 }
 
 func (k *KVTable) isEmpty() bool {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	return k.skl.Len() == 0
 }
 
 func (k *KVTable) iter() *MemTableIterator {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	return newMemTableIterator(k.skl.Front())
 }
 
 func (k *KVTable) rangeFrom(start []byte) *MemTableIterator {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	k.RLock()
+	defer k.RUnlock()
 	elem := k.skl.Find(start)
 	return newMemTableIterator(elem)
 }
 
+// we do not expect this to block because flushNotifyCh has a length of math.MaxUint8
+// and we do not expect that many clients waiting on awaitFlush.
+// if this expectation changes in future there is a possibility of deadlock
 func (k *KVTable) awaitFlush() <-chan bool {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	done := make(chan bool)
+	k.flushLock.Lock()
+	defer k.flushLock.Unlock()
+	done := make(chan bool, 1)
 	k.flushNotifyCh <- done
 	return done
 }
 
 func (k *KVTable) notifyFlush() {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	for done := range k.flushNotifyCh {
-		done <- true
+	k.flushLock.Lock()
+	defer k.flushLock.Unlock()
+	if len(k.flushNotifyCh) == 0 {
+		return
+	}
+	for i := 0; i < len(k.flushNotifyCh); i++ {
+		done := <-k.flushNotifyCh
+		if len(done) == 0 {
+			done <- true
+			close(done)
+		}
 	}
 	k.flushNotifyCh = make(chan chan bool, math.MaxUint8)
+}
+
+func (k *KVTable) clone() *KVTable {
+	k.RLock()
+	defer k.RUnlock()
+	skl := skiplist.New(Bytes{})
+	current := k.skl.Front()
+	for current != nil {
+		skl.Set(current.Key, current.Value)
+		current = current.Next()
+	}
+	return &KVTable{
+		RWMutex:       sync.RWMutex{},
+		flushLock:     k.flushLock,
+		flushNotifyCh: k.flushNotifyCh,
+		skl:           skl,
+	}
 }
 
 // ------------------------------------------------
@@ -120,6 +150,7 @@ func (k *KVTable) notifyFlush() {
 // ------------------------------------------------
 
 type WritableKVTable struct {
+	sync.RWMutex
 	table *KVTable
 	size  atomic.Int64
 }
@@ -131,12 +162,16 @@ func newWritableKVTable() *WritableKVTable {
 }
 
 func (w *WritableKVTable) put(key, value []byte) {
+	w.Lock()
+	defer w.Unlock()
 	w.maybeSubtractOldValFromSize(key)
 	newSize := w.table.put(key, value)
 	w.size.Add(newSize)
 }
 
 func (w *WritableKVTable) delete(key []byte) {
+	w.Lock()
+	defer w.Unlock()
 	w.maybeSubtractOldValFromSize(key)
 	newSize := w.table.delete(key)
 	w.size.Add(newSize)
@@ -150,6 +185,18 @@ func (w *WritableKVTable) maybeSubtractOldValFromSize(key []byte) {
 	}
 }
 
+func (w *WritableKVTable) clone() *WritableKVTable {
+	w.RLock()
+	defer w.RUnlock()
+	kvTable := &WritableKVTable{
+		RWMutex: sync.RWMutex{},
+		table:   w.table.clone(),
+		size:    atomic.Int64{},
+	}
+	kvTable.size.Store(w.size.Load())
+	return kvTable
+}
+
 // ------------------------------------------------
 // ImmutableWAL
 // ------------------------------------------------
@@ -159,10 +206,17 @@ type ImmutableWAL struct {
 	table *KVTable
 }
 
-func newImmutableWal(id uint64, table *WritableKVTable) ImmutableWAL {
-	return ImmutableWAL{
+func newImmutableWal(id uint64, table *WritableKVTable) *ImmutableWAL {
+	return &ImmutableWAL{
 		id:    id,
 		table: table.table,
+	}
+}
+
+func (i *ImmutableWAL) clone() *ImmutableWAL {
+	return &ImmutableWAL{
+		id:    i.id,
+		table: i.table.clone(),
 	}
 }
 
@@ -179,6 +233,13 @@ func newImmutableMemtable(table *WritableKVTable, lastWalID uint64) ImmutableMem
 	return ImmutableMemtable{
 		table:     table.table,
 		lastWalID: lastWalID,
+	}
+}
+
+func (i *ImmutableMemtable) clone() *ImmutableMemtable {
+	return &ImmutableMemtable{
+		lastWalID: i.lastWalID,
+		table:     i.table.clone(),
 	}
 }
 

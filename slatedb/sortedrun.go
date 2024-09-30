@@ -41,6 +41,17 @@ func (s *SortedRun) sstWithKey(key []byte) mo.Option[SSTableHandle] {
 	return mo.None[SSTableHandle]()
 }
 
+func (s *SortedRun) clone() *SortedRun {
+	sstList := make([]SSTableHandle, 0, len(s.sstList))
+	for _, sst := range s.sstList {
+		sstList = append(sstList, *sst.clone())
+	}
+	return &SortedRun{
+		id:      s.id,
+		sstList: sstList,
+	}
+}
+
 // ------------------------------------------------
 // SortedRunIterator
 // ------------------------------------------------
@@ -63,8 +74,8 @@ func newSortedRunIterator(
 }
 
 func newSortedRunIteratorFromKey(
-	key []byte,
 	sortedRun SortedRun,
+	key []byte,
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
@@ -93,7 +104,7 @@ func newSortedRunIter(
 		var iter *SSTIterator
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter = newSSTIteratorFromKey(&sst, tableStore, key, maxFetchTasks, numBlocksToFetch)
+			iter = newSSTIteratorFromKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
 		} else {
 			iter = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
 		}

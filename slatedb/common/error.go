@@ -19,4 +19,5 @@ var (
 	ErrBlockCompression        = errors.New("error Compressing Block")
 	ErrReadBlocks              = errors.New("error Reading Blocks")
 	ErrObjectExists            = errors.New("error Object Exists")
+	ErrKeyNotFound             = errors.New("key not found")
 )

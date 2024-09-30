@@ -15,17 +15,18 @@ import (
 // DBState
 // ------------------------------------------------
 
-type DBState struct {
-	sync.RWMutex
-	memtable *WritableKVTable
-	wal      *WritableKVTable
-	state    *COWDBState
-}
-
 type COWDBState struct {
 	immMemtable *deque.Deque[ImmutableMemtable]
 	immWAL      *deque.Deque[ImmutableWAL]
 	core        *CoreDBState
+}
+
+func (s *COWDBState) clone() *COWDBState {
+	return &COWDBState{
+		immMemtable: common.CopyDeque(s.immMemtable),
+		immWAL:      common.CopyDeque(s.immWAL),
+		core:        s.core.clone(),
+	}
 }
 
 type CoreDBState struct {
@@ -36,12 +37,6 @@ type CoreDBState struct {
 	lastCompactedWalSSTID uint64
 }
 
-type DBStateSnapshot struct {
-	memtable *KVTable
-	wal      *KVTable
-	state    *COWDBState
-}
-
 func newCoreDBState() *CoreDBState {
 	return &CoreDBState{
 		l0LastCompacted:       mo.None[ulid.ULID](),
@@ -50,6 +45,37 @@ func newCoreDBState() *CoreDBState {
 		nextWalSstID:          1,
 		lastCompactedWalSSTID: 0,
 	}
+}
+
+func (c *CoreDBState) clone() *CoreDBState {
+	l0 := make([]SSTableHandle, 0, len(c.l0))
+	for _, sst := range c.l0 {
+		l0 = append(l0, *sst.clone())
+	}
+	compacted := make([]SortedRun, 0, len(c.compacted))
+	for _, sr := range c.compacted {
+		compacted = append(compacted, *sr.clone())
+	}
+	return &CoreDBState{
+		l0LastCompacted:       c.l0LastCompacted,
+		l0:                    l0,
+		compacted:             compacted,
+		nextWalSstID:          c.nextWalSstID,
+		lastCompactedWalSSTID: c.lastCompactedWalSSTID,
+	}
+}
+
+type DBStateSnapshot struct {
+	memtable *KVTable
+	wal      *KVTable
+	state    *COWDBState
+}
+
+type DBState struct {
+	sync.RWMutex
+	memtable *WritableKVTable
+	wal      *WritableKVTable
+	state    *COWDBState
 }
 
 func newDBState(coreDBState *CoreDBState) *DBState {
@@ -67,7 +93,7 @@ func newDBState(coreDBState *CoreDBState) *DBState {
 func (s *DBState) getState() *COWDBState {
 	s.RLock()
 	defer s.RUnlock()
-	return s.state
+	return s.state.clone()
 }
 
 func (s *DBState) snapshot() *DBStateSnapshot {
@@ -75,9 +101,9 @@ func (s *DBState) snapshot() *DBStateSnapshot {
 	defer s.RUnlock()
 
 	return &DBStateSnapshot{
-		memtable: s.memtable.table,
-		wal:      s.wal.table,
-		state:    s.state,
+		memtable: s.memtable.table.clone(),
+		wal:      s.wal.table.clone(),
+		state:    s.state.clone(),
 	}
 }
 
@@ -104,7 +130,7 @@ func (s *DBState) freezeWAL() mo.Option[uint64] {
 	immWAL := newImmutableWal(s.state.core.nextWalSstID, oldWAL)
 
 	s.wal = newWritableKVTable()
-	s.state.immWAL.PushFront(immWAL)
+	s.state.immWAL.PushFront(*immWAL)
 	s.state.core.nextWalSstID += 1
 
 	return mo.Some(immWAL.id)
@@ -204,6 +230,18 @@ func (s *SSTableID) compactedID() mo.Option[ulid.ULID] {
 	return mo.Some(val)
 }
 
+func (s *SSTableID) clone() SSTableID {
+	var sstID SSTableID
+	if s.typ == WAL {
+		id, _ := s.walID().Get()
+		sstID = newSSTableIDWal(id)
+	} else if s.typ == Compacted {
+		id, _ := s.compactedID().Get()
+		sstID = newSSTableIDCompacted(id)
+	}
+	return sstID
+}
+
 // ------------------------------------------------
 // SSTableHandle
 // ------------------------------------------------
@@ -220,4 +258,11 @@ func newSSTableHandle(id SSTableID, info *SSTableInfoOwned) *SSTableHandle {
 func (h *SSTableHandle) rangeCoversKey(key []byte) bool {
 	firstKey := h.info.borrow().FirstKeyBytes()
 	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
+}
+
+func (h *SSTableHandle) clone() *SSTableHandle {
+	return &SSTableHandle{
+		id:   h.id.clone(),
+		info: h.info.clone(),
+	}
 }

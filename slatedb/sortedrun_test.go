@@ -111,7 +111,7 @@ func TestSRIterFromKey(t *testing.T) {
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
 
-		kvIter := newSortedRunIteratorFromKey(fromKey, sr, tableStore, 1, 1)
+		kvIter := newSortedRunIteratorFromKey(sr, fromKey, tableStore, 1, 1)
 
 		for j := 0; j < 30-i; j++ {
 			common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -136,7 +136,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	expectedValGen := valGen.Clone()
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey([]byte("aaaaaaaaaa"), sr, tableStore, 1, 1)
+	kvIter := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
 
 	for j := 0; j < 30; j++ {
 		common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -158,7 +158,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey([]byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), sr, tableStore, 1, 1)
+	kvIter := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	next, err := kvIter.Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())

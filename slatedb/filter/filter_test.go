@@ -96,7 +96,7 @@ func TestFilterEffective(t *testing.T) {
 	for i = 0; i < keysToTest; i++ {
 		bytes := make([]byte, keySize)
 		binary.BigEndian.PutUint32(bytes, i)
-		assert.True(t, filter.hasKey(bytes))
+		assert.True(t, filter.HasKey(bytes))
 	}
 
 	// check false positives
@@ -104,7 +104,7 @@ func TestFilterEffective(t *testing.T) {
 	for i := keysToTest; i < keysToTest*2; i++ {
 		bytes := make([]byte, keySize)
 		binary.BigEndian.PutUint32(bytes, i)
-		if filter.hasKey(bytes) {
+		if filter.HasKey(bytes) {
 			fp += 1
 		}
 	}

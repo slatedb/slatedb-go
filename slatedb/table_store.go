@@ -44,6 +44,7 @@ func newTableStore(bucket objstore.Bucket, format *SSTableFormat, rootPath strin
 	}
 }
 
+// Get list of WALs from object store that are not compacted (walID greater than walIDLastCompacted)
 func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error) {
 	walList := make([]uint64, 0)
 	walPath := path.Join(ts.rootPath, ts.walPath)
@@ -154,6 +155,20 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 	}
 
 	return id, nil
+}
+
+func (ts *TableStore) clone() *TableStore {
+	cache, err := otter.MustBuilder[SSTableID, mo.Option[filter.BloomFilter]](1000).Build()
+	common.AssertTrue(err == nil, "")
+	return &TableStore{
+		mu:            sync.RWMutex{},
+		bucket:        ts.bucket,
+		sstFormat:     ts.sstFormat.clone(),
+		rootPath:      ts.rootPath,
+		walPath:       ts.walPath,
+		compactedPath: ts.compactedPath,
+		filterCache:   cache,
+	}
 }
 
 // ------------------------------------------------

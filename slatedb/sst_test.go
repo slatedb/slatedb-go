@@ -366,7 +366,7 @@ func TestIterFromKey(t *testing.T) {
 		expectedValGen := testCaseValGen.Clone()
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
-		kvIter := newSSTIteratorFromKey(sst, tableStore, fromKey, 1, 1)
+		kvIter := newSSTIteratorFromKey(sst, fromKey, tableStore, 1, 1)
 
 		for j := 0; j < nKeys-i; j++ {
 			common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -391,7 +391,7 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	expectedValGen := valGen.Clone()
 
 	sst, nKeys := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
-	kvIter := newSSTIteratorFromKey(sst, tableStore, []byte("aaaaaaaaaaaaaaaa"), 1, 1)
+	kvIter := newSSTIteratorFromKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
 
 	for i := 0; i < nKeys; i++ {
 		common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -413,7 +413,7 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
 	sst, _ := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
-	kvIter := newSSTIteratorFromKey(sst, tableStore, []byte("zzzzzzzzzzzzzzzz"), 1, 1)
+	kvIter := newSSTIteratorFromKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 
 	next, err := kvIter.Next()
 	assert.NoError(t, err)

@@ -33,7 +33,7 @@ func (b *BloomFilter) filterBits() uint32 {
 	return uint32(len(b.buffer) * 8)
 }
 
-func (b *BloomFilter) hasKey(key []byte) bool {
+func (b *BloomFilter) HasKey(key []byte) bool {
 	probes := probesForKey(filterHash(key), b.numProbes, b.filterBits())
 	for _, p := range probes {
 		if !checkBit(uint64(p), b.buffer) {

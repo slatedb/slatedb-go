@@ -1,7 +1,6 @@
 package common
 
 import (
-	"github.com/samber/mo"
 	"unsafe"
 )
 
@@ -27,9 +26,9 @@ func (v ValueDeletable) Size() int64 {
 	return int64(unsafe.Sizeof(v))
 }
 
-func (v ValueDeletable) IntoOption() mo.Option[[]byte] {
+func (v ValueDeletable) GetValue() []byte {
 	if v.IsTombstone {
-		return mo.None[[]byte]()
+		return nil
 	}
-	return mo.Some(v.Value)
+	return v.Value
 }

@@ -186,6 +186,7 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	if stored.IsAbsent() {
 		return nil, common.ErrInvalidDBState
 	}
+
 	storedInfo, _ := stored.Get()
 	s.manifest = &storedInfo.manifest
 	s.id = storedInfo.id
