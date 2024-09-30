@@ -1,7 +1,7 @@
 package common
 
 import (
-	"unsafe"
+	"encoding/binary"
 )
 
 // KV Represents a key-value pair known not to be a tombstone.
@@ -23,7 +23,7 @@ type ValueDeletable struct {
 }
 
 func (v ValueDeletable) Size() int64 {
-	return int64(unsafe.Sizeof(v))
+	return int64(binary.Size(v.Value) + binary.Size(v.IsTombstone))
 }
 
 func (v ValueDeletable) GetValue() []byte {

@@ -17,17 +17,17 @@ type DB struct {
 	compactor  *Compactor
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
-	// and the goroutine that is running the walFlush task reads this channel and stops running
+	// and the goroutine running the walFlush task reads this channel and shuts down
 	walFlushNotifierCh chan bool
 
 	// memtableFlushNotifierCh - When DB.Close is called, we send a Shutdown notification to this channel
-	// and the goroutine that is running the memtableFlush task reads this channel and stops running
+	// and the goroutine running the memtableFlush task reads this channel and shuts down
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg
 
-	// walFlushTaskWG - When DB.Close is called, this is used to wait till the flush task is completed
+	// walFlushTaskWG - When DB.Close is called, this is used to wait till the flush task goroutine is completed
 	walFlushTaskWG *sync.WaitGroup
 
-	// memtableFlushTaskWG - When DB.Close is called, this is used to wait till the memtableFlush task is completed
+	// memtableFlushTaskWG - When DB.Close is called, this is used to wait till the memtableFlush task goroutine is completed
 	memtableFlushTaskWG *sync.WaitGroup
 }
 

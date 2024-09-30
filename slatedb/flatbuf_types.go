@@ -48,10 +48,14 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTId(sstID *flatbuf.CompactedSstId
 	if sstID == nil || (sstID.High == 0 && sstID.Low == 0) {
 		return ulid.Zero
 	}
+
 	id := make([]byte, 0, 16)
 	id = binary.BigEndian.AppendUint64(id, sstID.High)
 	id = binary.BigEndian.AppendUint64(id, sstID.Low)
-	return ulid.MustParse(string(id))
+
+	var ulidID ulid.ULID
+	copy(ulidID[:], id)
+	return ulidID
 }
 
 func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.CompactedSsTableT) []SSTableHandle {

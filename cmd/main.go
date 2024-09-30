@@ -8,28 +8,24 @@ import (
 
 func main() {
 	bucket := objstore.NewInMemBucket()
-	db, err := slatedb.Open("/tmp/testDB", bucket)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	db, _ := slatedb.Open("/tmp/testDB", bucket)
 
-	key := []byte("key")
-	value := []byte("value")
+	key := []byte("key1")
+	value := []byte("value1")
 
 	db.Put(key, value)
-	fmt.Println("Put", string(key), string(value))
+	fmt.Println("Put:", string(key), string(value))
 
-	data, err := db.Get(key)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println("Get value is ", string(data))
+	data, _ := db.Get(key)
+	fmt.Println("Get:", string(key), string(data))
 
 	db.Delete(key)
-	fmt.Println("Key deleted is ", string(data))
+	data, err := db.Get(key)
+	if err != nil && err.Error() == "key not found" {
+		fmt.Println("Delete:", string(key))
+	} else {
+		fmt.Println("failed to delete key", string(key))
+	}
 
 	db.Close()
-
 }
