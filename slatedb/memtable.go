@@ -1,30 +1,13 @@
 package slatedb
 
 import (
-	"bytes"
 	"github.com/huandu/skiplist"
 	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
 	"math"
-	"reflect"
 	"sync"
 	"sync/atomic"
 )
-
-type Bytes []byte
-
-func (b Bytes) Compare(lhs, rhs interface{}) int {
-	// TODO: skiplist internally calls this method. Find out why it returns
-	// 	rhs type as func() interface{} instead of []byte
-	if reflect.TypeOf(lhs) != reflect.TypeOf(rhs) {
-		return bytes.Compare(lhs.([]byte), rhs.(func() interface{})().([]byte))
-	}
-	return bytes.Compare(lhs.([]byte), rhs.([]byte))
-}
-
-func (b Bytes) CalcScore(key interface{}) float64 {
-	return 0
-}
 
 // ------------------------------------------------
 // KVTable
@@ -41,7 +24,7 @@ type KVTable struct {
 
 func newKVTable() *KVTable {
 	return &KVTable{
-		skl:           skiplist.New(Bytes{}),
+		skl:           skiplist.New(skiplist.Bytes),
 		flushLock:     &sync.Mutex{},
 		flushNotifyCh: make(chan chan bool, math.MaxUint8),
 	}
@@ -131,10 +114,12 @@ func (k *KVTable) notifyFlush() {
 func (k *KVTable) clone() *KVTable {
 	k.RLock()
 	defer k.RUnlock()
-	skl := skiplist.New(Bytes{})
+	skl := skiplist.New(skiplist.Bytes)
 	current := k.skl.Front()
 	for current != nil {
-		skl.Set(current.Key, current.Value)
+		key := current.Key().([]byte)
+		val := current.Value.(common.ValueDeletable)
+		skl.Set(key, val)
 		current = current.Next()
 	}
 	return &KVTable{

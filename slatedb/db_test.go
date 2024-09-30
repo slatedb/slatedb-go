@@ -13,11 +13,17 @@ func TestPutGetDelete(t *testing.T) {
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
 
-	key := []byte("key")
-	value := []byte("value")
-
+	key := []byte("key1")
+	value := []byte("value1")
 	db.Put(key, value)
 	val, err := db.Get(key)
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
+
+	key = []byte("key2")
+	value = []byte("value2")
+	db.Put(key, value)
+	val, err = db.Get(key)
 	assert.NoError(t, err)
 	assert.Equal(t, value, val)
 
