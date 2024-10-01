@@ -28,6 +28,13 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 	}()
 }
 
+// FlushWAL
+//  1. Convert active WAL to Immutable WAL
+//  2. For each Immutable WAL
+//     Flush Immutable WAL to Object store
+//     Flush Immutable WAL to Memtable
+//     If memtable has reached size L0SSTBytes then convert memtable to Immutable memtable
+//     Notify any client(with AwaitFlush set to true) that flush has happened
 func (db *DB) FlushWAL() error {
 	db.state.freezeWAL()
 	err := db.flushImmWALs()
@@ -53,7 +60,7 @@ func (db *DB) flushImmWALs() error {
 		// flush to the memtable before notifying so that data is available for reads
 		db.flushImmWALToMemtable(db.state.memtable, immWal.table)
 		db.maybeFreezeMemtable(db.state, immWal.id)
-		immWal.table.notifyFlush()
+		immWal.table.notifyWALFlushed()
 	}
 	return nil
 }

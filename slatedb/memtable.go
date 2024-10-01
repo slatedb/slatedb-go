@@ -85,9 +85,9 @@ func (k *KVTable) rangeFrom(start []byte) *MemTableIterator {
 }
 
 // we do not expect this to block because flushNotifyCh has a length of math.MaxUint8
-// and we do not expect that many clients waiting on awaitFlush.
+// and we do not expect that many clients waiting on awaitWALFlush.
 // if this expectation changes in future there is a possibility of deadlock
-func (k *KVTable) awaitFlush() <-chan bool {
+func (k *KVTable) awaitWALFlush() <-chan bool {
 	k.flushLock.Lock()
 	defer k.flushLock.Unlock()
 	done := make(chan bool, 1)
@@ -95,7 +95,7 @@ func (k *KVTable) awaitFlush() <-chan bool {
 	return done
 }
 
-func (k *KVTable) notifyFlush() {
+func (k *KVTable) notifyWALFlushed() {
 	k.flushLock.Lock()
 	defer k.flushLock.Unlock()
 	if len(k.flushNotifyCh) == 0 {

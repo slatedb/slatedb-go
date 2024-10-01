@@ -56,7 +56,12 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	}
 
 	db.walFlushNotifierCh = make(chan bool, math.MaxUint8)
+	// we start 2 background threads
+	// one thread for flushing WAL to object store and then to memtable. Flushing happens every FlushMS seconds
 	db.spawnWALFlushTask(db.walFlushNotifierCh, db.walFlushTaskWG)
+	// another thread for
+	// 1. flushing Immutable memtables to L0. Flushing happens when memtable size reaches L0SSTSizeBytes
+	// 2. loading manifest from object store and update current DBState. This happens every ManifestPollInterval milliseconds
 	db.spawnMemtableFlushTask(manifest, memtableFlushNotifierCh, db.memtableFlushTaskWG)
 
 	var compactor *Compactor
@@ -100,7 +105,7 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
 		// because client can read the key from memtable
-		<-currentWAL.table.awaitFlush()
+		<-currentWAL.table.awaitWALFlush()
 	}
 }
 
@@ -192,7 +197,7 @@ func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	currentWAL := db.state.wal
 	currentWAL.delete(key)
 	if options.AwaitFlush {
-		<-currentWAL.table.awaitFlush()
+		<-currentWAL.table.awaitWALFlush()
 	}
 }
 
