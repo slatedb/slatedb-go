@@ -29,10 +29,10 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 }
 
 // FlushWAL
-//  1. Convert active WAL to Immutable WAL
+//  1. Convert mutable WAL to Immutable WAL
 //  2. For each Immutable WAL
 //     Flush Immutable WAL to Object store
-//     Flush Immutable WAL to Memtable
+//     Flush Immutable WAL to mutable Memtable
 //     If memtable has reached size L0SSTBytes then convert memtable to Immutable memtable
 //     Notify any client(with AwaitFlush set to true) that flush has happened
 func (db *DB) FlushWAL() error {

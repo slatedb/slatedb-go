@@ -115,15 +115,15 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 
 // GetWithOptions -
 // if readlevel is Uncommitted we start searching key in the following order
-// active WAL, immutableWALs, active memtable, immutable memtables, SSTs in L0, compacted Sorted runs
+// mutable WAL, immutableWALs, mutable memtable, immutable memtables, SSTs in L0, compacted Sorted runs
 //
 // if readlevel is Committed we start searching key in the following order
-// active memtable, immutable memtables, SSTs in L0, compacted Sorted runs
+// mutable memtable, immutable memtables, SSTs in L0, compacted Sorted runs
 func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	snapshot := db.state.snapshot()
 
 	if options.ReadLevel == Uncommitted {
-		// search for key in active WAL
+		// search for key in mutable WAL
 		val, ok := snapshot.wal.get(key).Get()
 		if ok { // key is present or tombstoned
 			return checkValue(val)
@@ -139,7 +139,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 		}
 	}
 
-	// search for key in active memtable
+	// search for key in mutable memtable
 	val, ok := snapshot.memtable.get(key).Get()
 	if ok { // key is present or tombstoned
 		return checkValue(val)
