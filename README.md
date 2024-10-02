@@ -15,7 +15,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/naveen246/slatedb-go/slatedb"
+	"github.com/slatedb/slatedb-go/slatedb"
 	"github.com/thanos-io/objstore"
 )
 

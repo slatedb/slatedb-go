@@ -2,7 +2,7 @@ package slatedb
 
 import (
 	"bytes"
-	"github.com/naveen246/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/thanos-io/objstore"
 	"math"
 	"sync"

@@ -1,9 +1,9 @@
 package slatedb
 
 import (
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"maps"
 	"math"
 	"slices"

@@ -6,15 +6,15 @@ import (
 	"encoding/binary"
 	"github.com/gammazero/deque"
 	flatbuffers "github.com/google/flatbuffers/go"
-	"github.com/naveen246/slatedb-go/slatedb/common"
-	"github.com/naveen246/slatedb-go/slatedb/filter"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/filter"
 	"hash/crc32"
 	"io"
 	"math"
 
 	"github.com/golang/snappy"
-	flatbuf "github.com/naveen246/slatedb-go/gen"
 	"github.com/samber/mo"
+	flatbuf "github.com/slatedb/slatedb-go/gen"
 )
 
 // ------------------------------------------------

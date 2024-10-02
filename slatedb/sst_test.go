@@ -3,8 +3,8 @@ package slatedb
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"

@@ -2,8 +2,8 @@ package slatedb
 
 import (
 	"github.com/huandu/skiplist"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"math"
 	"sync"
 	"sync/atomic"

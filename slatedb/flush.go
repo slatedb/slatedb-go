@@ -2,9 +2,9 @@ package slatedb
 
 import (
 	"errors"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"log"
 	"sync"
 	"time"

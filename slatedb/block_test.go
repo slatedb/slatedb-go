@@ -2,8 +2,8 @@ package slatedb
 
 import (
 	"bytes"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

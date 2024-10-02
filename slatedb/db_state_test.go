@@ -2,9 +2,9 @@ package slatedb
 
 import (
 	flatbuffers "github.com/google/flatbuffers/go"
-	flatbuf "github.com/naveen246/slatedb-go/gen"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	flatbuf "github.com/slatedb/slatedb-go/gen"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

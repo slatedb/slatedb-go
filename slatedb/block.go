@@ -3,7 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/naveen246/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"math"
 
 	"github.com/samber/mo"

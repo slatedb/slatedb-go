@@ -3,8 +3,8 @@ package slatedb
 import (
 	"bytes"
 	"context"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/thanos-io/objstore"
 	"io"
 	"path"

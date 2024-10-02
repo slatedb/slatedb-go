@@ -3,10 +3,10 @@ package slatedb
 import (
 	"encoding/binary"
 	flatbuffers "github.com/google/flatbuffers/go"
-	flatbuf "github.com/naveen246/slatedb-go/gen"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	flatbuf "github.com/slatedb/slatedb-go/gen"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type FlatBufferManifestCodec struct {

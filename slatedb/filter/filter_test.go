@@ -2,7 +2,7 @@ package filter
 
 import (
 	"encoding/binary"
-	"github.com/naveen246/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

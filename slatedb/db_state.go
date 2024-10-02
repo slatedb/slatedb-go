@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gammazero/deque"
-	"github.com/naveen246/slatedb-go/slatedb/common"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"strconv"
 	"sync"
 )

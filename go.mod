@@ -1,4 +1,4 @@
-module github.com/naveen246/slatedb-go
+module github.com/slatedb/slatedb-go
 
 go 1.23.1
 
