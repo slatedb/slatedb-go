@@ -104,7 +104,7 @@ func TestShouldBumpWriterEpoch(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, info.IsPresent())
 		mInfo, _ := info.Get()
-		assert.Equal(t, uint64(i), mInfo.manifest.writerEpoch)
+		assert.Equal(t, uint64(i), mInfo.manifest.writerEpoch.Load())
 	}
 }
 
@@ -157,7 +157,7 @@ func TestShouldBumpCompactorEpoch(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, info.IsPresent())
 		mInfo, _ := info.Get()
-		assert.Equal(t, uint64(i), mInfo.manifest.compactorEpoch)
+		assert.Equal(t, uint64(i), mInfo.manifest.compactorEpoch.Load())
 	}
 }
 

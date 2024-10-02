@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 type EpochType int
@@ -27,38 +28,42 @@ const (
 // fenced and fails all operations with error ErrFenced.
 type FenceableManifest struct {
 	storedManifest *StoredManifest
-	localEpoch     uint64
+	localEpoch     atomic.Uint64
 	epochType      EpochType
 }
 
 func initFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	localEpoch := manifest.writerEpoch + 1
-	manifest.writerEpoch = localEpoch
+	var localEpoch atomic.Uint64
+	localEpoch.Store(manifest.writerEpoch.Add(1))
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
 	}
-	return &FenceableManifest{
+
+	fm := &FenceableManifest{
 		storedManifest: storedManifest,
-		localEpoch:     localEpoch,
 		epochType:      WriterEpoch,
-	}, nil
+	}
+	fm.localEpoch.Store(localEpoch.Load())
+	return fm, nil
 }
 
 func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	localEpoch := manifest.compactorEpoch + 1
-	manifest.compactorEpoch = localEpoch
+	var localEpoch atomic.Uint64
+	localEpoch.Store(manifest.compactorEpoch.Add(1))
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
 	}
-	return &FenceableManifest{
+
+	fm := &FenceableManifest{
 		storedManifest: storedManifest,
-		localEpoch:     localEpoch,
 		epochType:      CompactorEpoch,
-	}, nil
+	}
+	fm.localEpoch.Store(localEpoch.Load())
+	return fm, nil
 }
 
 func (f *FenceableManifest) dbState() (*CoreDBState, error) {
@@ -87,17 +92,17 @@ func (f *FenceableManifest) refresh() (*CoreDBState, error) {
 
 func (f *FenceableManifest) storedEpoch() uint64 {
 	if f.epochType == WriterEpoch {
-		return f.storedManifest.manifest.writerEpoch
+		return f.storedManifest.manifest.writerEpoch.Load()
 	} else {
-		return f.storedManifest.manifest.compactorEpoch
+		return f.storedManifest.manifest.compactorEpoch.Load()
 	}
 }
 
 func (f *FenceableManifest) checkEpoch() error {
-	if f.localEpoch < f.storedEpoch() {
+	if f.localEpoch.Load() < f.storedEpoch() {
 		return common.ErrFenced
 	}
-	if f.localEpoch > f.storedEpoch() {
+	if f.localEpoch.Load() > f.storedEpoch() {
 		panic("the stored epoch is lower than the local epoch")
 	}
 	return nil
@@ -122,9 +127,7 @@ type StoredManifest struct {
 
 func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest, error) {
 	manifest := &Manifest{
-		core:           core,
-		writerEpoch:    0,
-		compactorEpoch: 0,
+		core: core,
 	}
 	err := store.writeManifest(1, manifest)
 	if err != nil {
@@ -149,7 +152,7 @@ func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error)
 	storedInfo, _ := stored.Get()
 	return mo.Some(StoredManifest{
 		id:            storedInfo.id,
-		manifest:      &storedInfo.manifest,
+		manifest:      storedInfo.manifest,
 		manifestStore: store,
 	}), nil
 }
@@ -160,10 +163,10 @@ func (s *StoredManifest) dbState() *CoreDBState {
 
 func (s *StoredManifest) updateDBState(core *CoreDBState) error {
 	manifest := &Manifest{
-		core:           core,
-		writerEpoch:    s.manifest.writerEpoch,
-		compactorEpoch: s.manifest.compactorEpoch,
+		core: core,
 	}
+	manifest.writerEpoch.Store(s.manifest.writerEpoch.Load())
+	manifest.compactorEpoch.Store(s.manifest.compactorEpoch.Load())
 	return s.updateManifest(manifest)
 }
 
@@ -188,7 +191,7 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	}
 
 	storedInfo, _ := stored.Get()
-	s.manifest = &storedInfo.manifest
+	s.manifest = storedInfo.manifest
 	s.id = storedInfo.id
 	return s.manifest.core, nil
 }
@@ -225,7 +228,7 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
 
 type manifestInfo struct {
 	id       uint64
-	manifest Manifest
+	manifest *Manifest
 }
 
 func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
@@ -270,7 +273,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	if err != nil {
 		return mo.None[manifestInfo](), err
 	}
-	return mo.Some(manifestInfo{latestManifestID, *manifest}), nil
+	return mo.Some(manifestInfo{latestManifestID, manifest}), nil
 }
 
 func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, error) {

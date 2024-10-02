@@ -31,11 +31,12 @@ func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manife
 		lastCompactedWalSSTID: manifest.WalIdLastCompacted,
 	}
 
-	return &Manifest{
-		core:           core,
-		writerEpoch:    manifest.WriterEpoch,
-		compactorEpoch: manifest.CompactorEpoch,
+	m := &Manifest{
+		core: core,
 	}
+	m.writerEpoch.Store(manifest.WriterEpoch)
+	m.compactorEpoch.Store(manifest.CompactorEpoch)
+	return m
 }
 
 func (f FlatBufferManifestCodec) createFromManifest(manifest *Manifest) []byte {
@@ -108,8 +109,8 @@ func (fb DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 
 	manifestV1 := flatbuf.ManifestV1T{
 		ManifestId:         0,
-		WriterEpoch:        manifest.writerEpoch,
-		CompactorEpoch:     manifest.compactorEpoch,
+		WriterEpoch:        manifest.writerEpoch.Load(),
+		CompactorEpoch:     manifest.compactorEpoch.Load(),
 		WalIdLastCompacted: core.lastCompactedWalSSTID,
 		WalIdLastSeen:      core.nextWalSstID - 1,
 		L0LastCompacted:    l0LastCompacted,

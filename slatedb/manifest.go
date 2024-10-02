@@ -1,9 +1,11 @@
 package slatedb
 
+import "sync/atomic"
+
 type Manifest struct {
 	core           *CoreDBState
-	writerEpoch    uint64
-	compactorEpoch uint64
+	writerEpoch    atomic.Uint64
+	compactorEpoch atomic.Uint64
 }
 
 type ManifestCodec interface {
