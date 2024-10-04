@@ -107,7 +107,7 @@ func (c *CompactorState) getCompactions() []Compaction {
 	return slices.Collect(maps.Values(c.compactions))
 }
 
-func (c *CompactorState) submitCompaction(compaction Compaction) error {
+func (c *CompactorState) submitCompaction(compaction *Compaction) error {
 	_, ok := c.compactions[compaction.destination]
 	if ok {
 		// we already have an ongoing compaction for this destination
@@ -124,11 +124,11 @@ func (c *CompactorState) submitCompaction(compaction Compaction) error {
 		}
 	}
 
-	c.compactions[compaction.destination] = compaction
+	c.compactions[compaction.destination] = *compaction
 	return nil
 }
 
-func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction Compaction) bool {
+func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction *Compaction) bool {
 	for _, src := range compaction.sources {
 		if src.typ == SortedRunID {
 			srcVal, _ := strconv.Atoi(src.value)
@@ -142,24 +142,29 @@ func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction Compactio
 
 func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 	// the writer may have added more l0 SSTs. Add these to our l0 list.
-	lastCompacted, _ := c.dbState.l0LastCompacted.Get()
+	lastCompactedL0 := c.dbState.l0LastCompacted
 	mergedL0s := make([]SSTableHandle, 0)
 
 	for _, writerL0SST := range writerState.l0 {
 		common.AssertTrue(writerL0SST.id.typ == Compacted, "unexpected SSTableID type")
 		writerL0ID, _ := writerL0SST.id.compactedID().Get()
 		// we stop appending to our l0 list if we encounter sstID equal to lastCompactedID
-		if c.dbState.l0LastCompacted.IsPresent() && writerL0ID == lastCompacted {
+		lastCompactedL0ID, _ := lastCompactedL0.Get()
+		if lastCompactedL0.IsPresent() && writerL0ID == lastCompactedL0ID {
 			break
 		}
 		mergedL0s = append(mergedL0s, writerL0SST)
 	}
 
-	c.dbState.l0 = mergedL0s
-	c.dbState.lastCompactedWalSSTID = writerState.lastCompactedWalSSTID
-	c.dbState.nextWalSstID = writerState.nextWalSstID
+	merged := c.dbState.clone()
+	merged.l0 = mergedL0s
+	merged.lastCompactedWalSSTID = writerState.lastCompactedWalSSTID
+	merged.nextWalSstID = writerState.nextWalSstID
+	c.dbState = merged
 }
 
+// update dbState by removing L0 SSTs and compacted SortedRuns that are present
+// in Compaction.sources
 func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 	compaction, ok := c.compactions[outputSR.id]
 	if !ok {
@@ -179,8 +184,9 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 	}
 	compactionSRs[compaction.destination] = true
 
+	dbState := c.dbState.clone()
 	newL0 := make([]SSTableHandle, 0)
-	for _, sst := range c.dbState.l0 {
+	for _, sst := range dbState.l0 {
 		common.AssertTrue(sst.id.compactedID().IsPresent(), "Expected compactedID not present")
 		l0ID, _ := sst.id.compactedID().Get()
 		_, ok := compactionL0s[l0ID]
@@ -191,7 +197,7 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 
 	newCompacted := make([]SortedRun, 0)
 	inserted := false
-	for _, sr := range c.dbState.compacted {
+	for _, sr := range dbState.compacted {
 		if !inserted && outputSR.id >= sr.id {
 			newCompacted = append(newCompacted, outputSR)
 			inserted = true
@@ -211,11 +217,12 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 	firstSource := compaction.sources[0]
 	if firstSource.sst().IsPresent() {
 		compactedL0, _ := firstSource.sst().Get()
-		c.dbState.l0LastCompacted = mo.Some(compactedL0)
+		dbState.l0LastCompacted = mo.Some(compactedL0)
 	}
 
-	c.dbState.l0 = newL0
-	c.dbState.compacted = newCompacted
+	dbState.l0 = newL0
+	dbState.compacted = newCompacted
+	c.dbState = dbState
 	delete(c.compactions, outputSR.id)
 }
 
