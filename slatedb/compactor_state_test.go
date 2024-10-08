@@ -30,7 +30,7 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 		id:      0,
 		sstList: beforeCompaction.l0,
 	}
-	state.finishCompaction(*sr.clone())
+	state.finishCompaction(sr.clone())
 
 	compactedID, _ := beforeCompaction.l0[0].id.compactedID().Get()
 	l0LastCompacted, _ := state.dbState.l0LastCompacted.Get()
@@ -55,7 +55,7 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 		id:      0,
 		sstList: beforeCompaction.l0,
 	}
-	state.finishCompaction(*sr.clone())
+	state.finishCompaction(sr.clone())
 
 	assert.Equal(t, 0, len(state.compactions))
 }
@@ -85,7 +85,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	compaction := newCompaction([]SourceID{newSourceIDSST(compactedID)}, 0)
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(SortedRun{
+	state.finishCompaction(&SortedRun{
 		id:      0,
 		sstList: []SSTableHandle{originalL0s[len(originalL0s)-1]},
 	})
@@ -134,7 +134,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	compaction := newCompaction(sourceIDs, 0)
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(SortedRun{
+	state.finishCompaction(&SortedRun{
 		id:      0,
 		sstList: originalL0s,
 	})
@@ -168,7 +168,7 @@ func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *CoreDBSt
 	panic("no manifest found with l0 len")
 }
 
-func buildL0Compaction(sstList []SSTableHandle, destination uint32) *Compaction {
+func buildL0Compaction(sstList []SSTableHandle, destination uint32) Compaction {
 	sources := make([]SourceID, 0)
 	for _, sst := range sstList {
 		id, ok := sst.id.compactedID().Get()

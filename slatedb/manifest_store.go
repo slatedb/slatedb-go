@@ -34,8 +34,7 @@ type FenceableManifest struct {
 
 func initFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	var localEpoch atomic.Uint64
-	localEpoch.Store(manifest.writerEpoch.Add(1))
+	manifest.writerEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
@@ -45,14 +44,13 @@ func initFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableMani
 		storedManifest: storedManifest,
 		epochType:      WriterEpoch,
 	}
-	fm.localEpoch.Store(localEpoch.Load())
+	fm.localEpoch.Store(manifest.writerEpoch.Load())
 	return fm, nil
 }
 
 func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	var localEpoch atomic.Uint64
-	localEpoch.Store(manifest.compactorEpoch.Add(1))
+	manifest.compactorEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
@@ -62,7 +60,7 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 		storedManifest: storedManifest,
 		epochType:      CompactorEpoch,
 	}
-	fm.localEpoch.Store(localEpoch.Load())
+	fm.localEpoch.Store(manifest.compactorEpoch.Load())
 	return fm, nil
 }
 

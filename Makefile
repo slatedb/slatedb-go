@@ -16,7 +16,7 @@ build: gen_flatbuf fmt vet
 
 .PHONY: test
 test: build
-	go test -v -count=1 -cover -race ./...
+	go test -v -count=1 -cover -race -timeout 5000ms ./...
 
 test_coverage:
 	go test -coverprofile=coverage.out ./...; \

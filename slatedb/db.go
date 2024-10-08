@@ -24,7 +24,7 @@ type DB struct {
 	// and the goroutine running the memtableFlush task reads this channel and shuts down
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg
 
-	// walFlushTaskWG - When DB.Close is called, this is used to wait till the flush task goroutine is completed
+	// walFlushTaskWG - When DB.Close is called, this is used to wait till the walFlush task goroutine is completed
 	walFlushTaskWG *sync.WaitGroup
 
 	// memtableFlushTaskWG - When DB.Close is called, this is used to wait till the memtableFlush task goroutine is completed

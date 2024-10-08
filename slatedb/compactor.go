@@ -1,14 +1,348 @@
 package slatedb
 
-import "sync"
+import (
+	"errors"
+	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"log"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+type CompactionScheduler interface {
+	maybeScheduleCompaction(state *CompactorState) []Compaction
+}
+
+type CompactorMainMsg int
+
+const (
+	CompactorShutdown CompactorMainMsg = iota + 1
+)
+
+type WorkerToOrchestratorMsg struct {
+	CompactionResult *SortedRun
+	CompactionError  error
+}
 
 type Compactor struct {
-	sync.Mutex
+	// compactorMsgCh - When Compactor.close is called we write CompactorShutdown message to this channel
+	// CompactorOrchestrator which runs in a different goroutine reads this channel and shuts down when it receives
+	// CompactorShutdown message on this channel
+	compactorMsgCh chan<- CompactorMainMsg
+
+	// compactorWG - When Compactor.close is called then wait till goroutine running CompactorOrchestrator
+	// is completed
+	compactorWG *sync.WaitGroup
 }
 
 func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, options *CompactorOptions) (*Compactor, error) {
-	// TODO: implement
-	return nil, nil
+	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
+
+	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, options, compactorMsgCh)
+
+	err := <-errCh
+	common.AssertTrue(err == nil, "Failed to start compactor")
+
+	return &Compactor{
+		compactorMsgCh: compactorMsgCh,
+		compactorWG:    compactorWG,
+	}, nil
 }
 
-func (c *Compactor) close() {}
+func (c *Compactor) close() {
+	c.compactorMsgCh <- CompactorShutdown
+	c.compactorWG.Wait()
+}
+
+// ------------------------------------------------
+// CompactorOrchestrator
+// ------------------------------------------------
+
+func spawnAndRunCompactorOrchestrator(
+	manifestStore *ManifestStore,
+	tableStore *TableStore,
+	options *CompactorOptions,
+	compactorMsgCh <-chan CompactorMainMsg,
+) (*sync.WaitGroup, chan error) {
+
+	errCh := make(chan error)
+	compactorWG := &sync.WaitGroup{}
+	compactorWG.Add(1)
+
+	go func() {
+		defer compactorWG.Done()
+		orchestrator, err := newCompactorOrchestrator(options, manifestStore, tableStore, compactorMsgCh)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+
+		ticker := time.NewTicker(options.PollInterval)
+		defer ticker.Stop()
+
+		for !(orchestrator.executor.isStopped() && len(orchestrator.workerCh) == 0) {
+			select {
+			case <-ticker.C:
+				err := orchestrator.loadManifest()
+				common.AssertTrue(err == nil, "Failed to load manifest")
+			case msg := <-orchestrator.workerCh:
+				if msg.CompactionError != nil {
+					log.Println("Error executing compaction", msg.CompactionError)
+				} else {
+					err := orchestrator.finishCompaction(msg.CompactionResult)
+					common.AssertTrue(err == nil, "Failed to finish compaction")
+				}
+			case <-orchestrator.compactorMsgCh:
+				// Stop the executor. Don't return because there might
+				// still be messages in `workerCh`. Let the loop continue
+				// to drain them until empty.
+				orchestrator.executor.stop()
+			}
+		}
+	}()
+
+	return compactorWG, errCh
+}
+
+type CompactorOrchestrator struct {
+	options   *CompactorOptions
+	manifest  *FenceableManifest
+	state     *CompactorState
+	scheduler CompactionScheduler
+	executor  *CompactionExecutor
+
+	// compactorMsgCh - When CompactorOrchestrator receives a CompactorShutdown message on this channel,
+	// it calls executor.stop
+	compactorMsgCh <-chan CompactorMainMsg
+
+	// workerCh - CompactionExecutor sends a CompactionFinished message to this channel once compaction is done.
+	// The CompactorOrchestrator loops through each item in this channel and calls finishCompaction
+	workerCh <-chan WorkerToOrchestratorMsg
+}
+
+func newCompactorOrchestrator(
+	options *CompactorOptions,
+	manifestStore *ManifestStore,
+	tableStore *TableStore,
+	compactorMsgCh <-chan CompactorMainMsg,
+) (*CompactorOrchestrator, error) {
+	sm, err := loadStoredManifest(manifestStore)
+	if err != nil {
+		return nil, err
+	}
+	if sm.IsAbsent() {
+		return nil, common.ErrInvalidDBState
+	}
+	storedManifest, _ := sm.Get()
+
+	manifest, err := initFenceableManifestCompactor(&storedManifest)
+	if err != nil {
+		return nil, err
+	}
+
+	state, err := loadState(manifest)
+	if err != nil {
+		return nil, err
+	}
+
+	scheduler := loadCompactionScheduler()
+	workerCh := make(chan WorkerToOrchestratorMsg, math.MaxUint8)
+	executor := newCompactorExecutor(options, workerCh, tableStore)
+
+	return &CompactorOrchestrator{
+		options:        options,
+		manifest:       manifest,
+		state:          state,
+		scheduler:      scheduler,
+		executor:       executor,
+		compactorMsgCh: compactorMsgCh,
+		workerCh:       workerCh,
+	}, nil
+}
+
+func loadState(manifest *FenceableManifest) (*CompactorState, error) {
+	dbState, err := manifest.dbState()
+	if err != nil {
+		return nil, err
+	}
+	return newCompactorState(dbState.clone()), nil
+}
+
+func loadCompactionScheduler() CompactionScheduler {
+	return SizeTieredCompactionScheduler{}
+}
+
+func (o *CompactorOrchestrator) loadManifest() error {
+	_, err := o.manifest.refresh()
+	if err != nil {
+		return err
+	}
+	err = o.refreshDBState()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *CompactorOrchestrator) refreshDBState() error {
+	state, err := o.manifest.dbState()
+	if err != nil {
+		return err
+	}
+
+	o.state.refreshDBState(state)
+	err = o.maybeScheduleCompactions()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *CompactorOrchestrator) maybeScheduleCompactions() error {
+	compactions := o.scheduler.maybeScheduleCompaction(o.state)
+	for _, compaction := range compactions {
+		err := o.submitCompaction(compaction)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
+	dbState := o.state.dbState
+
+	sstsByID := make(map[ulid.ULID]SSTableHandle)
+	for _, sst := range dbState.l0 {
+		id, ok := sst.id.compactedID().Get()
+		common.AssertTrue(ok, "expected valid compacted ID")
+		sstsByID[id] = sst
+	}
+	for _, sr := range dbState.compacted {
+		for _, sst := range sr.sstList {
+			id, ok := sst.id.compactedID().Get()
+			common.AssertTrue(ok, "expected valid compacted ID")
+			sstsByID[id] = sst
+		}
+	}
+
+	srsByID := make(map[uint32]SortedRun)
+	for _, sr := range dbState.compacted {
+		srsByID[sr.id] = sr
+	}
+
+	ssts := make([]SSTableHandle, 0)
+	for _, sID := range compaction.sources {
+		sstID, ok := sID.sstID().Get()
+		if ok {
+			ssts = append(ssts, sstsByID[sstID])
+		}
+	}
+
+	sortedRuns := make([]SortedRun, 0)
+	for _, sID := range compaction.sources {
+		srID, ok := sID.sortedRunID().Get()
+		if ok {
+			sortedRuns = append(sortedRuns, srsByID[srID])
+		}
+	}
+
+	o.executor.startCompaction(CompactionJob{
+		destination: compaction.destination,
+		sstList:     ssts,
+		sortedRuns:  sortedRuns,
+	})
+}
+
+func (o *CompactorOrchestrator) finishCompaction(outputSR *SortedRun) error {
+	o.state.finishCompaction(outputSR)
+	err := o.writeManifest()
+	if err != nil {
+		return err
+	}
+
+	err = o.maybeScheduleCompactions()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *CompactorOrchestrator) writeManifest() error {
+	for {
+		err := o.loadManifest()
+		if err != nil {
+			return err
+		}
+
+		core := o.state.dbState.clone()
+		err = o.manifest.updateDBState(core)
+		if errors.Is(err, common.ErrManifestVersionExists) {
+			log.Println("conflicting manifest version. retry write")
+			continue
+		}
+		return err
+	}
+}
+
+func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
+	err := o.state.submitCompaction(compaction)
+	if err != nil {
+		log.Println("invalid compaction", err)
+		return nil
+	}
+	o.startCompaction(compaction)
+	return nil
+}
+
+// ------------------------------------------------
+// CompactionExecutor
+// ------------------------------------------------
+
+type CompactionJob struct {
+	destination uint32
+	sstList     []SSTableHandle
+	sortedRuns  []SortedRun
+}
+
+type CompactionTask struct {
+	task string
+}
+
+type CompactionExecutor struct {
+	options    *CompactorOptions
+	tableStore *TableStore
+
+	workerCh  chan<- WorkerToOrchestratorMsg
+	tasks     map[uint32]CompactionTask
+	tasksLock sync.RWMutex
+	stopped   atomic.Bool
+}
+
+func newCompactorExecutor(
+	options *CompactorOptions,
+	workerCh chan<- WorkerToOrchestratorMsg,
+	tableStore *TableStore,
+) *CompactionExecutor {
+	return &CompactionExecutor{
+		options:    options,
+		workerCh:   workerCh,
+		tableStore: tableStore,
+		tasks:      make(map[uint32]CompactionTask),
+	}
+}
+
+func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
+
+}
+
+func (e *CompactionExecutor) stop() {
+
+}
+
+func (e *CompactionExecutor) isStopped() bool {
+	return false
+}

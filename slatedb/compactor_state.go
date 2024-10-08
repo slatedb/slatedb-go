@@ -40,7 +40,7 @@ func newSourceIDSST(id ulid.ULID) SourceID {
 	}
 }
 
-func (s SourceID) sortedRun() mo.Option[uint32] {
+func (s SourceID) sortedRunID() mo.Option[uint32] {
 	if s.typ != SortedRunID {
 		return mo.None[uint32]()
 	}
@@ -51,7 +51,7 @@ func (s SourceID) sortedRun() mo.Option[uint32] {
 	return mo.Some(uint32(val))
 }
 
-func (s SourceID) sst() mo.Option[ulid.ULID] {
+func (s SourceID) sstID() mo.Option[ulid.ULID] {
 	if s.typ != SSTID {
 		return mo.None[ulid.ULID]()
 	}
@@ -79,8 +79,8 @@ type Compaction struct {
 	destination uint32
 }
 
-func newCompaction(sources []SourceID, destination uint32) *Compaction {
-	return &Compaction{
+func newCompaction(sources []SourceID, destination uint32) Compaction {
+	return Compaction{
 		status:      Submitted,
 		sources:     sources,
 		destination: destination,
@@ -107,7 +107,7 @@ func (c *CompactorState) getCompactions() []Compaction {
 	return slices.Collect(maps.Values(c.compactions))
 }
 
-func (c *CompactorState) submitCompaction(compaction *Compaction) error {
+func (c *CompactorState) submitCompaction(compaction Compaction) error {
 	_, ok := c.compactions[compaction.destination]
 	if ok {
 		// we already have an ongoing compaction for this destination
@@ -124,11 +124,11 @@ func (c *CompactorState) submitCompaction(compaction *Compaction) error {
 		}
 	}
 
-	c.compactions[compaction.destination] = *compaction
+	c.compactions[compaction.destination] = compaction
 	return nil
 }
 
-func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction *Compaction) bool {
+func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction Compaction) bool {
 	for _, src := range compaction.sources {
 		if src.typ == SortedRunID {
 			srcVal, _ := strconv.Atoi(src.value)
@@ -165,7 +165,7 @@ func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 
 // update dbState by removing L0 SSTs and compacted SortedRuns that are present
 // in Compaction.sources
-func (c *CompactorState) finishCompaction(outputSR SortedRun) {
+func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	compaction, ok := c.compactions[outputSR.id]
 	if !ok {
 		return
@@ -174,11 +174,11 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 	compactionL0s := make(map[ulid.ULID]bool)
 	compactionSRs := make(map[uint32]bool)
 	for _, srcId := range compaction.sources {
-		if srcId.sst().IsPresent() {
-			id, _ := srcId.sst().Get()
+		if srcId.sstID().IsPresent() {
+			id, _ := srcId.sstID().Get()
 			compactionL0s[id] = true
-		} else if srcId.sortedRun().IsPresent() {
-			id, _ := srcId.sortedRun().Get()
+		} else if srcId.sortedRunID().IsPresent() {
+			id, _ := srcId.sortedRunID().Get()
 			compactionSRs[id] = true
 		}
 	}
@@ -199,7 +199,7 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 	inserted := false
 	for _, sr := range dbState.compacted {
 		if !inserted && outputSR.id >= sr.id {
-			newCompacted = append(newCompacted, outputSR)
+			newCompacted = append(newCompacted, *outputSR)
 			inserted = true
 		}
 		_, ok := compactionSRs[sr.id]
@@ -208,15 +208,15 @@ func (c *CompactorState) finishCompaction(outputSR SortedRun) {
 		}
 	}
 	if !inserted {
-		newCompacted = append(newCompacted, outputSR)
+		newCompacted = append(newCompacted, *outputSR)
 	}
 
 	c.assertCompactedSRsInIDOrder(newCompacted)
 	common.AssertTrue(len(compaction.sources) > 0, "compaction should not be empty")
 
 	firstSource := compaction.sources[0]
-	if firstSource.sst().IsPresent() {
-		compactedL0, _ := firstSource.sst().Get()
+	if firstSource.sstID().IsPresent() {
+		compactedL0, _ := firstSource.sstID().Get()
 		dbState.l0LastCompacted = mo.Some(compactedL0)
 	}
 
