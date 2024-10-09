@@ -26,10 +26,13 @@ type WorkerToOrchestratorMsg struct {
 	CompactionError  error
 }
 
+// Compactor creates one goroutine for CompactorOrchestrator. The CompactorOrchestrator can create multiple goroutines
+// for running the actual compaction. The result of the compaction are shared back to the CompactorOrchestrator through
+// CompactorOrchestrator.workerCh channel.
+// When Compactor.close is called, we wait till all the goroutines/workers started by CompactorOrchestrator stop running
 type Compactor struct {
 	// compactorMsgCh - When Compactor.close is called we write CompactorShutdown message to this channel
-	// CompactorOrchestrator which runs in a different goroutine reads this channel and shuts down when it receives
-	// CompactorShutdown message on this channel
+	// CompactorOrchestrator which runs in a different goroutine reads this channel and shuts down
 	compactorMsgCh chan<- CompactorMainMsg
 
 	// compactorWG - When Compactor.close is called then wait till goroutine running CompactorOrchestrator
@@ -91,15 +94,17 @@ func spawnAndRunCompactorOrchestrator(
 			case msg := <-orchestrator.workerCh:
 				if msg.CompactionError != nil {
 					log.Println("Error executing compaction", msg.CompactionError)
-				} else {
+				} else if msg.CompactionResult != nil {
 					err := orchestrator.finishCompaction(msg.CompactionResult)
 					common.AssertTrue(err == nil, "Failed to finish compaction")
 				}
 			case <-orchestrator.compactorMsgCh:
+				// we receive Shutdown msg on compactorMsgCh.
 				// Stop the executor. Don't return because there might
-				// still be messages in `workerCh`. Let the loop continue
+				// still be messages in `orchestrator.workerCh`. Let the loop continue
 				// to drain them until empty.
 				orchestrator.executor.stop()
+				ticker.Stop()
 			}
 		}
 	}()
@@ -308,18 +313,14 @@ type CompactionJob struct {
 	sortedRuns  []SortedRun
 }
 
-type CompactionTask struct {
-	task string
-}
-
 type CompactionExecutor struct {
 	options    *CompactorOptions
 	tableStore *TableStore
 
-	workerCh  chan<- WorkerToOrchestratorMsg
-	tasks     map[uint32]CompactionTask
-	tasksLock sync.RWMutex
-	stopped   atomic.Bool
+	workerCh chan<- WorkerToOrchestratorMsg
+	tasksWG  sync.WaitGroup
+	abortCh  chan bool
+	stopped  atomic.Bool
 }
 
 func newCompactorExecutor(
@@ -329,20 +330,45 @@ func newCompactorExecutor(
 ) *CompactionExecutor {
 	return &CompactionExecutor{
 		options:    options,
-		workerCh:   workerCh,
 		tableStore: tableStore,
-		tasks:      make(map[uint32]CompactionTask),
+		workerCh:   workerCh,
+		abortCh:    make(chan bool),
 	}
 }
 
-func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
+func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*SortedRun, error) {
+	return nil, nil
+}
 
+func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
+	if e.isStopped() {
+		return
+	}
+	e.tasksWG.Add(1)
+	go func() {
+		defer e.tasksWG.Done()
+		for {
+			select {
+			case <-e.abortCh:
+				return
+			default:
+				sortedRun, err := e.executeCompaction(compaction)
+				if err != nil {
+					e.workerCh <- WorkerToOrchestratorMsg{CompactionError: err}
+				} else {
+					e.workerCh <- WorkerToOrchestratorMsg{CompactionResult: sortedRun}
+				}
+			}
+		}
+	}()
 }
 
 func (e *CompactionExecutor) stop() {
-
+	close(e.abortCh)
+	e.tasksWG.Wait()
+	e.stopped.Store(true)
 }
 
 func (e *CompactionExecutor) isStopped() bool {
-	return false
+	return e.stopped.Load()
 }
