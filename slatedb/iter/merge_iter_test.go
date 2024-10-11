@@ -25,7 +25,7 @@ func TestMergeIteratorShouldIncludeEntriesInOrder(t *testing.T) {
 		withEntry([]byte("gggg"), []byte("7777")),
 	)
 
-	mergeIter := newMergeIterator(iters)
+	mergeIter := NewMergeIterator(iters)
 	AssertIterNextEntry(t, mergeIter, []byte("aaaa"), []byte("1111"))
 	AssertIterNextEntry(t, mergeIter, []byte("bbbb"), []byte("2222"))
 	AssertIterNextEntry(t, mergeIter, []byte("cccc"), []byte("3333"))
@@ -53,7 +53,7 @@ func TestMergeIteratorShouldWriteOneEntryWithGivenKey(t *testing.T) {
 		withEntry([]byte("xxxx"), []byte("badx1")),
 	)
 
-	mergeIter := newMergeIterator(iters)
+	mergeIter := NewMergeIterator(iters)
 	AssertIterNextEntry(t, mergeIter, []byte("aaaa"), []byte("1111"))
 	AssertIterNextEntry(t, mergeIter, []byte("bbbb"), []byte("2222"))
 	AssertIterNextEntry(t, mergeIter, []byte("cccc"), []byte("use this one c"))
@@ -71,7 +71,7 @@ func TestTwoIteratorShouldIncludeEntriesInOrder(t *testing.T) {
 		withEntry([]byte("xxxx"), []byte("24242424")).
 		withEntry([]byte("yyyy"), []byte("25252525"))
 
-	mergeIter, err := newTwoMergeIterator(iter1, iter2)
+	mergeIter, err := NewTwoMergeIterator(iter1, iter2)
 	assert.NoError(t, err)
 	AssertIterNextEntry(t, mergeIter, []byte("aaaa"), []byte("1111"))
 	AssertIterNextEntry(t, mergeIter, []byte("bbbb"), []byte("2222"))
@@ -90,7 +90,7 @@ func TestTwoIteratorShouldWriteOneEntryWithGivenKey(t *testing.T) {
 		withEntry([]byte("cccc"), []byte("badc")).
 		withEntry([]byte("xxxx"), []byte("24242424"))
 
-	mergeIter, err := newTwoMergeIterator(iter1, iter2)
+	mergeIter, err := NewTwoMergeIterator(iter1, iter2)
 	assert.NoError(t, err)
 	AssertIterNextEntry(t, mergeIter, []byte("aaaa"), []byte("1111"))
 	AssertIterNextEntry(t, mergeIter, []byte("cccc"), []byte("use this one c"))

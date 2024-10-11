@@ -3,7 +3,9 @@ package slatedb
 import (
 	"errors"
 	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"log"
 	"math"
 	"sync"
@@ -336,8 +338,94 @@ func newCompactorExecutor(
 	}
 }
 
+// create an iterator for CompactionJob.sstList and another iterator for CompactionJob.sortedRuns
+// Return the merged iterator for the above 2 iterators
+func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIterator, error) {
+	common.AssertTrue(
+		!(len(compaction.sstList) == 0 && len(compaction.sortedRuns) == 0),
+		"Compaction sources cannot be empty",
+	)
+
+	l0Iters := make([]iter.KVIterator, 0)
+	for _, sst := range compaction.sstList {
+		sstIter := newSSTIterator(&sst, e.tableStore.clone(), 4, 256)
+		sstIter.spawnFetches()
+		l0Iters = append(l0Iters, sstIter)
+	}
+
+	srIters := make([]iter.KVIterator, 0)
+	for _, sr := range compaction.sortedRuns {
+		srIter := newSortedRunIterator(sr, e.tableStore.clone(), 16, 256)
+		if srIter.currentKVIter.IsPresent() {
+			sstIter, _ := srIter.currentKVIter.Get()
+			sstIter.spawnFetches()
+		}
+		srIters = append(srIters, srIter)
+	}
+
+	var l0MergeIter, srMergeIter iter.KVIterator
+	if len(compaction.sortedRuns) == 0 {
+		l0MergeIter = iter.NewMergeIterator(l0Iters)
+		return l0MergeIter, nil
+	} else if len(compaction.sstList) == 0 {
+		srMergeIter = iter.NewMergeIterator(srIters)
+		return srMergeIter, nil
+	}
+
+	return iter.NewTwoMergeIterator(l0MergeIter, srMergeIter)
+}
+
 func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*SortedRun, error) {
-	return nil, nil
+	allIter, err := e.loadIterators(compaction)
+	if err != nil {
+		return nil, err
+	}
+
+	outputSSTs := make([]SSTableHandle, 0)
+	currentWriter := e.tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
+	currentSize := 0
+	for {
+		entry, err := allIter.NextEntry()
+		if err != nil {
+			return nil, err
+		}
+		if entry.IsAbsent() {
+			break
+		}
+
+		kv, _ := entry.Get()
+		value := kv.ValueDel.GetValue()
+		if value == nil { // if we encounter Tombstone continue with next key
+			continue
+		}
+
+		err = currentWriter.add(kv.Key, mo.Some(value))
+		if err != nil {
+			return nil, err
+		}
+		currentSize += len(kv.Key) + len(value)
+		if uint64(currentSize) > e.options.MaxSSTSize {
+			currentSize = 0
+			finishedWriter := currentWriter
+			currentWriter = e.tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
+			sst, err := finishedWriter.close()
+			if err != nil {
+				return nil, err
+			}
+			outputSSTs = append(outputSSTs, *sst)
+		}
+	}
+	if currentSize > 0 {
+		sst, err := currentWriter.close()
+		if err != nil {
+			return nil, err
+		}
+		outputSSTs = append(outputSSTs, *sst)
+	}
+	return &SortedRun{
+		id:      compaction.destination,
+		sstList: outputSSTs,
+	}, nil
 }
 
 func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
@@ -355,7 +443,7 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 				sortedRun, err := e.executeCompaction(compaction)
 				if err != nil {
 					e.workerCh <- WorkerToOrchestratorMsg{CompactionError: err}
-				} else {
+				} else if sortedRun != nil {
 					e.workerCh <- WorkerToOrchestratorMsg{CompactionResult: sortedRun}
 				}
 			}

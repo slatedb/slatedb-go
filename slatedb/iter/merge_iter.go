@@ -9,6 +9,127 @@ import (
 )
 
 // ------------------------------------------------
+// MergeIterator
+// ------------------------------------------------
+
+// This is to merge KVIterators. Each KVIterator has a list of KV pairs. When we call Next() on the MergeIterator,
+// it should give us the least Key among all the keys in the merged list
+
+// MergeIterator -
+// This struct will keep one KVIterator in MergeIterator.current (this will have the least Key among all the KVIterators)
+// and the remaining KVIterators in the MergeIterator.iterators heap.
+// When we want to advance the iterator we read MergeIterator.current, then we push the current KVIterator to heap and
+// let the heap decide which KVIterator has the next least Key (by calling heap.Pop()) and should replace MergeIterator.current.
+type MergeIterator struct {
+	current   mo.Option[MergeIteratorHeapEntry]
+	iterators *MergeIteratorHeap
+}
+
+func NewMergeIterator(iterators []KVIterator) *MergeIterator {
+	h := &MergeIteratorHeap{}
+	heap.Init(h)
+	index := uint32(0)
+	for len(iterators) > 0 {
+		iterator := iterators[0]
+		iterators = iterators[1:]
+		entry, err := iterator.NextEntry()
+		if err != nil {
+			return nil
+		}
+		if entry.IsPresent() {
+			kv, _ := entry.Get()
+			heapEntry := MergeIteratorHeapEntry{
+				nextKV:   kv,
+				index:    index,
+				iterator: iterator,
+			}
+			heap.Push(h, heapEntry)
+		}
+		index += 1
+	}
+	current := heap.Pop(h).(MergeIteratorHeapEntry)
+	return &MergeIterator{
+		current:   mo.Some(current),
+		iterators: h,
+	}
+}
+
+func (m *MergeIterator) advance() (mo.Option[common.KVDeletable], error) {
+	if m.current.IsAbsent() {
+		return mo.None[common.KVDeletable](), nil
+	}
+
+	iteratorState, _ := m.current.Get()
+	currentKV := iteratorState.nextKV
+	entry, err := iteratorState.iterator.NextEntry()
+	if err != nil {
+		return mo.None[common.KVDeletable](), err
+	}
+
+	heap.Init(m.iterators)
+	if entry.IsPresent() {
+		kv, _ := entry.Get()
+		iteratorState.nextKV = kv
+		heap.Push(m.iterators, iteratorState)
+	}
+	if m.iterators.Len() == 0 {
+		m.current = mo.None[MergeIteratorHeapEntry]()
+	} else {
+		current := heap.Pop(m.iterators).(MergeIteratorHeapEntry)
+		m.current = mo.Some(current)
+	}
+	return mo.Some(currentKV), nil
+}
+
+func (m *MergeIterator) Next() (mo.Option[common.KV], error) {
+	for {
+		entry, err := m.NextEntry()
+		if err != nil {
+			return mo.None[common.KV](), err
+		}
+		keyVal, ok := entry.Get()
+		if ok {
+			if keyVal.ValueDel.IsTombstone {
+				continue
+			}
+
+			return mo.Some(common.KV{
+				Key:   keyVal.Key,
+				Value: keyVal.ValueDel.Value,
+			}), nil
+		} else {
+			return mo.None[common.KV](), nil
+		}
+	}
+}
+
+func (m *MergeIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+	kvOption, err := m.advance()
+	if err != nil {
+		return mo.None[common.KVDeletable](), err
+	}
+
+	if kvOption.IsAbsent() {
+		return mo.None[common.KVDeletable](), nil
+	}
+
+	kv, _ := kvOption.Get()
+	// this loop is to iterate over duplicate keys. we break once we get a key that is not a duplicate
+	for m.current.IsPresent() {
+		nextEntry, _ := m.current.Get()
+		if bytes.Compare(nextEntry.nextKV.Key, kv.Key) != 0 {
+			break
+		}
+
+		_, err := m.advance()
+		if err != nil {
+			return mo.None[common.KVDeletable](), err
+		}
+	}
+	return mo.Some(kv), nil
+}
+
+// ------------------------------------------------
 // TwoMergeIterator
 // ------------------------------------------------
 
@@ -22,7 +143,7 @@ type TwoMergeIterator struct {
 	iterator2 iterKV
 }
 
-func newTwoMergeIterator(iter1 KVIterator, iter2 KVIterator) (*TwoMergeIterator, error) {
+func NewTwoMergeIterator(iter1 KVIterator, iter2 KVIterator) (*TwoMergeIterator, error) {
 	next1, err := iter1.NextEntry()
 	if err != nil {
 		return nil, err
@@ -159,125 +280,4 @@ func (e *MergeIteratorHeapEntry) Compare(other MergeIteratorHeapEntry) int {
 		return cmp.Compare(e.index, other.index)
 	}
 	return cmpValue
-}
-
-// ------------------------------------------------
-// MergeIterator
-// ------------------------------------------------
-
-// This is to merge KVIterators. Each KVIterator has a list of KV pairs. When we call Next() on the MergeIterator,
-// it should give us the least Key among all the keys in the merged list
-
-// MergeIterator -
-// This struct will keep one KVIterator in MergeIterator.current (this will have the least Key among all the KVIterators)
-// and the remaining KVIterators in the MergeIterator.iterators heap.
-// When we want to advance the iterator we read MergeIterator.current, then we push the current KVIterator to heap and
-// let the heap decide which KVIterator has the next least Key (by calling heap.Pop()) and should replace MergeIterator.current.
-type MergeIterator struct {
-	current   mo.Option[MergeIteratorHeapEntry]
-	iterators *MergeIteratorHeap
-}
-
-func newMergeIterator(iterators []KVIterator) *MergeIterator {
-	h := &MergeIteratorHeap{}
-	heap.Init(h)
-	index := uint32(0)
-	for len(iterators) > 0 {
-		iterator := iterators[0]
-		iterators = iterators[1:]
-		entry, err := iterator.NextEntry()
-		if err != nil {
-			return nil
-		}
-		if entry.IsPresent() {
-			kv, _ := entry.Get()
-			heapEntry := MergeIteratorHeapEntry{
-				nextKV:   kv,
-				index:    index,
-				iterator: iterator,
-			}
-			heap.Push(h, heapEntry)
-		}
-		index += 1
-	}
-	current := heap.Pop(h).(MergeIteratorHeapEntry)
-	return &MergeIterator{
-		current:   mo.Some(current),
-		iterators: h,
-	}
-}
-
-func (m *MergeIterator) advance() (mo.Option[common.KVDeletable], error) {
-	if m.current.IsAbsent() {
-		return mo.None[common.KVDeletable](), nil
-	}
-
-	iteratorState, _ := m.current.Get()
-	currentKV := iteratorState.nextKV
-	entry, err := iteratorState.iterator.NextEntry()
-	if err != nil {
-		return mo.None[common.KVDeletable](), err
-	}
-
-	heap.Init(m.iterators)
-	if entry.IsPresent() {
-		kv, _ := entry.Get()
-		iteratorState.nextKV = kv
-		heap.Push(m.iterators, iteratorState)
-	}
-	if m.iterators.Len() == 0 {
-		m.current = mo.None[MergeIteratorHeapEntry]()
-	} else {
-		current := heap.Pop(m.iterators).(MergeIteratorHeapEntry)
-		m.current = mo.Some(current)
-	}
-	return mo.Some(currentKV), nil
-}
-
-func (m *MergeIterator) Next() (mo.Option[common.KV], error) {
-	for {
-		entry, err := m.NextEntry()
-		if err != nil {
-			return mo.None[common.KV](), err
-		}
-		keyVal, ok := entry.Get()
-		if ok {
-			if keyVal.ValueDel.IsTombstone {
-				continue
-			}
-
-			return mo.Some(common.KV{
-				Key:   keyVal.Key,
-				Value: keyVal.ValueDel.Value,
-			}), nil
-		} else {
-			return mo.None[common.KV](), nil
-		}
-	}
-}
-
-func (m *MergeIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
-	kvOption, err := m.advance()
-	if err != nil {
-		return mo.None[common.KVDeletable](), err
-	}
-
-	if kvOption.IsAbsent() {
-		return mo.None[common.KVDeletable](), nil
-	}
-
-	kv, _ := kvOption.Get()
-	// this loop is to iterate over duplicate keys. we break once we get a key that is not a duplicate
-	for m.current.IsPresent() {
-		nextEntry, _ := m.current.Get()
-		if bytes.Compare(nextEntry.nextKV.Key, kv.Key) != 0 {
-			break
-		}
-
-		_, err := m.advance()
-		if err != nil {
-			return mo.None[common.KVDeletable](), err
-		}
-	}
-	return mo.Some(kv), nil
 }

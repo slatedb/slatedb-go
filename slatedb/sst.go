@@ -553,6 +553,8 @@ func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	}
 }
 
+// spawnFetches - Each SST has multiple blocks, this method will create goroutines to fetch blocks within a range
+// Range{blocksStart, blocksEnd} for a given SST from object storage
 func (iter *SSTIterator) spawnFetches() {
 
 	numBlocks := iter.table.info.borrow().BlockMetaLength()

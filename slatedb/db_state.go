@@ -212,10 +212,12 @@ func (s *SSTableID) walID() mo.Option[uint64] {
 	if s.typ != WAL {
 		return mo.None[uint64]()
 	}
+
 	val, err := strconv.Atoi(s.value)
 	if err != nil {
 		return mo.None[uint64]()
 	}
+
 	return mo.Some(uint64(val))
 }
 
@@ -223,10 +225,12 @@ func (s *SSTableID) compactedID() mo.Option[ulid.ULID] {
 	if s.typ != Compacted {
 		return mo.None[ulid.ULID]()
 	}
+
 	val, err := ulid.Parse(s.value)
 	if err != nil {
 		return mo.None[ulid.ULID]()
 	}
+
 	return mo.Some(val)
 }
 

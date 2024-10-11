@@ -157,13 +157,13 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 
 func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *CoreDBState {
 	startTime := time.Now()
-	for time.Since(startTime) < time.Second*30 {
+	for time.Since(startTime) < time.Second*10 {
 		dbState, err := storedManifest.refresh()
 		common.AssertTrue(err == nil, "")
 		if len(dbState.l0) == size {
 			return dbState.clone()
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 50)
 	}
 	panic("no manifest found with l0 len")
 }
