@@ -22,13 +22,17 @@ func (f FlatBufferManifestCodec) decode(data []byte) (*Manifest, error) {
 }
 
 func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manifest {
-	l0LastCompacted := f.parseFlatBufSSTId(manifest.L0LastCompacted)
 	core := &CoreDBState{
-		l0LastCompacted:       mo.Some(l0LastCompacted),
 		l0:                    f.parseFlatBufSSTList(manifest.L0),
 		compacted:             f.parseFlatBufSortedRuns(manifest.Compacted),
 		nextWalSstID:          manifest.WalIdLastSeen + 1,
 		lastCompactedWalSSTID: manifest.WalIdLastCompacted,
+	}
+	l0LastCompacted := f.parseFlatBufSSTId(manifest.L0LastCompacted)
+	if l0LastCompacted == ulid.Zero {
+		core.l0LastCompacted = mo.None[ulid.ULID]()
+	} else {
+		core.l0LastCompacted = mo.Some(l0LastCompacted)
 	}
 
 	m := &Manifest{

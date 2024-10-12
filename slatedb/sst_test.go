@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"
@@ -58,24 +59,24 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	builder.add([]byte("bbbbbbbb"), mo.Some([]byte("22222222")))
 	builder.add([]byte("cccccccc"), mo.Some([]byte("33333333")))
 
-	iter := nextBlockToIter(builder)
-	common.AssertIterNextEntry(t, iter, []byte("aaaaaaaa"), []byte("11111111"))
-	nextEntry, err := iter.NextEntry()
+	iterator := nextBlockToIter(builder)
+	iter.AssertIterNextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
+	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iter = nextBlockToIter(builder)
-	common.AssertIterNextEntry(t, iter, []byte("bbbbbbbb"), []byte("22222222"))
-	nextEntry, err = iter.NextEntry()
+	iterator = nextBlockToIter(builder)
+	iter.AssertIterNextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
+	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
 	assert.True(t, builder.nextBlock().IsAbsent())
 	builder.add([]byte("dddddddd"), mo.Some([]byte("44444444")))
 
-	iter = nextBlockToIter(builder)
-	common.AssertIterNextEntry(t, iter, []byte("cccccccc"), []byte("33333333"))
-	nextEntry, err = iter.NextEntry()
+	iterator = nextBlockToIter(builder)
+	iter.AssertIterNextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
+	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
@@ -112,9 +113,9 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 	for i, kv := range kvList {
 		block, err := format.readBlockRaw(encodedSST.sstInfo, uint64(i), rawSST)
 		assert.NoError(t, err)
-		iter := newBlockIteratorFromFirstKey(block)
-		common.AssertIterNextEntry(t, iter, kv.Key, kv.Value)
-		nextEntry, err := iter.NextEntry()
+		iterator := newBlockIteratorFromFirstKey(block)
+		iter.AssertIterNextEntry(t, iterator, kv.Key, kv.Value)
+		nextEntry, err := iterator.NextEntry()
 		assert.NoError(t, err)
 		assert.True(t, nextEntry.IsAbsent())
 	}
@@ -225,16 +226,16 @@ func TestReadBlocks(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(blocks))
 
-	iter := newBlockIteratorFromFirstKey(&blocks[0])
-	common.AssertIterNextEntry(t, iter, []byte("aa"), []byte("11"))
-	common.AssertIterNextEntry(t, iter, []byte("bb"), []byte("22"))
-	nextEntry, err := iter.NextEntry()
+	iterator := newBlockIteratorFromFirstKey(&blocks[0])
+	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
+	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
+	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iter = newBlockIteratorFromFirstKey(&blocks[1])
-	common.AssertIterNextEntry(t, iter, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	nextEntry, err = iter.NextEntry()
+	iterator = newBlockIteratorFromFirstKey(&blocks[1])
+	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 }
@@ -264,22 +265,22 @@ func TestReadAllBlocks(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(blocks))
 
-	iter := newBlockIteratorFromFirstKey(&blocks[0])
-	common.AssertIterNextEntry(t, iter, []byte("aa"), []byte("11"))
-	common.AssertIterNextEntry(t, iter, []byte("bb"), []byte("22"))
-	nextEntry, err := iter.NextEntry()
+	iterator := newBlockIteratorFromFirstKey(&blocks[0])
+	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
+	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
+	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iter = newBlockIteratorFromFirstKey(&blocks[1])
-	common.AssertIterNextEntry(t, iter, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	nextEntry, err = iter.NextEntry()
+	iterator = newBlockIteratorFromFirstKey(&blocks[1])
+	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iter = newBlockIteratorFromFirstKey(&blocks[2])
-	common.AssertIterNextEntry(t, iter, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
-	nextEntry, err = iter.NextEntry()
+	iterator = newBlockIteratorFromFirstKey(&blocks[2])
+	iter.AssertIterNextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
+	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 }
@@ -304,13 +305,13 @@ func TestOneBlockSSTIter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, sstHandle.info.borrow().BlockMetaLength())
 
-	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
-	common.AssertIterNext(t, iter, []byte("key1"), []byte("value1"))
-	common.AssertIterNext(t, iter, []byte("key2"), []byte("value2"))
-	common.AssertIterNext(t, iter, []byte("key3"), []byte("value3"))
-	common.AssertIterNext(t, iter, []byte("key4"), []byte("value4"))
+	iterator := newSSTIterator(sstHandle, tableStore, 1, 1)
+	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
+	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
+	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
+	iter.AssertIterNext(t, iterator, []byte("key4"), []byte("value4"))
 
-	next, err := iter.Next()
+	next, err := iterator.Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())
 }
@@ -334,14 +335,14 @@ func TestManyBlockSSTIter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 6, sstHandle.info.borrow().BlockMetaLength())
 
-	iter := newSSTIterator(sstHandle, tableStore, 1, 1)
+	iterator := newSSTIterator(sstHandle, tableStore, 1, 1)
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value%d", i))
-		common.AssertIterNext(t, iter, key, value)
+		iter.AssertIterNext(t, iterator, key, value)
 	}
 
-	next, err := iter.Next()
+	next, err := iterator.Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())
 }
@@ -369,7 +370,7 @@ func TestIterFromKey(t *testing.T) {
 		kvIter := newSSTIteratorFromKey(sst, fromKey, tableStore, 1, 1)
 
 		for j := 0; j < nKeys-i; j++ {
-			common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+			iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
 		next, err := kvIter.Next()
 		assert.NoError(t, err)
@@ -394,7 +395,7 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	kvIter := newSSTIteratorFromKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
 
 	for i := 0; i < nKeys; i++ {
-		common.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+		iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
 	next, err := kvIter.Next()
 	assert.NoError(t, err)

@@ -3,7 +3,7 @@ package slatedb
 import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"
@@ -23,12 +23,12 @@ func TestSSTWriter(t *testing.T) {
 	sst, err := writer.close()
 	assert.NoError(t, err)
 
-	iter := newSSTIterator(sst, tableStore, 1, 1)
-	common.AssertIterNextEntry(t, iter, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
-	common.AssertIterNextEntry(t, iter, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
-	common.AssertIterNextEntry(t, iter, []byte("cccccccccccccccc"), nil)
-	common.AssertIterNextEntry(t, iter, []byte("dddddddddddddddd"), []byte("4444444444444444"))
-	nextEntry, err := iter.NextEntry()
+	iterator := newSSTIterator(sst, tableStore, 1, 1)
+	iter.AssertIterNextEntry(t, iterator, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
+	iter.AssertIterNextEntry(t, iterator, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
+	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccc"), nil)
+	iter.AssertIterNextEntry(t, iterator, []byte("dddddddddddddddd"), []byte("4444444444444444"))
+	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 }

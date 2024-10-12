@@ -135,7 +135,7 @@ func (db *DB) spawnMemtableFlushTask(
 			db:       db,
 			manifest: manifest,
 		}
-		ticker := time.NewTicker(db.options.ManifestPollInterval * time.Millisecond)
+		ticker := time.NewTicker(db.options.ManifestPollInterval)
 		defer ticker.Stop()
 
 		// Stop the loop when the shut down has been received and all

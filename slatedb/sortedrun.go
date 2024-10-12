@@ -17,6 +17,8 @@ type SortedRun struct {
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	index := 0
+	// TODO: Rust implementation uses partition_point() which internally uses binary search
+	//  we are doing linear search. See if we can optimize
 	for i, sst := range s.sstList {
 		firstKey := sst.info.borrow().FirstKeyBytes()
 		if bytes.Compare(firstKey, key) > 0 {
