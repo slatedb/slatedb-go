@@ -298,7 +298,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		log.Println("invalid compaction", err)
+		log.Println(err)
 		return nil
 	}
 	o.startCompaction(compaction)

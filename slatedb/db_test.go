@@ -1,9 +1,11 @@
 package slatedb
 
 import (
+	"bytes"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -267,13 +269,10 @@ func TestSnapshotState(t *testing.T) {
 	assert.NoError(t, err)
 
 	// write a few keys that will result in memtable flushes
-	key1 := repeatedChar('a', 32)
-	value1 := repeatedChar('b', 96)
+	key1, value1 := repeatedChar('a', 32), repeatedChar('b', 96)
+	key2, value2 := repeatedChar('c', 32), repeatedChar('d', 96)
 	db.Put(key1, value1)
-	key2 := repeatedChar('c', 32)
-	value2 := repeatedChar('d', 96)
 	db.Put(key2, value2)
-
 	db.Close()
 
 	db, err = OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
@@ -282,6 +281,99 @@ func TestSnapshotState(t *testing.T) {
 	assert.Equal(t, uint64(2), snapshot.state.core.lastCompactedWalSSTID)
 	assert.Equal(t, uint64(3), snapshot.state.core.nextWalSstID)
 	assert.Equal(t, 2, len(snapshot.state.core.l0))
+
+	val1, err := db.Get(key1)
+	assert.NoError(t, err)
+	assert.Equal(t, value1, val1)
+
+	val2, err := db.Get(key2)
+	assert.NoError(t, err)
+	assert.Equal(t, value2, val2)
+}
+
+func TestShouldReadFromCompactedDB(t *testing.T) {
+	doTestShouldReadCompactedDB(t, testDBOptionsCompactor(
+		0,
+		127,
+		&CompactorOptions{
+			PollInterval: time.Millisecond * 100,
+			MaxSSTSize:   256,
+		},
+	))
+}
+
+func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
+	doTestShouldReadCompactedDB(t, testDBOptionsCompactor(
+		math.MaxUint32,
+		127,
+		&CompactorOptions{
+			PollInterval: time.Millisecond * 100,
+			MaxSSTSize:   256,
+		},
+	))
+}
+
+func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
+	bucket := objstore.NewInMemBucket()
+	dbPath := "/tmp/test_kv_store"
+	db, err := OpenWithOptions(dbPath, bucket, options)
+	assert.NoError(t, err)
+
+	manifestStore := newManifestStore(dbPath, bucket)
+	sm, err := loadStoredManifest(manifestStore)
+	assert.NoError(t, err)
+	storedManifest, ok := sm.Get()
+	assert.True(t, ok)
+
+	// write enough to fill up a few l0 SSTs
+	for i := 0; i < 4; i++ {
+		db.Put(repeatedChar(rune('a'+i), 32), bytes.Repeat([]byte{byte(1 + i)}, 32))
+		db.Put(repeatedChar(rune('m'+i), 32), bytes.Repeat([]byte{byte(13 + i)}, 32))
+	}
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
+		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	})
+
+	// write more l0s and wait for compaction
+	for i := 0; i < 4; i++ {
+		db.Put(repeatedChar(rune('f'+i), 32), bytes.Repeat([]byte{byte(6 + i)}, 32))
+		db.Put(repeatedChar(rune('s'+i), 32), bytes.Repeat([]byte{byte(19 + i)}, 32))
+	}
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
+		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	})
+
+	// write another l0
+	db.Put(repeatedChar('a', 32), bytes.Repeat([]byte{128}, 32))
+	db.Put(repeatedChar('m', 32), bytes.Repeat([]byte{129}, 32))
+
+	val, err := db.Get(repeatedChar('a', 32))
+	assert.NoError(t, err)
+	assert.Equal(t, bytes.Repeat([]byte{128}, 32), val)
+	val, err = db.Get(repeatedChar('m', 32))
+	assert.NoError(t, err)
+	assert.Equal(t, bytes.Repeat([]byte{129}, 32), val)
+
+	for i := 1; i < 4; i++ {
+		val, err := db.Get(repeatedChar(rune('a'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(1 + i)}, 32), val)
+		val, err = db.Get(repeatedChar(rune('m'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(13 + i)}, 32), val)
+	}
+
+	for i := 0; i < 4; i++ {
+		val, err := db.Get(repeatedChar(rune('f'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(6 + i)}, 32), val)
+		val, err = db.Get(repeatedChar(rune('s'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(19 + i)}, 32), val)
+	}
+
+	_, err = db.Get([]byte("abc"))
+	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
 func waitForManifestCondition(
@@ -308,6 +400,17 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
 		CompressionCodec:     CompressionNone,
+	}
+}
+
+func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
+	return DBOptions{
+		FlushMS:              100,
+		ManifestPollInterval: time.Duration(100),
+		MinFilterKeys:        minFilterKeys,
+		L0SSTSizeBytes:       l0SSTSizeBytes,
+		CompressionCodec:     CompressionNone,
+		CompactorOptions:     compactorOptions,
 	}
 }
 
