@@ -330,9 +330,10 @@ func newDB(
 }
 
 func checkValue(val common.ValueDeletable) ([]byte, error) {
-	if val.GetValue() == nil { // key is tombstoned/deleted
+	if val.GetValue().IsAbsent() { // key is tombstoned/deleted
 		return nil, common.ErrKeyNotFound
 	} else { // key is present
-		return val.GetValue(), nil
+		value, _ := val.GetValue().Get()
+		return value, nil
 	}
 }

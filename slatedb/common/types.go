@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/binary"
+	"github.com/samber/mo"
 )
 
 // KV Represents a key-value pair known not to be a tombstone.
@@ -26,9 +27,9 @@ func (v ValueDeletable) Size() int64 {
 	return int64(binary.Size(v.Value) + binary.Size(v.IsTombstone))
 }
 
-func (v ValueDeletable) GetValue() []byte {
+func (v ValueDeletable) GetValue() mo.Option[[]byte] {
 	if v.IsTombstone {
-		return nil
+		return mo.None[[]byte]()
 	}
-	return v.Value
+	return mo.Some(v.Value)
 }

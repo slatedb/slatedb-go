@@ -3,7 +3,6 @@ package slatedb
 import (
 	"errors"
 	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"log"
@@ -395,15 +394,17 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 
 		kv, _ := entry.Get()
 		value := kv.ValueDel.GetValue()
-		if value == nil { // if we encounter Tombstone continue with next key
-			continue
-		}
-
-		err = currentWriter.add(kv.Key, mo.Some(value))
+		err = currentWriter.add(kv.Key, value)
 		if err != nil {
 			return nil, err
 		}
-		currentSize += len(kv.Key) + len(value)
+
+		currentSize += len(kv.Key)
+		if value.IsPresent() {
+			val, _ := value.Get()
+			currentSize += len(val)
+		}
+
 		if uint64(currentSize) > e.options.MaxSSTSize {
 			currentSize = 0
 			finishedWriter := currentWriter

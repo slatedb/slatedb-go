@@ -292,25 +292,29 @@ func TestSnapshotState(t *testing.T) {
 }
 
 func TestShouldReadFromCompactedDB(t *testing.T) {
-	doTestShouldReadCompactedDB(t, testDBOptionsCompactor(
+	options := testDBOptionsCompactor(
 		0,
 		127,
 		&CompactorOptions{
 			PollInterval: time.Millisecond * 100,
 			MaxSSTSize:   256,
 		},
-	))
+	)
+	doTestShouldReadCompactedDB(t, options)
+	doTestDeleteAndWaitForCompaction(t, options)
 }
 
 func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
-	doTestShouldReadCompactedDB(t, testDBOptionsCompactor(
+	options := testDBOptionsCompactor(
 		math.MaxUint32,
 		127,
 		&CompactorOptions{
 			PollInterval: time.Millisecond * 100,
 			MaxSSTSize:   256,
 		},
-	))
+	)
+	doTestShouldReadCompactedDB(t, options)
+	doTestDeleteAndWaitForCompaction(t, options)
 }
 
 func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
@@ -374,6 +378,60 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 
 	_, err = db.Get([]byte("abc"))
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+}
+
+func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
+	bucket := objstore.NewInMemBucket()
+	dbPath := "/tmp/test_kv_store"
+	db, err := OpenWithOptions(dbPath, bucket, options)
+	assert.NoError(t, err)
+
+	manifestStore := newManifestStore(dbPath, bucket)
+	sm, err := loadStoredManifest(manifestStore)
+	assert.NoError(t, err)
+	storedManifest, ok := sm.Get()
+	assert.True(t, ok)
+
+	// write enough to fill up a few l0 SSTs
+	for i := 0; i < 4; i++ {
+		db.Put(repeatedChar(rune('a'+i), 32), bytes.Repeat([]byte{byte(1 + i)}, 32))
+		db.Put(repeatedChar(rune('m'+i), 32), bytes.Repeat([]byte{byte(13 + i)}, 32))
+	}
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
+		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	})
+
+	// Delete existing keys
+	for i := 0; i < 4; i++ {
+		db.Delete(repeatedChar(rune('a'+i), 32))
+		db.Delete(repeatedChar(rune('m'+i), 32))
+	}
+	//Add new keys
+	for i := 0; i < 2; i++ {
+		db.Put(repeatedChar(rune('f'+i), 32), bytes.Repeat([]byte{byte(6 + i)}, 32))
+		db.Put(repeatedChar(rune('s'+i), 32), bytes.Repeat([]byte{byte(19 + i)}, 32))
+	}
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
+		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	})
+
+	// verify that keys are deleted
+	for i := 1; i < 4; i++ {
+		_, err := db.Get(repeatedChar(rune('a'+i), 32))
+		assert.ErrorIs(t, err, common.ErrKeyNotFound)
+		_, err = db.Get(repeatedChar(rune('m'+i), 32))
+		assert.ErrorIs(t, err, common.ErrKeyNotFound)
+	}
+
+	// verify that new keys added after deleting existing keys are present
+	for i := 0; i < 2; i++ {
+		val, err := db.Get(repeatedChar(rune('f'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(6 + i)}, 32), val)
+		val, err = db.Get(repeatedChar(rune('s'+i), 32))
+		assert.NoError(t, err)
+		assert.Equal(t, bytes.Repeat([]byte{byte(19 + i)}, 32), val)
+	}
 }
 
 func waitForManifestCondition(
