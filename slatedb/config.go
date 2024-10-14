@@ -30,7 +30,7 @@ type DBOptions struct {
 	// Keep in mind that the flush interval does not include the network latency. A
 	// 100ms flush interval will result in a 100ms + the time it takes to send the
 	// bytes to object storage.
-	FlushMS uint64
+	FlushInterval uint64
 
 	// How frequently to poll for new manifest files. Refreshing the manifest file
 	// allows writers to detect fencing operations and allows readers to detect newly
@@ -44,8 +44,8 @@ type DBOptions struct {
 
 	// The minimum size a memtable needs to be before it is frozen and flushed to
 	// L0 object storage. Writes will still be flushed to the object storage WAL
-	// (based on flush_ms) regardless of this value. Memtable sizes are checked
-	// every `flush_ms` milliseconds.
+	// (based on flush_interval) regardless of this value. Memtable sizes are checked
+	// every `flush_interval` milliseconds.
 	//
 	// When setting this configuration, users must consider:
 	//
@@ -77,7 +77,7 @@ type DBOptions struct {
 
 func DefaultDBOptions() DBOptions {
 	return DBOptions{
-		FlushMS:              100,
+		FlushInterval:        100,
 		ManifestPollInterval: time.Second * 1,
 		MinFilterKeys:        1000,
 		L0SSTSizeBytes:       128,

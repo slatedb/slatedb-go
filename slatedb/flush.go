@@ -2,19 +2,20 @@ package slatedb
 
 import (
 	"errors"
-	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *sync.WaitGroup) {
 	walFlushTaskWG.Add(1)
 	go func() {
 		defer walFlushTaskWG.Done()
-		ticker := time.NewTicker(time.Duration(db.options.FlushMS) * time.Millisecond)
+		ticker := time.NewTicker(time.Duration(db.options.FlushInterval) * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
