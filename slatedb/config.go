@@ -80,7 +80,7 @@ func DefaultDBOptions() DBOptions {
 		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Second * 1,
 		MinFilterKeys:        1000,
-		L0SSTSizeBytes:       128,
+		L0SSTSizeBytes:       64 * 1024 * 1024,
 		CompactorOptions:     DefaultCompactorOptions(),
 		CompressionCodec:     CompressionNone,
 	}
