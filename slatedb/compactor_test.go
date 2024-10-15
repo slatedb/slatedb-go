@@ -1,15 +1,16 @@
 package slatedb
 
 import (
+	"math"
+	"slices"
+	"testing"
+	"time"
+
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
-	"math"
-	"slices"
-	"testing"
-	"time"
 )
 
 func TestCompactorCompactsL0(t *testing.T) {
@@ -134,7 +135,7 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 
 func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 	return DBOptions{
-		FlushMS:              100,
+		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Millisecond * 100,
 		MinFilterKeys:        0,
 		L0SSTSizeBytes:       128,

@@ -2,14 +2,15 @@ package slatedb
 
 import (
 	"bytes"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/stretchr/testify/assert"
-	"github.com/thanos-io/objstore"
 	"math"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/thanos-io/objstore"
 )
 
 // TODO: Look into injecting failpoints
@@ -453,7 +454,7 @@ func waitForManifestCondition(
 
 func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 	return DBOptions{
-		FlushMS:              100,
+		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Duration(100),
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
@@ -463,7 +464,7 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 
 func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
 	return DBOptions{
-		FlushMS:              100,
+		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Duration(100),
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
