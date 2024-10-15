@@ -10,6 +10,8 @@ const (
 	CompressionZlib
 )
 
+const FlushInterval time.Duration = 100 * time.Millisecond
+
 // DBOptions Configuration options for the database. These options are set on client startup.
 type DBOptions struct {
 	// How frequently to flush the write-ahead log to object storage (in
@@ -30,7 +32,7 @@ type DBOptions struct {
 	// Keep in mind that the flush interval does not include the network latency. A
 	// 100ms flush interval will result in a 100ms + the time it takes to send the
 	// bytes to object storage.
-	FlushInterval uint64
+	FlushInterval time.Duration
 
 	// How frequently to poll for new manifest files. Refreshing the manifest file
 	// allows writers to detect fencing operations and allows readers to detect newly
@@ -44,8 +46,8 @@ type DBOptions struct {
 
 	// The minimum size a memtable needs to be before it is frozen and flushed to
 	// L0 object storage. Writes will still be flushed to the object storage WAL
-	// (based on flush_interval) regardless of this value. Memtable sizes are checked
-	// every `flush_interval` milliseconds.
+	// (based on FlushInterval) regardless of this value. Memtable sizes are checked
+	// every `FlushInterval` Duration.
 	//
 	// When setting this configuration, users must consider:
 	//
@@ -77,7 +79,7 @@ type DBOptions struct {
 
 func DefaultDBOptions() DBOptions {
 	return DBOptions{
-		FlushInterval:        100,
+		FlushInterval:        FlushInterval,
 		ManifestPollInterval: time.Second * 1,
 		MinFilterKeys:        1000,
 		L0SSTSizeBytes:       128,

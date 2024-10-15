@@ -58,7 +58,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 
 	db.walFlushNotifierCh = make(chan bool, math.MaxUint8)
 	// we start 2 background threads
-	// one thread for flushing WAL to object store and then to memtable. Flushing happens every FlushInterval milliseconds
+	// one thread for flushing WAL to object store and then to memtable. Flushing happens every FlushInterval Duration
 	db.spawnWALFlushTask(db.walFlushNotifierCh, db.walFlushTaskWG)
 	// another thread for
 	// 1. flushing Immutable memtables to L0. Flushing happens when memtable size reaches L0SSTSizeBytes

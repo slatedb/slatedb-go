@@ -454,7 +454,7 @@ func waitForManifestCondition(
 
 func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 	return DBOptions{
-		FlushInterval:        100,
+		FlushInterval:        FlushInterval,
 		ManifestPollInterval: time.Duration(100),
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
@@ -464,7 +464,7 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 
 func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
 	return DBOptions{
-		FlushInterval:        100,
+		FlushInterval:        FlushInterval,
 		ManifestPollInterval: time.Duration(100),
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,

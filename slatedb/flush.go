@@ -15,7 +15,7 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 	walFlushTaskWG.Add(1)
 	go func() {
 		defer walFlushTaskWG.Done()
-		ticker := time.NewTicker(time.Duration(db.options.FlushInterval) * time.Millisecond)
+		ticker := time.NewTicker(db.options.FlushInterval)
 		defer ticker.Stop()
 		for {
 			select {
