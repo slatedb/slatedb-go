@@ -135,7 +135,7 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 
 func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 	return DBOptions{
-		FlushInterval:        FlushInterval,
+		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Millisecond * 100,
 		MinFilterKeys:        0,
 		L0SSTSizeBytes:       128,

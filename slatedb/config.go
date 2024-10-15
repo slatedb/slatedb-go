@@ -10,8 +10,6 @@ const (
 	CompressionZlib
 )
 
-const FlushInterval time.Duration = 100 * time.Millisecond
-
 // DBOptions Configuration options for the database. These options are set on client startup.
 type DBOptions struct {
 	// How frequently to flush the write-ahead log to object storage (in
@@ -79,7 +77,7 @@ type DBOptions struct {
 
 func DefaultDBOptions() DBOptions {
 	return DBOptions{
-		FlushInterval:        FlushInterval,
+		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: time.Second * 1,
 		MinFilterKeys:        1000,
 		L0SSTSizeBytes:       128,
