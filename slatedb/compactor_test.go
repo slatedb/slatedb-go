@@ -125,7 +125,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStore, *DB) {
 	bucket := objstore.NewInMemBucket()
-	db, err := Open(testPath, bucket)
+	db, err := OpenWithOptions(testPath, bucket, options)
 	common.AssertTrue(err == nil, "Failed to open test database")
 	sstFormat := newSSTableFormat(32, 10, options.CompressionCodec)
 	manifestStore := newManifestStore(testPath, bucket)
