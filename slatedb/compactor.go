@@ -219,6 +219,7 @@ func (o *CompactorOrchestrator) maybeScheduleCompactions() error {
 }
 
 func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
+	o.logCompactionState()
 	dbState := o.state.dbState
 
 	sstsByID := make(map[ulid.ULID]SSTableHandle)
@@ -265,6 +266,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 
 func (o *CompactorOrchestrator) finishCompaction(outputSR *SortedRun) error {
 	o.state.finishCompaction(outputSR)
+	o.logCompactionState()
 	err := o.writeManifest()
 	if err != nil {
 		return err
@@ -297,11 +299,18 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		log.Println(err)
+		log.Println("invalid compaction", err)
 		return nil
 	}
 	o.startCompaction(compaction)
 	return nil
+}
+
+func (o *CompactorOrchestrator) logCompactionState() {
+	//o.state.dbState.logState()
+	for _, compaction := range o.state.compactions {
+		log.Println("in-flight compaction: ", compaction)
+	}
 }
 
 // ------------------------------------------------

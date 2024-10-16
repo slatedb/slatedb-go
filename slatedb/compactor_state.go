@@ -4,6 +4,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"log"
 	"maps"
 	"math"
 	"slices"
@@ -124,6 +125,7 @@ func (c *CompactorState) submitCompaction(compaction Compaction) error {
 		}
 	}
 
+	log.Println("accepted submitted compaction:", compaction)
 	c.compactions[compaction.destination] = compaction
 	return nil
 }
@@ -170,6 +172,7 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	if !ok {
 		return
 	}
+	log.Println("finished compaction:", compaction)
 
 	compactionL0s := make(map[ulid.ULID]bool)
 	compactionSRs := make(map[uint32]bool)

@@ -7,6 +7,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"log"
 	"strconv"
 	"sync"
 )
@@ -63,6 +64,14 @@ func (c *CoreDBState) clone() *CoreDBState {
 		nextWalSstID:          c.nextWalSstID,
 		lastCompactedWalSSTID: c.lastCompactedWalSSTID,
 	}
+}
+
+func (c *CoreDBState) logState() {
+	log.Println("DB Levels:")
+	log.Println("-----------------")
+	log.Println(c.l0)
+	log.Println(c.compacted)
+	log.Println("-----------------")
 }
 
 type DBStateSnapshot struct {
