@@ -12,7 +12,7 @@ gen_flatbuf:
 
 .PHONY: build
 build: gen_flatbuf fmt vet
-	go build -v -o bin/slatedb ./cmd
+	go build -v -o bin/slatedb -race ./cmd
 
 .PHONY: test
 test: build

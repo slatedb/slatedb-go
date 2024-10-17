@@ -117,7 +117,7 @@ func (m *MergeIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 	// this loop is to iterate over duplicate keys. we break once we get a key that is not a duplicate
 	for m.current.IsPresent() {
 		nextEntry, _ := m.current.Get()
-		if bytes.Compare(nextEntry.nextKV.Key, kv.Key) != 0 {
+		if !bytes.Equal(nextEntry.nextKV.Key, kv.Key) {
 			break
 		}
 
