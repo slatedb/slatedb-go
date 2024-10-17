@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"hash/crc32"
+	"io"
+	"math"
+
 	"github.com/gammazero/deque"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/filter"
-	"hash/crc32"
-	"io"
-	"math"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 
 	"github.com/golang/snappy"
 	"github.com/samber/mo"
@@ -72,6 +75,7 @@ func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj common.ReadOnlyBl
 	}
 	filterBytes, err := obj.ReadRange(filterOffsetRange)
 	if err != nil {
+		logger.Error("unable to read filter offset range", zap.Error(err))
 		return mo.None[filter.BloomFilter](), err
 	}
 
@@ -90,6 +94,7 @@ func (f *SSTableFormat) decompress(compressedData []byte, compression Compressio
 	case CompressionZlib:
 		r, err := zlib.NewReader(bytes.NewReader(compressedData))
 		if err != nil {
+			logger.Error("unable to read compress data", zap.Error(err))
 			return nil, err
 		}
 		defer r.Close()
@@ -131,6 +136,7 @@ func (f *SSTableFormat) readBlocks(
 	r := f.getBlockRange(blockRange, sstInfo)
 	dataBytes, err := obj.ReadRange(r)
 	if err != nil {
+		logger.Error("unable to read data", zap.Error(err))
 		return nil, err
 	}
 
@@ -150,6 +156,7 @@ func (f *SSTableFormat) readBlocks(
 
 		decodedBlock, err := f.decodeBytesToBlock(blockBytes)
 		if err != nil {
+			logger.Error("unable to decode block", zap.Error(err))
 			return nil, err
 		}
 		decodedBlocks = append(decodedBlocks, *decodedBlock)
@@ -163,6 +170,7 @@ func (f *SSTableFormat) decodeBytesToBlock(bytes []byte) (*Block, error) {
 	blockBytes := bytes[:checksumIndex]
 	checksum := binary.BigEndian.Uint32(bytes[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(blockBytes) {
+		logger.Warn("checksum does not match")
 		return nil, common.ErrChecksumMismatch
 	}
 
@@ -278,6 +286,8 @@ func (b *EncodedSSTableBuilder) compress(data []byte, compression CompressionCod
 		defer w.Close()
 		_, err := w.Write(data)
 		if err != nil {
+			logger.Error("unable to write data", zap.Error(err))
+
 			return nil, err
 		}
 		return b.Bytes(), nil
@@ -441,6 +451,7 @@ func decodeBytesToSSTableInfo(rawBlockMeta []byte) (*SSTableInfoOwned, error) {
 	data := rawBlockMeta[:checksumIndex]
 	checksum := binary.BigEndian.Uint32(rawBlockMeta[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(data) {
+		logger.Error("check sum does not match")
 		return nil, common.ErrChecksumMismatch
 	}
 
@@ -527,6 +538,7 @@ func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
+				logger.Error("unable to get next entry", zap.Error(err))
 				return mo.None[common.KVDeletable](), err
 			}
 
@@ -607,6 +619,7 @@ func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
 				return mo.Some(newBlockIteratorFromFirstKey(block)), nil
 			}
 		} else {
+			logger.Error("unable to read block")
 			return mo.None[*BlockIterator](), common.ErrReadBlocks
 		}
 	}

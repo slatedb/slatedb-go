@@ -2,14 +2,17 @@ package slatedb
 
 import (
 	"errors"
-	"github.com/oklog/ulid/v2"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"log"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/iter"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 type CompactionScheduler interface {
@@ -289,7 +292,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 		core := o.state.dbState.clone()
 		err = o.manifest.updateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			log.Println("conflicting manifest version. retry write")
+			logger.Error("conflicting manifest version. retry write", zap.Error(err))
 			continue
 		}
 		return err
@@ -299,7 +302,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		log.Println("invalid compaction", err)
+		logger.Error("invalid compaction", zap.Error(err))
 		return nil
 	}
 	o.startCompaction(compaction)
@@ -309,7 +312,7 @@ func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 func (o *CompactorOrchestrator) logCompactionState() {
 	//o.state.dbState.logState()
 	for _, compaction := range o.state.compactions {
-		log.Println("in-flight compaction: ", compaction)
+		logger.Info("in-flight compaction", zap.Any("compaction", compaction))
 	}
 }
 

@@ -3,8 +3,10 @@ package slatedb
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"math"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
 
 	"github.com/samber/mo"
 )
@@ -121,6 +123,7 @@ func (b *BlockBuilder) isEmpty() bool {
 
 func (b *BlockBuilder) build() (*Block, error) {
 	if b.isEmpty() {
+		logger.Error("block is empty")
 		return nil, common.ErrEmptyBlock
 	}
 	return &Block{
@@ -155,6 +158,7 @@ func newBlockIteratorFromKey(block *Block, key []byte) *BlockIterator {
 			break
 		}
 	}
+
 	return &BlockIterator{
 		block:       block,
 		offsetIndex: uint64(index),

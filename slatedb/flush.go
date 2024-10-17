@@ -2,13 +2,14 @@ package slatedb
 
 import (
 	"errors"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *sync.WaitGroup) {
@@ -146,7 +147,7 @@ func (db *DB) spawnMemtableFlushTask(
 			case <-ticker.C:
 				err := flusher.loadManifest()
 				if err != nil {
-					log.Println("Error loading manifest:", err)
+					logger.Error("error load manifest", zap.Error(err))
 				}
 			case val := <-memtableFlushNotifierCh:
 				if val == Shutdown {
@@ -154,7 +155,7 @@ func (db *DB) spawnMemtableFlushTask(
 				} else if val == FlushImmutableMemtables {
 					err := flusher.flushImmMemtablesToL0()
 					if err != nil {
-						log.Println("Error flushing memtable:", err)
+						logger.Error("Error flushing memtable", zap.Error(err))
 					}
 				}
 			}
@@ -162,7 +163,7 @@ func (db *DB) spawnMemtableFlushTask(
 
 		err := flusher.writeManifestSafely()
 		if err != nil {
-			log.Println("Error writing manifest on shutdown:", err)
+			logger.Error("error writing manifest on shutdown", zap.Error(err))
 		}
 	}()
 }
@@ -202,7 +203,7 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 
 		err = m.writeManifest()
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			log.Println("conflicting manifest version. retry write")
+			logger.Error("conflicting manifest version. retry write", zap.Error(err))
 		} else if err != nil {
 			return err
 		} else {

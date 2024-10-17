@@ -6,7 +6,9 @@ import (
 	"sync"
 
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/zap"
 )
 
 const BlockSize = 4096
@@ -37,10 +39,13 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 }
 
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
+	logger.Init()
+	logger.Warn("Application started")
 	sstFormat := newSSTableFormat(BlockSize, options.MinFilterKeys, options.CompressionCodec)
 	tableStore := newTableStore(bucket, sstFormat, path)
 	manifestStore := newManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
+
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +74,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	if db.options.CompactorOptions != nil {
 		compactor, err = newCompactor(manifestStore, tableStore, db.options.CompactorOptions)
 		if err != nil {
+			logger.Error("unable to create compactor", zap.Error(err))
 			return nil, err
 		}
 	}
@@ -78,6 +84,8 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 }
 
 func (db *DB) Close() error {
+	defer logger.Sync()
+
 	if db.compactor != nil {
 		db.compactor.close()
 	}
@@ -314,6 +322,7 @@ func newDB(
 	coreDBState *CoreDBState,
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg,
 ) (*DB, error) {
+
 	state := newDBState(coreDBState)
 	db := &DB{
 		state:                   state,
