@@ -3,11 +3,14 @@ package slatedb
 import (
 	"bytes"
 	"context"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/thanos-io/objstore"
 	"io"
 	"path"
+
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"github.com/thanos-io/objstore"
+	"go.uber.org/zap"
 )
 
 type ObjectStore interface {
@@ -40,15 +43,18 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 	fullPath := d.getPath(objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
+		logger.Warn("invalid object path")
 		return common.ErrObjectStore
 	}
 
 	if exists {
+		logger.Warn("object store already exists")
 		return common.ErrObjectExists
 	}
 
 	err = d.bucket.Upload(context.Background(), fullPath, bytes.NewReader(data))
 	if err != nil {
+		logger.Error("unable to upload", zap.Error(err))
 		return common.ErrObjectStore
 	}
 	return nil
@@ -58,11 +64,13 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	fullPath := d.getPath(objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
+		logger.Error("unable to get the bucket", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
+		logger.Error("unable to read data", zap.Error(err))
 		return nil, err
 	}
 	return data, nil
@@ -81,6 +89,7 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]string, error
 		return nil
 	}, objstore.WithRecursiveIter)
 	if err != nil {
+		logger.Error("unable to lsit objects", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 

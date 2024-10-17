@@ -3,17 +3,20 @@ package slatedb
 import (
 	"bytes"
 	"context"
-	"github.com/maypok86/otter"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/filter"
-	"github.com/thanos-io/objstore"
 	"io"
 	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/maypok86/otter"
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/filter"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"github.com/thanos-io/objstore"
+	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -59,6 +62,7 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 		return nil
 	}, objstore.WithRecursiveIter)
 	if err != nil {
+		logger.Error("unable to iterate over the table list", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
@@ -89,6 +93,7 @@ func (ts *TableStore) writeSST(id SSTableID, encodedSST *EncodedSSTable) (*SSTab
 
 	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
 	if err != nil {
+		logger.Error("unable to upload bucket", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
@@ -100,6 +105,7 @@ func (ts *TableStore) openSST(id SSTableID) (*SSTableHandle, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(id)}
 	sstInfo, err := ts.sstFormat.readInfo(obj)
 	if err != nil {
+		logger.Error("unable to open table", zap.Error(err))
 		return nil, err
 	}
 
@@ -151,6 +157,7 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
+		logger.Warn("inavlid id", zap.Error(err))
 		return 0, common.ErrInvalidDBState
 	}
 
@@ -190,6 +197,7 @@ type EncodedSSTableWriter struct {
 func (w *EncodedSSTableWriter) add(key []byte, value mo.Option[[]byte]) error {
 	err := w.builder.add(key, value)
 	if err != nil {
+		logger.Error("unable to add key value", zap.Error(err))
 		return err
 	}
 
@@ -208,6 +216,7 @@ func (w *EncodedSSTableWriter) add(key []byte, value mo.Option[[]byte]) error {
 func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
 	encodedSST, err := w.builder.build()
 	if err != nil {
+		logger.Error("unable to close SS Table", zap.Error(err))
 		return nil, err
 	}
 
@@ -241,6 +250,7 @@ type ReadOnlyObject struct {
 func (r ReadOnlyObject) Len() (int, error) {
 	attr, err := r.bucket.Attributes(context.Background(), r.path)
 	if err != nil {
+		logger.Warn("invalid object", zap.Error(err))
 		return 0, common.ErrObjectStore
 	}
 	return int(attr.Size), nil
@@ -249,11 +259,13 @@ func (r ReadOnlyObject) Len() (int, error) {
 func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
 	read, err := r.bucket.GetRange(context.Background(), r.path, int64(rng.Start), int64(rng.End-rng.Start))
 	if err != nil {
+		logger.Warn("invalid object", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
+		logger.Error("unable to read data", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
@@ -263,11 +275,13 @@ func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
 func (r ReadOnlyObject) Read() ([]byte, error) {
 	read, err := r.bucket.Get(context.Background(), r.path)
 	if err != nil {
+		logger.Error("unable to get bucket", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
+		logger.Error("unable to read data", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 

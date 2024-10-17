@@ -1,14 +1,17 @@
 package slatedb
 
 import (
-	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"log"
 	"maps"
 	"math"
 	"slices"
 	"strconv"
+
+	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -47,6 +50,7 @@ func (s SourceID) sortedRunID() mo.Option[uint32] {
 	}
 	val, err := strconv.Atoi(s.value)
 	if err != nil {
+		logger.Error("unable to parse source id", zap.Error(err))
 		return mo.None[uint32]()
 	}
 	return mo.Some(uint32(val))
@@ -58,6 +62,7 @@ func (s SourceID) sstID() mo.Option[ulid.ULID] {
 	}
 	val, err := ulid.Parse(s.value)
 	if err != nil {
+		logger.Error("unable to parse source id", zap.Error(err))
 		return mo.None[ulid.ULID]()
 	}
 	return mo.Some(val)

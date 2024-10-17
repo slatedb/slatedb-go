@@ -3,13 +3,16 @@ package slatedb
 import (
 	"errors"
 	"fmt"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/thanos-io/objstore"
 	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"github.com/thanos-io/objstore"
+	"go.uber.org/zap"
 )
 
 type EpochType int
@@ -67,6 +70,7 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 func (f *FenceableManifest) dbState() (*CoreDBState, error) {
 	err := f.checkEpoch()
 	if err != nil {
+		logger.Error("unable to get db state", zap.Error(err))
 		return nil, err
 	}
 	return f.storedManifest.dbState(), nil
@@ -98,6 +102,7 @@ func (f *FenceableManifest) storedEpoch() uint64 {
 
 func (f *FenceableManifest) checkEpoch() error {
 	if f.localEpoch.Load() < f.storedEpoch() {
+		logger.Warn("detenced newer client")
 		return common.ErrFenced
 	}
 	if f.localEpoch.Load() > f.storedEpoch() {
@@ -129,6 +134,7 @@ func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest
 	}
 	err := store.writeManifest(1, manifest)
 	if err != nil {
+		logger.Error("unable to store manifest", zap.Error(err))
 		return nil, err
 	}
 
@@ -142,6 +148,7 @@ func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest
 func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error) {
 	stored, err := store.readLatestManifest()
 	if err != nil {
+		logger.Error("unable to read latest manifest", zap.Error(err))
 		return mo.None[StoredManifest](), err
 	}
 	if stored.IsAbsent() {
@@ -172,6 +179,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 	newID := s.id + 1
 	err := s.manifestStore.writeManifest(newID, manifest)
 	if err != nil {
+		logger.Error("unable to write store manifest", zap.Error(err))
 		return err
 	}
 	s.manifest = manifest
@@ -182,6 +190,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	stored, err := s.manifestStore.readLatestManifest()
 	if err != nil {
+		logger.Error("unable to load latest manifest", zap.Error(err))
 		return nil, err
 	}
 	if stored.IsAbsent() {
@@ -216,6 +225,7 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
 	manifestPath := fmt.Sprintf("%020d.%s", id, s.manifestSuffix)
 	err := s.objectStore.putIfNotExists(manifestPath, s.codec.encode(manifest))
 	if err != nil {
+		logger.Error("failed to complete the operation", zap.Error(err))
 		if errors.Is(err, common.ErrObjectExists) {
 			return common.ErrManifestVersionExists
 		}
@@ -233,6 +243,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	manifestPath := ""
 	files, err := s.objectStore.list(mo.Some(manifestPath))
 	if err != nil {
+		logger.Error("unable to list manifest files", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore
 	}
 
@@ -243,6 +254,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	for _, filepath := range files {
 		foundID, err := s.parseID(filepath, ".manifest")
 		if err != nil {
+			logger.Error("unable to parse manifest file", zap.Error(err))
 			continue
 		}
 
@@ -264,11 +276,13 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	// read the latest manifest from object store and return the manifest
 	manifestBytes, err := s.objectStore.get(basePath(latestManifestPath))
 	if err != nil {
+		logger.Error("unable to read latest manifest from the store", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore
 	}
 
 	manifest, err := s.codec.decode(manifestBytes)
 	if err != nil {
+		logger.Error("unable to decode manifest", zap.Error(err))
 		return mo.None[manifestInfo](), err
 	}
 	return mo.Some(manifestInfo{latestManifestID, manifest}), nil
@@ -276,6 +290,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 
 func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, error) {
 	if path.Ext(filepath) != expectedExt {
+		logger.Warn("invalid file extention")
 		return 0, common.ErrInvalidDBState
 	}
 
@@ -283,6 +298,7 @@ func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, er
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
+		logger.Error("invalid id", zap.Error(err))
 		return 0, common.ErrInvalidDBState
 	}
 
