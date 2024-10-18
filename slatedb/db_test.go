@@ -20,6 +20,7 @@ func TestPutGetDelete(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	key := []byte("key1")
 	value := []byte("value1")
@@ -40,7 +41,6 @@ func TestPutGetDelete(t *testing.T) {
 	db.Delete(key)
 	val, err = db.Get(key)
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
-	db.Close()
 }
 
 func TestPutFlushesMemtable(t *testing.T) {
@@ -48,6 +48,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	stored, err := loadStoredManifest(manifestStore)
@@ -111,6 +112,7 @@ func TestPutEmptyValue(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	key := []byte("key1")
 	value := []byte("")
@@ -126,6 +128,7 @@ func TestFlushWhileIterating(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	wal := db.state.wal
 	wal.put([]byte("abc1111"), []byte("value1111"))
@@ -186,6 +189,7 @@ func TestBasicRestore(t *testing.T) {
 	// recover and validate that sst files are loaded on recovery.
 	dbRestored, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
 	assert.NoError(t, err)
+	defer dbRestored.Close()
 
 	for i := 0; i < l0Count; i++ {
 		val, err := dbRestored.Get(repeatedChar(rune('a'+i), 16))
@@ -216,6 +220,7 @@ func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	// we do not wait till WAL is flushed to object store and memtable
 	db.PutWithOptions([]byte("foo"), []byte("bar"), WriteOptions{AwaitFlush: false})
@@ -223,7 +228,6 @@ func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
 	value, err := db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
-	db.Close()
 }
 
 func TestShouldReadOnlyCommittedData(t *testing.T) {
@@ -231,6 +235,7 @@ func TestShouldReadOnlyCommittedData(t *testing.T) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
 	db.PutWithOptions([]byte("foo"), []byte("bla"), WriteOptions{AwaitFlush: false})
@@ -242,7 +247,6 @@ func TestShouldReadOnlyCommittedData(t *testing.T) {
 	value, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("bla"), value)
-	db.Close()
 }
 
 func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
@@ -250,6 +254,7 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
 	assert.NoError(t, err)
+	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
 	db.DeleteWithOptions([]byte("foo"), WriteOptions{AwaitFlush: false})
@@ -260,7 +265,6 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 
 	value, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
-	db.Close()
 }
 
 func TestSnapshotState(t *testing.T) {
@@ -278,6 +282,7 @@ func TestSnapshotState(t *testing.T) {
 
 	db, err = OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
 	assert.NoError(t, err)
+	defer db.Close()
 	snapshot := db.state.snapshot()
 	assert.Equal(t, uint64(2), snapshot.state.core.lastCompactedWalSSTID)
 	assert.Equal(t, uint64(3), snapshot.state.core.nextWalSstID)
@@ -297,7 +302,7 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 		0,
 		127,
 		&CompactorOptions{
-			PollInterval: time.Millisecond * 100,
+			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
 	)
@@ -310,7 +315,7 @@ func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 		math.MaxUint32,
 		127,
 		&CompactorOptions{
-			PollInterval: time.Millisecond * 100,
+			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
 	)
@@ -323,6 +328,7 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, options)
 	assert.NoError(t, err)
+	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
@@ -386,6 +392,7 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, options)
 	assert.NoError(t, err)
+	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
@@ -455,7 +462,7 @@ func waitForManifestCondition(
 func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 	return DBOptions{
 		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Duration(100),
+		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
 		CompressionCodec:     CompressionNone,
@@ -463,14 +470,9 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 }
 
 func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
-	return DBOptions{
-		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Duration(100),
-		MinFilterKeys:        minFilterKeys,
-		L0SSTSizeBytes:       l0SSTSizeBytes,
-		CompressionCodec:     CompressionNone,
-		CompactorOptions:     compactorOptions,
-	}
+	dbOptions := testDBOptions(minFilterKeys, l0SSTSizeBytes)
+	dbOptions.CompactorOptions = compactorOptions
+	return dbOptions
 }
 
 func repeatedChar(ch rune, count int) []byte {

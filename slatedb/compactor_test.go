@@ -16,6 +16,7 @@ import (
 func TestCompactorCompactsL0(t *testing.T) {
 	options := dbOptions(compactorOptions())
 	_, manifestStore, tableStore, db := buildTestDB(options)
+	defer db.Close()
 	for i := 0; i < 4; i++ {
 		db.Put(repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48))
 		db.Put(repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48))
@@ -136,7 +137,7 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 	return DBOptions{
 		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Millisecond * 100,
+		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        0,
 		L0SSTSizeBytes:       128,
 		CompactorOptions:     compactorOptions,
@@ -146,7 +147,7 @@ func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 
 func compactorOptions() *CompactorOptions {
 	return &CompactorOptions{
-		PollInterval: time.Millisecond * 100,
+		PollInterval: 100 * time.Millisecond,
 		MaxSSTSize:   1024 * 1024 * 1024,
 	}
 }
