@@ -2,11 +2,15 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/slatedb/slatedb-go/slatedb"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/zap"
 )
 
 func main() {
+
 	bucket := objstore.NewInMemBucket()
 	db, _ := slatedb.Open("/tmp/testDB", bucket)
 
@@ -24,7 +28,7 @@ func main() {
 	if err != nil && err.Error() == "key not found" {
 		fmt.Println("Delete:", string(key))
 	} else {
-		fmt.Println("failed to delete key", string(key))
+		logger.Error("Unable to delete", zap.Error(err))
 	}
 
 	db.Close()

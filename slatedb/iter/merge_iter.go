@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"cmp"
 	"container/heap"
+
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -63,6 +66,7 @@ func (m *MergeIterator) advance() (mo.Option[common.KVDeletable], error) {
 	currentKV := iteratorState.nextKV
 	entry, err := iteratorState.iterator.NextEntry()
 	if err != nil {
+		logger.Error("unable to get key value options", zap.Error(err))
 		return mo.None[common.KVDeletable](), err
 	}
 
@@ -146,11 +150,13 @@ type TwoMergeIterator struct {
 func NewTwoMergeIterator(iter1 KVIterator, iter2 KVIterator) (*TwoMergeIterator, error) {
 	next1, err := iter1.NextEntry()
 	if err != nil {
+		logger.Error("unable to get next entry for iteration 1", zap.Error(err))
 		return nil, err
 	}
 
 	next2, err := iter2.NextEntry()
 	if err != nil {
+		logger.Error("unable to get next entry for iteration 2", zap.Error(err))
 		return nil, err
 	}
 

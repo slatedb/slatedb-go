@@ -2,8 +2,11 @@ package slatedb
 
 import (
 	"bytes"
+
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -154,6 +157,7 @@ func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KVDeletable], error
 		kvIter, _ := iter.currentKVIter.Get()
 		next, err := kvIter.NextEntry()
 		if err != nil {
+			logger.Error("unable to get next entry", zap.Error(err))
 			return mo.None[common.KVDeletable](), err
 		}
 
