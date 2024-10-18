@@ -155,7 +155,7 @@ func newCompactorOrchestrator(
 	}
 
 	scheduler := loadCompactionScheduler()
-	workerCh := make(chan WorkerToOrchestratorMsg, math.MaxUint8)
+	workerCh := make(chan WorkerToOrchestratorMsg, 1)
 	executor := newCompactorExecutor(options, workerCh, tableStore)
 
 	return &CompactorOrchestrator{
@@ -451,10 +451,21 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 				return
 			default:
 				sortedRun, err := e.executeCompaction(compaction)
+				var msg WorkerToOrchestratorMsg
 				if err != nil {
-					e.workerCh <- WorkerToOrchestratorMsg{CompactionError: err}
+					msg = WorkerToOrchestratorMsg{CompactionError: err}
 				} else if sortedRun != nil {
-					e.workerCh <- WorkerToOrchestratorMsg{CompactionResult: sortedRun}
+					msg = WorkerToOrchestratorMsg{CompactionResult: sortedRun}
+				}
+
+				// wait till we can send msg to workerCh or abort is called
+				for {
+					select {
+					case <-e.abortCh:
+						return
+					case e.workerCh <- msg:
+					default:
+					}
 				}
 			}
 		}

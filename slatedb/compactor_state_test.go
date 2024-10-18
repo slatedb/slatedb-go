@@ -64,6 +64,7 @@ func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 	bucket, sm, state := buildTestState()
 	db, err := Open(testPath, bucket)
 	assert.NoError(t, err)
+	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 
@@ -92,6 +93,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 
 	db, err := Open(testPath, bucket)
 	assert.NoError(t, err)
+	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)
@@ -142,6 +144,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 
 	db, err := Open(testPath, bucket)
 	assert.NoError(t, err)
+	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)

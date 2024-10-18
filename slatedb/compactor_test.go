@@ -16,6 +16,7 @@ import (
 func TestCompactorCompactsL0(t *testing.T) {
 	options := dbOptions(compactorOptions())
 	_, manifestStore, tableStore, db := buildTestDB(options)
+	defer db.Close()
 	for i := 0; i < 4; i++ {
 		db.Put(repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48))
 		db.Put(repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48))
