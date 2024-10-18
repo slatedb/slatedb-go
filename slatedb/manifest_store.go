@@ -290,7 +290,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 
 func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, error) {
 	if path.Ext(filepath) != expectedExt {
-		logger.Warn("invalid file extention")
+		logger.Warn("invalid file extension")
 		return 0, common.ErrInvalidDBState
 	}
 

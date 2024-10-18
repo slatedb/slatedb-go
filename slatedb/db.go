@@ -40,7 +40,7 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
 	logger.Init()
-	logger.Warn("Application started")
+	logger.Info("Application started")
 	sstFormat := newSSTableFormat(BlockSize, options.MinFilterKeys, options.CompressionCodec)
 	tableStore := newTableStore(bucket, sstFormat, path)
 	manifestStore := newManifestStore(path, bucket)
