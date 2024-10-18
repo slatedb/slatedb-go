@@ -302,7 +302,7 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 		0,
 		127,
 		&CompactorOptions{
-			PollInterval: time.Millisecond * 100,
+			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
 	)
@@ -315,7 +315,7 @@ func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 		math.MaxUint32,
 		127,
 		&CompactorOptions{
-			PollInterval: time.Millisecond * 100,
+			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
 	)
@@ -462,7 +462,7 @@ func waitForManifestCondition(
 func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 	return DBOptions{
 		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Duration(100),
+		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
 		CompressionCodec:     CompressionNone,
@@ -470,14 +470,9 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 }
 
 func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
-	return DBOptions{
-		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Duration(100),
-		MinFilterKeys:        minFilterKeys,
-		L0SSTSizeBytes:       l0SSTSizeBytes,
-		CompressionCodec:     CompressionNone,
-		CompactorOptions:     compactorOptions,
-	}
+	dbOptions := testDBOptions(minFilterKeys, l0SSTSizeBytes)
+	dbOptions.CompactorOptions = compactorOptions
+	return dbOptions
 }
 
 func repeatedChar(ch rune, count int) []byte {

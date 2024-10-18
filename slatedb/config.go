@@ -78,7 +78,7 @@ type DBOptions struct {
 func DefaultDBOptions() DBOptions {
 	return DBOptions{
 		FlushInterval:        100 * time.Millisecond,
-		ManifestPollInterval: time.Second * 1,
+		ManifestPollInterval: 1 * time.Second,
 		MinFilterKeys:        1000,
 		L0SSTSizeBytes:       64 * 1024 * 1024,
 		CompactorOptions:     DefaultCompactorOptions(),
@@ -141,7 +141,7 @@ type CompactorOptions struct {
 
 func DefaultCompactorOptions() *CompactorOptions {
 	return &CompactorOptions{
-		PollInterval: time.Second * 5,
+		PollInterval: 5 * time.Second,
 		MaxSSTSize:   1024 * 1024 * 1024,
 	}
 }
