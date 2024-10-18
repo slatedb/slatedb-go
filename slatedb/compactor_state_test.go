@@ -62,7 +62,9 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 
 func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 	bucket, sm, state := buildTestState()
-	db, err := Open(testPath, bucket)
+	option := DefaultDBOptions()
+	option.L0SSTSizeBytes = 128
+	db, err := OpenWithOptions(testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -91,7 +93,9 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 		sstList: []SSTableHandle{originalL0s[len(originalL0s)-1]},
 	})
 
-	db, err := Open(testPath, bucket)
+	option := DefaultDBOptions()
+	option.L0SSTSizeBytes = 128
+	db, err := OpenWithOptions(testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -142,7 +146,9 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	})
 	assert.Equal(t, 0, len(state.dbState.l0))
 
-	db, err := Open(testPath, bucket)
+	option := DefaultDBOptions()
+	option.L0SSTSizeBytes = 128
+	db, err := OpenWithOptions(testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -183,7 +189,9 @@ func buildL0Compaction(sstList []SSTableHandle, destination uint32) Compaction {
 
 func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
 	bucket := objstore.NewInMemBucket()
-	db, err := Open(testPath, bucket)
+	option := DefaultDBOptions()
+	option.L0SSTSizeBytes = 128
+	db, err := OpenWithOptions(testPath, bucket, option)
 	common.AssertTrue(err == nil, "Could not open db")
 	l0Count := 5
 	for i := 0; i < l0Count; i++ {
