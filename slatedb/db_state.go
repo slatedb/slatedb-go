@@ -3,13 +3,16 @@ package slatedb
 import (
 	"bytes"
 	"fmt"
+	"log"
+	"strconv"
+	"sync"
+
 	"github.com/gammazero/deque"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"log"
-	"strconv"
-	"sync"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -224,6 +227,7 @@ func (s *SSTableID) walID() mo.Option[uint64] {
 
 	val, err := strconv.Atoi(s.value)
 	if err != nil {
+		logger.Error("unable to parse table id", zap.Error(err))
 		return mo.None[uint64]()
 	}
 
@@ -237,6 +241,7 @@ func (s *SSTableID) compactedID() mo.Option[ulid.ULID] {
 
 	val, err := ulid.Parse(s.value)
 	if err != nil {
+		logger.Error("unable to parse table id", zap.Error(err))
 		return mo.None[ulid.ULID]()
 	}
 
