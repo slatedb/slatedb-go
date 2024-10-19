@@ -2,7 +2,6 @@ package slatedb
 
 import (
 	"errors"
-	"log"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -97,7 +96,7 @@ func spawnAndRunCompactorOrchestrator(
 				common.AssertTrue(err == nil, "Failed to load manifest")
 			case msg := <-orchestrator.workerCh:
 				if msg.CompactionError != nil {
-					log.Println("Error executing compaction", msg.CompactionError)
+					logger.Error("Error executing compaction", zap.Error(msg.CompactionError))
 				} else if msg.CompactionResult != nil {
 					err := orchestrator.finishCompaction(msg.CompactionResult)
 					common.AssertTrue(err == nil, "Failed to finish compaction")

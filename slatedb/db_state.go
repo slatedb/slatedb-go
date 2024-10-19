@@ -3,7 +3,6 @@ package slatedb
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 
@@ -70,11 +69,11 @@ func (c *CoreDBState) clone() *CoreDBState {
 }
 
 func (c *CoreDBState) logState() {
-	log.Println("DB Levels:")
-	log.Println("-----------------")
-	log.Println(c.l0)
-	log.Println(c.compacted)
-	log.Println("-----------------")
+	logger.Info("DB Levels:")
+	logger.Info("-----------------")
+	logger.Info("state", zap.Any("L0", c.l0))
+	logger.Info("state", zap.Any("compacted", c.compacted))
+	logger.Info("-----------------")
 }
 
 type DBStateSnapshot struct {

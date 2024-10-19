@@ -1,7 +1,6 @@
 package slatedb
 
 import (
-	"log"
 	"maps"
 	"math"
 	"slices"
@@ -130,7 +129,7 @@ func (c *CompactorState) submitCompaction(compaction Compaction) error {
 		}
 	}
 
-	log.Println("accepted submitted compaction:", compaction)
+	logger.Info("accepted submitted compaction:", zap.Any("compaction", compaction))
 	c.compactions[compaction.destination] = compaction
 	return nil
 }
@@ -177,7 +176,7 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	if !ok {
 		return
 	}
-	log.Println("finished compaction:", compaction)
+	logger.Info("finished compaction", zap.Any("compaction", compaction))
 
 	compactionL0s := make(map[ulid.ULID]bool)
 	compactionSRs := make(map[uint32]bool)
