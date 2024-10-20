@@ -83,6 +83,10 @@ func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj common.ReadOnlyBl
 	return mo.Some(*filtr), nil
 }
 
+func (f *SSTableFormat) readIndex(infoOwned *SSTableInfoOwned, obj common.ReadOnlyBlob) (*SSTableIndexOwned, error) {
+	info := infoOwned.borrow()
+}
+
 // decompress the compressed data using the specified compression codec.
 // TODO: implement more compression options
 func (f *SSTableFormat) decompress(compressedData []byte, compression CompressionCodec) ([]byte, error) {
@@ -416,29 +420,9 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 // SSTableInfoOwned
 // ------------------------------------------------
 
-type SSTableInfoOwned struct {
-	data []byte
-}
-
-func newSSTableInfoOwned(data []byte) *SSTableInfoOwned {
-	return &SSTableInfoOwned{data: data}
-}
-
-func (info *SSTableInfoOwned) borrow() *flatbuf.SsTableInfo {
-	return flatbuf.GetRootAsSsTableInfo(info.data, 0)
-}
-
 func (info *SSTableInfoOwned) encode(buf *[]byte) {
 	*buf = append(*buf, info.data...)
 	*buf = binary.BigEndian.AppendUint32(*buf, crc32.ChecksumIEEE(info.data))
-}
-
-func (info *SSTableInfoOwned) clone() *SSTableInfoOwned {
-	data := make([]byte, len(info.data))
-	copy(data, info.data)
-	return &SSTableInfoOwned{
-		data: data,
-	}
 }
 
 func decodeBytesToSSTableInfo(rawBlockMeta []byte) (*SSTableInfoOwned, error) {

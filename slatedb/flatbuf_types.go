@@ -171,3 +171,51 @@ func (fb DBFlatBufferBuilder) addSortedRun(sortedRun SortedRun) *flatbuf.SortedR
 		Ssts: fb.addCompactedSSTs(sortedRun.sstList),
 	}
 }
+
+// ------------------------------------------------
+// SSTableInfoOwned
+// ------------------------------------------------
+
+type SSTableInfoOwned struct {
+	data []byte
+}
+
+func newSSTableInfoOwned(data []byte) *SSTableInfoOwned {
+	return &SSTableInfoOwned{data: data}
+}
+
+func (info *SSTableInfoOwned) borrow() *flatbuf.SsTableInfo {
+	return flatbuf.GetRootAsSsTableInfo(info.data, 0)
+}
+
+func (info *SSTableInfoOwned) clone() *SSTableInfoOwned {
+	data := make([]byte, len(info.data))
+	copy(data, info.data)
+	return &SSTableInfoOwned{
+		data: data,
+	}
+}
+
+// ------------------------------------------------
+// SSTableIndexOwned
+// ------------------------------------------------
+
+type SSTableIndexOwned struct {
+	data []byte
+}
+
+func newSSTableIndexOwned(data []byte) *SSTableIndexOwned {
+	return &SSTableIndexOwned{data: data}
+}
+
+func (info *SSTableIndexOwned) borrow() *flatbuf.SsTableIndex {
+	return flatbuf.GetRootAsSsTableIndex(info.data, 0)
+}
+
+func (info *SSTableIndexOwned) clone() *SSTableIndexOwned {
+	data := make([]byte, len(info.data))
+	copy(data, info.data)
+	return &SSTableIndexOwned{
+		data: data,
+	}
+}
