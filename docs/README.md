@@ -92,13 +92,12 @@ We have mentioned a few times above that we write manifest to ObjectStore and re
 
 Why is Manifest needed ?  
 
-Consider the 3 tasks below which run in different goroutines.
+Consider the 2 tasks below which run in different goroutines.
 1. MemtableFlushTask keeps adding new Level0 SSTs
 2. Compactor keeps flushing Level0 SSTs to further levels or SortedRuns
-3. A GET operation from a client needs to know what SSTs are present in Level0 and Compacted sorted run to search for a key.
 
-All the three tasks above need to know the latest state of Level0 SSTs to perform their operation. Manifest provides a way to keep each other updated on the latest DBState.  
-So each task will read the latest manifest from ObjectStore before starting their operation.  
+The two tasks above need to know the latest state of Level0 SSTs to perform their operation. Manifest provides a way to keep each other updated on the latest DBState.  
+So both the tasks read the latest manifest from ObjectStore at regular intervals.  
 And they write the manifest to ObjectStore if they modify any DBState(Level0 SSTs or Compacted Sorted runs)  
 
 
