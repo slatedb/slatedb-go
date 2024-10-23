@@ -40,25 +40,28 @@ func (v CompressionFormat) String() string {
 	return "CompressionFormat(" + strconv.FormatInt(int64(v), 10) + ")"
 }
 
-type SstRowAttribute int8
+type SstRowFeature int8
 
 const (
-	SstRowAttributeFlags SstRowAttribute = 0
+	SstRowFeatureFlags     SstRowFeature = 0
+	SstRowFeatureTimestamp SstRowFeature = 1
 )
 
-var EnumNamesSstRowAttribute = map[SstRowAttribute]string{
-	SstRowAttributeFlags: "Flags",
+var EnumNamesSstRowFeature = map[SstRowFeature]string{
+	SstRowFeatureFlags:     "Flags",
+	SstRowFeatureTimestamp: "Timestamp",
 }
 
-var EnumValuesSstRowAttribute = map[string]SstRowAttribute{
-	"Flags": SstRowAttributeFlags,
+var EnumValuesSstRowFeature = map[string]SstRowFeature{
+	"Flags":     SstRowFeatureFlags,
+	"Timestamp": SstRowFeatureTimestamp,
 }
 
-func (v SstRowAttribute) String() string {
-	if s, ok := EnumNamesSstRowAttribute[v]; ok {
+func (v SstRowFeature) String() string {
+	if s, ok := EnumNamesSstRowFeature[v]; ok {
 		return s
 	}
-	return "SstRowAttribute(" + strconv.FormatInt(int64(v), 10) + ")"
+	return "SstRowFeature(" + strconv.FormatInt(int64(v), 10) + ")"
 }
 
 type CompactedSstIdT struct {
@@ -274,7 +277,7 @@ type SsTableInfoT struct {
 	FilterOffset      uint64            `json:"filter_offset"`
 	FilterLen         uint64            `json:"filter_len"`
 	CompressionFormat CompressionFormat `json:"compression_format"`
-	RowAttributes     []SstRowAttribute `json:"row_attributes"`
+	RowFeatures       []SstRowFeature   `json:"row_features"`
 }
 
 func (t *SsTableInfoT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
@@ -285,14 +288,14 @@ func (t *SsTableInfoT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	if t.FirstKey != nil {
 		firstKeyOffset = builder.CreateByteString(t.FirstKey)
 	}
-	rowAttributesOffset := flatbuffers.UOffsetT(0)
-	if t.RowAttributes != nil {
-		rowAttributesLength := len(t.RowAttributes)
-		SsTableInfoStartRowAttributesVector(builder, rowAttributesLength)
-		for j := rowAttributesLength - 1; j >= 0; j-- {
-			builder.PrependInt8(int8(t.RowAttributes[j]))
+	rowFeaturesOffset := flatbuffers.UOffsetT(0)
+	if t.RowFeatures != nil {
+		rowFeaturesLength := len(t.RowFeatures)
+		SsTableInfoStartRowFeaturesVector(builder, rowFeaturesLength)
+		for j := rowFeaturesLength - 1; j >= 0; j-- {
+			builder.PrependInt8(int8(t.RowFeatures[j]))
 		}
-		rowAttributesOffset = builder.EndVector(rowAttributesLength)
+		rowFeaturesOffset = builder.EndVector(rowFeaturesLength)
 	}
 	SsTableInfoStart(builder)
 	SsTableInfoAddFirstKey(builder, firstKeyOffset)
@@ -301,7 +304,7 @@ func (t *SsTableInfoT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	SsTableInfoAddFilterOffset(builder, t.FilterOffset)
 	SsTableInfoAddFilterLen(builder, t.FilterLen)
 	SsTableInfoAddCompressionFormat(builder, t.CompressionFormat)
-	SsTableInfoAddRowAttributes(builder, rowAttributesOffset)
+	SsTableInfoAddRowFeatures(builder, rowFeaturesOffset)
 	return SsTableInfoEnd(builder)
 }
 
@@ -312,10 +315,10 @@ func (rcv *SsTableInfo) UnPackTo(t *SsTableInfoT) {
 	t.FilterOffset = rcv.FilterOffset()
 	t.FilterLen = rcv.FilterLen()
 	t.CompressionFormat = rcv.CompressionFormat()
-	rowAttributesLength := rcv.RowAttributesLength()
-	t.RowAttributes = make([]SstRowAttribute, rowAttributesLength)
-	for j := 0; j < rowAttributesLength; j++ {
-		t.RowAttributes[j] = rcv.RowAttributes(j)
+	rowFeaturesLength := rcv.RowFeaturesLength()
+	t.RowFeatures = make([]SstRowFeature, rowFeaturesLength)
+	for j := 0; j < rowFeaturesLength; j++ {
+		t.RowFeatures[j] = rcv.RowFeatures(j)
 	}
 }
 
@@ -457,16 +460,16 @@ func (rcv *SsTableInfo) MutateCompressionFormat(n CompressionFormat) bool {
 	return rcv._tab.MutateInt8Slot(14, int8(n))
 }
 
-func (rcv *SsTableInfo) RowAttributes(j int) SstRowAttribute {
+func (rcv *SsTableInfo) RowFeatures(j int) SstRowFeature {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		a := rcv._tab.Vector(o)
-		return SstRowAttribute(rcv._tab.GetInt8(a + flatbuffers.UOffsetT(j*1)))
+		return SstRowFeature(rcv._tab.GetInt8(a + flatbuffers.UOffsetT(j*1)))
 	}
 	return 0
 }
 
-func (rcv *SsTableInfo) RowAttributesLength() int {
+func (rcv *SsTableInfo) RowFeaturesLength() int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		return rcv._tab.VectorLen(o)
@@ -474,7 +477,7 @@ func (rcv *SsTableInfo) RowAttributesLength() int {
 	return 0
 }
 
-func (rcv *SsTableInfo) MutateRowAttributes(j int, n SstRowAttribute) bool {
+func (rcv *SsTableInfo) MutateRowFeatures(j int, n SstRowFeature) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
 	if o != 0 {
 		a := rcv._tab.Vector(o)
@@ -507,10 +510,10 @@ func SsTableInfoAddFilterLen(builder *flatbuffers.Builder, filterLen uint64) {
 func SsTableInfoAddCompressionFormat(builder *flatbuffers.Builder, compressionFormat CompressionFormat) {
 	builder.PrependInt8Slot(5, int8(compressionFormat), 0)
 }
-func SsTableInfoAddRowAttributes(builder *flatbuffers.Builder, rowAttributes flatbuffers.UOffsetT) {
-	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(rowAttributes), 0)
+func SsTableInfoAddRowFeatures(builder *flatbuffers.Builder, rowFeatures flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(rowFeatures), 0)
 }
-func SsTableInfoStartRowAttributesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+func SsTableInfoStartRowFeaturesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
 }
 func SsTableInfoEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
