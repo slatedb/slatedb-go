@@ -9,6 +9,78 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
+// ------------------------------------------------
+// SSTableIndexData
+// ------------------------------------------------
+
+type SSTableIndexData struct {
+	data []byte
+}
+
+func newSSTableIndexData(data []byte) *SSTableIndexData {
+	return &SSTableIndexData{data: data}
+}
+
+func (info *SSTableIndexData) borrow() *flatbuf.SsTableIndex {
+	return flatbuf.GetRootAsSsTableIndex(info.data, 0)
+}
+
+func (info *SSTableIndexData) size() int {
+	return len(info.data)
+}
+
+func (info *SSTableIndexData) clone() *SSTableIndexData {
+	data := make([]byte, len(info.data))
+	copy(data, info.data)
+	return &SSTableIndexData{
+		data: data,
+	}
+}
+
+// ------------------------------------------------
+// FlatBufferSSTableInfoCodec
+// ------------------------------------------------
+
+type FlatBufferSSTableInfoCodec struct{}
+
+func (f *FlatBufferSSTableInfoCodec) encode(manifest SSTableInfo) []byte {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f *FlatBufferSSTableInfoCodec) decode(data []byte) (SSTableInfo, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func sstInfo(info *flatbuf.SsTableInfo) SSTableInfo {
+	firstKey := mo.None[[]byte]()
+	keyBytes := info.FirstKeyBytes()
+	if keyBytes != nil {
+		firstKey = mo.Some(keyBytes)
+	}
+	rowFeatures := make([]flatbuf.SstRowFeature, 0)
+	for i := 0; i < info.RowFeaturesLength(); i++ {
+		rowFeatures = append(rowFeatures, info.RowFeatures(i))
+	}
+
+	return SSTableInfo{
+		firstKey:         firstKey,
+		indexOffset:      info.IndexOffset(),
+		indexLen:         info.IndexLen(),
+		filterOffset:     info.FilterOffset(),
+		filterLen:        info.FilterLen(),
+		compressionCodec: info.CompressionFormat(),
+		rowFeatures:      rowFeatures,
+	}
+}
+
+func createFromSSTInfo(info *SSTableInfo) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	dbFBBuilder := newDBFlatBufferBuilder(builder)
+	dbFBBuilder.createManifest()
+}
+
 type FlatBufferManifestCodec struct {
 }
 
@@ -45,7 +117,7 @@ func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manife
 
 func (f FlatBufferManifestCodec) createFromManifest(manifest *Manifest) []byte {
 	builder := flatbuffers.NewBuilder(0)
-	dbFlatBufBuilder := newDBFlatBuilder(builder)
+	dbFlatBufBuilder := newDBFlatBufferBuilder(builder)
 	return dbFlatBufBuilder.createManifest(manifest)
 }
 
@@ -97,8 +169,24 @@ type DBFlatBufferBuilder struct {
 	builder *flatbuffers.Builder
 }
 
-func newDBFlatBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
+func newDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 	return DBFlatBufferBuilder{builder}
+}
+
+func (fb DBFlatBufferBuilder) addSSTInfo(info SSTableInfo) flatbuf.SsTableInfoT {
+	var firstKey []byte
+	if info.firstKey.IsPresent() {
+		firstKey, _ = info.firstKey.Get()
+	}
+	return flatbuf.SsTableInfoT{
+		FirstKey:          firstKey,
+		IndexOffset:       info.indexOffset,
+		IndexLen:          info.indexLen,
+		FilterOffset:      info.filterOffset,
+		FilterLen:         info.filterLen,
+		CompressionFormat: info.compressionCodec,
+		RowFeatures:       info.rowFeatures,
+	}
 }
 
 func (fb DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
@@ -125,6 +213,10 @@ func (fb DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 	manifestOffset := manifestV1.Pack(fb.builder)
 	fb.builder.Finish(manifestOffset)
 	return fb.builder.FinishedBytes()
+}
+
+func (fb DBFlatBufferBuilder) createSSTInfo(info SSTableInfo) []byte {
+
 }
 
 func (fb DBFlatBufferBuilder) addCompactedSSTs(sstList []SSTableHandle) []*flatbuf.CompactedSsTableT {
@@ -169,53 +261,5 @@ func (fb DBFlatBufferBuilder) addSortedRun(sortedRun SortedRun) *flatbuf.SortedR
 	return &flatbuf.SortedRunT{
 		Id:   sortedRun.id,
 		Ssts: fb.addCompactedSSTs(sortedRun.sstList),
-	}
-}
-
-// ------------------------------------------------
-// SSTableInfoOwned
-// ------------------------------------------------
-
-type SSTableInfoOwned struct {
-	data []byte
-}
-
-func newSSTableInfoOwned(data []byte) *SSTableInfoOwned {
-	return &SSTableInfoOwned{data: data}
-}
-
-func (info *SSTableInfoOwned) borrow() *flatbuf.SsTableInfo {
-	return flatbuf.GetRootAsSsTableInfo(info.data, 0)
-}
-
-func (info *SSTableInfoOwned) clone() *SSTableInfoOwned {
-	data := make([]byte, len(info.data))
-	copy(data, info.data)
-	return &SSTableInfoOwned{
-		data: data,
-	}
-}
-
-// ------------------------------------------------
-// SSTableIndexOwned
-// ------------------------------------------------
-
-type SSTableIndexOwned struct {
-	data []byte
-}
-
-func newSSTableIndexOwned(data []byte) *SSTableIndexOwned {
-	return &SSTableIndexOwned{data: data}
-}
-
-func (info *SSTableIndexOwned) borrow() *flatbuf.SsTableIndex {
-	return flatbuf.GetRootAsSsTableIndex(info.data, 0)
-}
-
-func (info *SSTableIndexOwned) clone() *SSTableIndexOwned {
-	data := make([]byte, len(info.data))
-	copy(data, info.data)
-	return &SSTableIndexOwned{
-		data: data,
 	}
 }

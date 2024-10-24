@@ -283,3 +283,25 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 		info: h.info.clone(),
 	}
 }
+
+type RowFeature int8
+
+const (
+	Flags RowFeature = iota + 1
+	Timestamp
+)
+
+type SSTableInfo struct {
+	firstKey         mo.Option[[]byte]
+	indexOffset      uint64
+	indexLen         uint64
+	filterOffset     uint64
+	filterLen        uint64
+	compressionCodec CompressionCodec
+	rowFeatures      []RowFeature
+}
+
+type SsTableInfoCodec interface {
+	encode(manifest SSTableInfo) []byte
+	decode(data []byte) (SSTableInfo, error)
+}

@@ -25,8 +25,9 @@ import (
 // ------------------------------------------------
 
 type SSTableFormat struct {
-	blockSize        uint64
-	minFilterKeys    uint32
+	blockSize     uint64
+	minFilterKeys uint32
+	sstCodec
 	compressionCodec CompressionCodec
 }
 
@@ -83,7 +84,7 @@ func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj common.ReadOnlyBl
 	return mo.Some(*filtr), nil
 }
 
-func (f *SSTableFormat) readIndex(infoOwned *SSTableInfoOwned, obj common.ReadOnlyBlob) (*SSTableIndexOwned, error) {
+func (f *SSTableFormat) readIndex(infoOwned *SSTableInfoOwned, obj common.ReadOnlyBlob) (*SSTableIndexData, error) {
 	info := infoOwned.borrow()
 }
 
