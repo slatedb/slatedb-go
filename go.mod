@@ -7,8 +7,10 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/flatbuffers v24.3.25+incompatible
 	github.com/huandu/skiplist v1.2.1
+	github.com/klauspost/compress v1.17.11
 	github.com/maypok86/otter v1.2.2
 	github.com/oklog/ulid/v2 v2.1.1-0.20240413180941-96c4edf226ef
+	github.com/pierrec/lz4/v4 v4.1.21
 	github.com/samber/mo v1.13.0
 	github.com/stretchr/testify v1.9.0
 	github.com/thanos-io/objstore v0.0.0-20240913165201-fd105025a2e5

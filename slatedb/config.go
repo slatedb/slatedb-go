@@ -8,6 +8,8 @@ const (
 	CompressionNone CompressionCodec = iota + 1
 	CompressionSnappy
 	CompressionZlib
+	CompressionLz4
+	CompressionZstd
 )
 
 // DBOptions Configuration options for the database. These options are set on client startup.
