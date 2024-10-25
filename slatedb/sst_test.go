@@ -176,7 +176,7 @@ func TestSSTableNoFilter(t *testing.T) {
 }
 
 func TestSSTableWithCompression(t *testing.T) {
-	codecs := []CompressionCodec{CompressionSnappy, CompressionZlib}
+	codecs := []CompressionCodec{CompressionSnappy, CompressionZlib, CompressionLz4, CompressionZstd}
 	for _, compression := range codecs {
 		bucket := objstore.NewInMemBucket()
 		format := newSSTableFormat(4096, 0, compression)

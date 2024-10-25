@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
 	"hash/crc32"
 	"io"
 	"math"
@@ -84,24 +86,37 @@ func (f *SSTableFormat) readFilter(info *SSTableInfoOwned, obj common.ReadOnlyBl
 }
 
 // decompress the compressed data using the specified compression codec.
-// TODO: implement more compression options
 func (f *SSTableFormat) decompress(compressedData []byte, compression CompressionCodec) ([]byte, error) {
-	switch compression {
-	case CompressionNone:
+	if compression == CompressionNone {
 		return compressedData, nil
+	}
+
+	buf := bytes.NewBuffer(compressedData)
+
+	switch compression {
 	case CompressionSnappy:
-		return snappy.Decode(nil, compressedData)
+		r := snappy.NewReader(buf)
+		return io.ReadAll(r)
 	case CompressionZlib:
-		r, err := zlib.NewReader(bytes.NewReader(compressedData))
+		r, err := zlib.NewReader(buf)
 		if err != nil {
-			logger.Error("unable to read compress data", zap.Error(err))
 			return nil, err
 		}
 		defer r.Close()
 		return io.ReadAll(r)
+	case CompressionLz4:
+		r := lz4.NewReader(buf)
+		return io.ReadAll(r)
+	case CompressionZstd:
+		r, err := zstd.NewReader(buf)
+		if err != nil {
+			return nil, err
+		}
+		defer r.Close()
+		return io.ReadAll(r)
+	default:
+		return nil, common.ErrInvalidCompressionCodec
 	}
-
-	return nil, common.ErrInvalidCompressionCodec
 }
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the
@@ -275,25 +290,41 @@ func newEncodedSSTableBuilder(
 }
 
 func (b *EncodedSSTableBuilder) compress(data []byte, compression CompressionCodec) ([]byte, error) {
-	switch compression {
-	case CompressionNone:
+	if compression == CompressionNone {
 		return data, nil
-	case CompressionSnappy:
-		return snappy.Encode(nil, data), nil
-	case CompressionZlib:
-		var b bytes.Buffer
-		w := zlib.NewWriter(&b)
-		defer w.Close()
-		_, err := w.Write(data)
-		if err != nil {
-			logger.Error("unable to write data", zap.Error(err))
-
-			return nil, err
-		}
-		return b.Bytes(), nil
 	}
 
-	return nil, common.ErrInvalidCompressionCodec
+	var buf bytes.Buffer
+	var w io.WriteCloser
+	var err error
+
+	switch compression {
+	case CompressionSnappy:
+		w = snappy.NewBufferedWriter(&buf)
+	case CompressionZlib:
+		w = zlib.NewWriter(&buf)
+	case CompressionLz4:
+		w = lz4.NewWriter(&buf)
+	case CompressionZstd:
+		w, err = zstd.NewWriter(&buf)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, common.ErrInvalidCompressionCodec
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		return nil, err
+	}
+
+	err = w.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
