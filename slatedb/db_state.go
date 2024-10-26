@@ -287,7 +287,7 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 type RowFeature int8
 
 const (
-	Flags RowFeature = iota + 1
+	Flags RowFeature = iota
 	Timestamp
 )
 

@@ -43,14 +43,13 @@ func (info *SSTableIndexData) clone() *SSTableIndexData {
 
 type FlatBufferSSTableInfoCodec struct{}
 
-func (f *FlatBufferSSTableInfoCodec) encode(manifest SSTableInfo) []byte {
-	//TODO implement me
-	panic("implement me")
+func (f *FlatBufferSSTableInfoCodec) encode(info *SSTableInfo) []byte {
+	return createFromSSTInfo(info)
 }
 
-func (f *FlatBufferSSTableInfoCodec) decode(data []byte) (SSTableInfo, error) {
-	//TODO implement me
-	panic("implement me")
+func (f *FlatBufferSSTableInfoCodec) decode(data []byte) SSTableInfo {
+	info := flatbuf.GetRootAsSsTableInfo(data, 0)
+	return sstInfo(info)
 }
 
 func sstInfo(info *flatbuf.SsTableInfo) SSTableInfo {
@@ -59,9 +58,9 @@ func sstInfo(info *flatbuf.SsTableInfo) SSTableInfo {
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
-	rowFeatures := make([]flatbuf.SstRowFeature, 0)
+	rowFeatures := make([]RowFeature, 0)
 	for i := 0; i < info.RowFeaturesLength(); i++ {
-		rowFeatures = append(rowFeatures, info.RowFeatures(i))
+		rowFeatures = append(rowFeatures, RowFeature(info.RowFeatures(i)))
 	}
 
 	return SSTableInfo{
@@ -70,7 +69,7 @@ func sstInfo(info *flatbuf.SsTableInfo) SSTableInfo {
 		indexLen:         info.IndexLen(),
 		filterOffset:     info.FilterOffset(),
 		filterLen:        info.FilterLen(),
-		compressionCodec: info.CompressionFormat(),
+		compressionCodec: CompressionCodec(info.CompressionFormat()),
 		rowFeatures:      rowFeatures,
 	}
 }
@@ -173,23 +172,30 @@ func newDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 	return DBFlatBufferBuilder{builder}
 }
 
-func (fb DBFlatBufferBuilder) addSSTInfo(info SSTableInfo) flatbuf.SsTableInfoT {
+func (fb *DBFlatBufferBuilder) addSSTInfo(info SSTableInfo) flatbuffers.UOffsetT {
 	var firstKey []byte
 	if info.firstKey.IsPresent() {
 		firstKey, _ = info.firstKey.Get()
 	}
-	return flatbuf.SsTableInfoT{
+
+	rowFeatures := make([]flatbuf.SstRowFeature, 0)
+	for _, rowFeature := range info.rowFeatures {
+		rowFeatures = append(rowFeatures, flatbuf.SstRowFeature(rowFeature))
+	}
+
+	ssTableInfoT := &flatbuf.SsTableInfoT{
 		FirstKey:          firstKey,
 		IndexOffset:       info.indexOffset,
 		IndexLen:          info.indexLen,
 		FilterOffset:      info.filterOffset,
 		FilterLen:         info.filterLen,
-		CompressionFormat: info.compressionCodec,
-		RowFeatures:       info.rowFeatures,
+		CompressionFormat: flatbuf.CompressionFormat(info.compressionCodec),
+		RowFeatures:       rowFeatures,
 	}
+	return ssTableInfoT.Pack(fb.builder)
 }
 
-func (fb DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
+func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 	core := manifest.core
 	l0 := fb.addCompactedSSTs(core.l0)
 	var l0LastCompacted *flatbuf.CompactedSstIdT
@@ -215,11 +221,13 @@ func (fb DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 	return fb.builder.FinishedBytes()
 }
 
-func (fb DBFlatBufferBuilder) createSSTInfo(info SSTableInfo) []byte {
-
+func (fb *DBFlatBufferBuilder) createSSTInfo(info SSTableInfo) []byte {
+	offset := fb.addSSTInfo(info)
+	fb.builder.Finish(offset)
+	return fb.builder.FinishedBytes()
 }
 
-func (fb DBFlatBufferBuilder) addCompactedSSTs(sstList []SSTableHandle) []*flatbuf.CompactedSsTableT {
+func (fb *DBFlatBufferBuilder) addCompactedSSTs(sstList []SSTableHandle) []*flatbuf.CompactedSsTableT {
 	compactedSSTs := make([]*flatbuf.CompactedSsTableT, 0)
 	for _, sst := range sstList {
 		compactedSSTs = append(compactedSSTs, fb.addCompactedSST(sst.id, sst.info))
@@ -227,7 +235,7 @@ func (fb DBFlatBufferBuilder) addCompactedSSTs(sstList []SSTableHandle) []*flatb
 	return compactedSSTs
 }
 
-func (fb DBFlatBufferBuilder) addCompactedSST(sstID SSTableID, sstInfo *SSTableInfoOwned) *flatbuf.CompactedSsTableT {
+func (fb *DBFlatBufferBuilder) addCompactedSST(sstID SSTableID, sstInfo *SSTableInfoOwned) *flatbuf.CompactedSsTableT {
 	common.AssertTrue(sstID.typ == Compacted, "cannot pass WAL SST handle to create compacted sst")
 	id, err := ulid.Parse(sstID.value)
 	if err != nil {
@@ -240,7 +248,7 @@ func (fb DBFlatBufferBuilder) addCompactedSST(sstID SSTableID, sstInfo *SSTableI
 	}
 }
 
-func (fb DBFlatBufferBuilder) addCompactedSSTID(id ulid.ULID) *flatbuf.CompactedSstIdT {
+func (fb *DBFlatBufferBuilder) addCompactedSSTID(id ulid.ULID) *flatbuf.CompactedSstIdT {
 	hi := id.Bytes()[:8]
 	lo := id.Bytes()[8:]
 	return &flatbuf.CompactedSstIdT{
@@ -249,7 +257,7 @@ func (fb DBFlatBufferBuilder) addCompactedSSTID(id ulid.ULID) *flatbuf.Compacted
 	}
 }
 
-func (fb DBFlatBufferBuilder) addSortedRuns(sortedRuns []SortedRun) []*flatbuf.SortedRunT {
+func (fb *DBFlatBufferBuilder) addSortedRuns(sortedRuns []SortedRun) []*flatbuf.SortedRunT {
 	sortedRunFBs := make([]*flatbuf.SortedRunT, 0)
 	for _, sortedRun := range sortedRuns {
 		sortedRunFBs = append(sortedRunFBs, fb.addSortedRun(sortedRun))
@@ -257,7 +265,7 @@ func (fb DBFlatBufferBuilder) addSortedRuns(sortedRuns []SortedRun) []*flatbuf.S
 	return sortedRunFBs
 }
 
-func (fb DBFlatBufferBuilder) addSortedRun(sortedRun SortedRun) *flatbuf.SortedRunT {
+func (fb *DBFlatBufferBuilder) addSortedRun(sortedRun SortedRun) *flatbuf.SortedRunT {
 	return &flatbuf.SortedRunT{
 		Id:   sortedRun.id,
 		Ssts: fb.addCompactedSSTs(sortedRun.sstList),
