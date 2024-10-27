@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const manifestDir = "manifest"
+
 type EpochType int
 
 const (
@@ -221,9 +223,14 @@ func newManifestStore(rootPath string, bucket objstore.Bucket) *ManifestStore {
 	}
 }
 
+func (s *ManifestStore) manifestPath(id uint64) string {
+	filepath := fmt.Sprintf("%020d.%s", id, s.manifestSuffix)
+	return path.Join(manifestDir, filepath)
+}
+
 func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
-	manifestPath := fmt.Sprintf("%020d.%s", id, s.manifestSuffix)
-	err := s.objectStore.putIfNotExists(manifestPath, s.codec.encode(manifest))
+	filepath := s.manifestPath(id)
+	err := s.objectStore.putIfNotExists(filepath, s.codec.encode(manifest))
 	if err != nil {
 		logger.Error("failed to complete the operation", zap.Error(err))
 		if errors.Is(err, common.ErrObjectExists) {
@@ -240,8 +247,7 @@ type manifestInfo struct {
 }
 
 func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
-	manifestPath := ""
-	files, err := s.objectStore.list(mo.Some(manifestPath))
+	files, err := s.objectStore.list(mo.Some(manifestDir))
 	if err != nil {
 		logger.Error("unable to list manifest files", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore
@@ -252,7 +258,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	// This loop will search for the manifest with the highest ID
 	// (which is the latest manifest)
 	for _, filepath := range files {
-		foundID, err := s.parseID(filepath, ".manifest")
+		foundID, err := s.parseID(filepath, "."+s.manifestSuffix)
 		if err != nil {
 			logger.Error("unable to parse manifest file", zap.Error(err))
 			continue
@@ -274,7 +280,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	}
 
 	// read the latest manifest from object store and return the manifest
-	manifestBytes, err := s.objectStore.get(basePath(latestManifestPath))
+	manifestBytes, err := s.objectStore.get(path.Join(manifestDir, basePath(latestManifestPath)))
 	if err != nil {
 		logger.Error("unable to read latest manifest from the store", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore

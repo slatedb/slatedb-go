@@ -64,7 +64,7 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	fullPath := d.getPath(objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
-		logger.Error("unable to get the bucket", zap.Error(err))
+		logger.Error("unable to get reader for object "+fullPath, zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
