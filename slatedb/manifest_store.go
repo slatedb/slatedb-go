@@ -223,13 +223,12 @@ func newManifestStore(rootPath string, bucket objstore.Bucket) *ManifestStore {
 	}
 }
 
-func (s *ManifestStore) manifestPath(id uint64) string {
-	filepath := fmt.Sprintf("%020d.%s", id, s.manifestSuffix)
-	return path.Join(manifestDir, filepath)
+func (s *ManifestStore) manifestPath(filename string) string {
+	return path.Join(manifestDir, filename)
 }
 
 func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
-	filepath := s.manifestPath(id)
+	filepath := s.manifestPath(fmt.Sprintf("%020d.%s", id, s.manifestSuffix))
 	err := s.objectStore.putIfNotExists(filepath, s.codec.encode(manifest))
 	if err != nil {
 		logger.Error("failed to complete the operation", zap.Error(err))
@@ -280,7 +279,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	}
 
 	// read the latest manifest from object store and return the manifest
-	manifestBytes, err := s.objectStore.get(path.Join(manifestDir, basePath(latestManifestPath)))
+	manifestBytes, err := s.objectStore.get(s.manifestPath(basePath(latestManifestPath)))
 	if err != nil {
 		logger.Error("unable to read latest manifest from the store", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore
