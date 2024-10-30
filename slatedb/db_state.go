@@ -265,15 +265,18 @@ func (s *SSTableID) clone() SSTableID {
 
 type SSTableHandle struct {
 	id   SSTableID
-	info *SSTableInfoOwned
+	info *SSTableInfo
 }
 
-func newSSTableHandle(id SSTableID, info *SSTableInfoOwned) *SSTableHandle {
+func newSSTableHandle(id SSTableID, info *SSTableInfo) *SSTableHandle {
 	return &SSTableHandle{id, info}
 }
 
 func (h *SSTableHandle) rangeCoversKey(key []byte) bool {
-	firstKey := h.info.borrow().FirstKeyBytes()
+	if h.info.firstKey.IsAbsent() {
+		return false
+	}
+	firstKey := h.info.firstKey
 	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
 }
 
@@ -287,8 +290,8 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 type RowFeature int8
 
 const (
-	Flags RowFeature = iota
-	Timestamp
+	RowFeatureFlags RowFeature = iota
+	RowFeatureTimestamp
 )
 
 type SSTableInfo struct {
@@ -302,6 +305,6 @@ type SSTableInfo struct {
 }
 
 type SsTableInfoCodec interface {
-	encode(manifest SSTableInfo) []byte
-	decode(data []byte) (SSTableInfo, error)
+	encode(info *SSTableInfo) []byte
+	decode(data []byte) *SSTableInfo
 }

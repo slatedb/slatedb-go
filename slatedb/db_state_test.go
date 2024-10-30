@@ -19,7 +19,7 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 	}
 	infoOffset := ssTableInfoT.Pack(builder)
 	builder.Finish(infoOffset)
-	sstInfo := newSSTableInfoOwned(builder.FinishedBytes())
+	sstInfo := newSSTableInfo(builder.FinishedBytes())
 
 	for i := 0; i < int(n); i++ {
 		dbState.freezeMemtable(uint64(i))
