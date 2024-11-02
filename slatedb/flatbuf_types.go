@@ -41,6 +41,8 @@ func (info *SSTableIndexData) clone() *SSTableIndexData {
 // FlatBufferSSTableInfoCodec
 // ------------------------------------------------
 
+// FlatBufferSSTableInfoCodec implements SsTableInfoCodec and defines how we
+// encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
 type FlatBufferSSTableInfoCodec struct{}
 
 func (f *FlatBufferSSTableInfoCodec) encode(info *SSTableInfo) []byte {
@@ -58,6 +60,8 @@ func (f *FlatBufferSSTableInfoCodec) decode(data []byte) *SSTableInfo {
 // FlatBufferManifestCodec
 // ------------------------------------------------
 
+// FlatBufferManifestCodec implements ManifestCodec and defines how we
+// encode Manifest to byte slice and decode byte slice back to Manifest
 type FlatBufferManifestCodec struct{}
 
 func (f FlatBufferManifestCodec) encode(manifest *Manifest) []byte {

@@ -26,11 +26,24 @@ import (
 // SSTableFormat
 // ------------------------------------------------
 
+// SSTableFormat provides helper methods to read byte slice and get SSTable information
+// SSTable holds list of blocks(each block is a list of KV pairs) and BloomFilter
+// the helper methods mostly help in reading the blocks and the BloomFilter and also to decompress the data
+// using the given CompressionCodec
 type SSTableFormat struct {
-	blockSize        uint64
-	minFilterKeys    uint32
-	sstCodec         SsTableInfoCodec
+	// size of each block in the SSTable
+	blockSize uint64
+
+	// Write SSTables with a bloom filter if the number of keys in the SSTable is greater than or equal to this value.
+	// Reads on small SSTables might be faster without a bloom filter.
+	minFilterKeys uint32
+
 	filterBitsPerKey uint32
+
+	// defines how SSTable is encoded to byte slice and byte slice decoded to SSTable
+	sstCodec SsTableInfoCodec
+
+	// the codec used to compress/decompress SSTable before writing/reading from object storage
 	compressionCodec CompressionCodec
 }
 
@@ -38,8 +51,8 @@ func defaultSSTableFormat() *SSTableFormat {
 	return &SSTableFormat{
 		blockSize:        4096,
 		minFilterKeys:    0,
-		sstCodec:         &FlatBufferSSTableInfoCodec{},
 		filterBitsPerKey: 10,
+		sstCodec:         &FlatBufferSSTableInfoCodec{},
 		compressionCodec: CompressionNone,
 	}
 }
@@ -286,23 +299,46 @@ func (f *SSTableFormat) clone() *SSTableFormat {
 // ------------------------------------------------
 
 type EncodedSSTable struct {
-	sstInfo          *SSTableInfo
-	filter           mo.Option[filter.BloomFilter]
+	sstInfo *SSTableInfo
+	filter  mo.Option[filter.BloomFilter]
+
+	// unconsumedBlocks contains a list of blocks that have not yet been written to object storage.
+	// It is initialized to the complete list of blocks in the SSTable
 	unconsumedBlocks *deque.Deque[[]byte]
 }
 
+// EncodedSSTableBuilder - we use an EncodedSSTableBuilder to build an EncodedSSTable before writing
+// the EncodedSSTable to object storage.
+// The builder provides helper methods to encode the SSTable to byte slice using flatbuffers and also to compress
+// the data using the given CompressionCodec
 type EncodedSSTableBuilder struct {
 	blockBuilder  *BlockBuilder
 	filterBuilder *filter.BloomFilterBuilder
-	indexBuilder  *flatbuffers.Builder
 
-	firstKey      mo.Option[[]byte]
-	sstFirstKey   mo.Option[[]byte]
+	// As we build the SSTable, we also build a SSTableIndex which keeps track of the offset and firstKey of each Block
+	indexBuilder *flatbuffers.Builder
+
+	// The metadata for each block held by the SSTableIndex
 	blockMetaList []*flatbuf.BlockMetaT
 
-	blocks        *deque.Deque[[]byte]
-	blockSize     uint64
-	currentLen    uint64
+	// holds the firstKey of the current block that is being built.
+	// when the current block reaches BlockSize, a new Block is created and firstKey will then hold the first key
+	// of the new block
+	firstKey mo.Option[[]byte]
+
+	// holds the first key of the SSTable
+	sstFirstKey mo.Option[[]byte]
+
+	// The encoded/serialized blocks that get added to the SSTable
+	blocks *deque.Deque[[]byte]
+
+	blockSize uint64
+
+	// currentLen is the total length of all existing blocks
+	currentLen uint64
+
+	// if numKeys >= minFilterKeys then we add a BloomFilter
+	// else we don't add BloomFilter since reading smaller set of keys is likely faster without BloomFilter
 	minFilterKeys uint32
 	numKeys       uint32
 
@@ -537,6 +573,8 @@ func decodeBytesToSSTableInfo(rawInfo []byte, sstCodec SsTableInfoCodec) (*SSTab
 // SSTIterator
 // ------------------------------------------------
 
+// SSTIterator helps in iterating through KeyValue pairs present in the SSTable.
+// Since each SSTable is a list of Blocks, this iterator internally uses BlockIterator to iterate through each Block
 type SSTIterator struct {
 	table               *SSTableHandle
 	indexData           *SSTableIndexData

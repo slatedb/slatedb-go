@@ -69,7 +69,6 @@ type BlockBuilder struct {
 	offsets   []uint16
 	data      []byte
 	blockSize uint64
-	firstKey  []byte
 }
 
 func newBlockBuilder(blockSize uint64) *BlockBuilder {
@@ -77,7 +76,6 @@ func newBlockBuilder(blockSize uint64) *BlockBuilder {
 		offsets:   make([]uint16, 0),
 		data:      make([]byte, 0),
 		blockSize: blockSize,
-		firstKey:  make([]byte, 0),
 	}
 }
 
@@ -138,6 +136,7 @@ func (b *BlockBuilder) build() (*Block, error) {
 // BlockIterator
 // ------------------------------------------------
 
+// BlockIterator helps in iterating through KeyValue pairs present in the Block.
 type BlockIterator struct {
 	block       *Block
 	offsetIndex uint64

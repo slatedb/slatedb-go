@@ -263,6 +263,7 @@ func (s *SSTableID) clone() SSTableID {
 // SSTableHandle
 // ------------------------------------------------
 
+// SSTableHandle represents the SSTable
 type SSTableHandle struct {
 	id   SSTableID
 	info *SSTableInfo
@@ -287,12 +288,26 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 	}
 }
 
+// SSTableInfo contains information on the SSTable when it is serialized.
+// Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
 type SSTableInfo struct {
-	firstKey         mo.Option[[]byte]
-	indexOffset      uint64
-	indexLen         uint64
-	filterOffset     uint64
-	filterLen        uint64
+	// contains the firstKey of the SSTable
+	firstKey mo.Option[[]byte]
+
+	// the offset at which SSTableIndex starts when SSTable is serialized.
+	// SSTableIndex holds the meta info about each block. SSTableIndex is defined in schemas/sst.fbs
+	indexOffset uint64
+
+	// the length of the SSTableIndex.
+	indexLen uint64
+
+	// the offset at which Bloom filter starts when SSTable is serialized.
+	filterOffset uint64
+
+	// the length of the Bloom filter
+	filterLen uint64
+
+	// the codec used to compress/decompress SSTable before writing/reading from object storage
 	compressionCodec CompressionCodec
 }
 
@@ -314,6 +329,9 @@ func (info *SSTableInfo) clone() *SSTableInfo {
 	}
 }
 
+// SsTableInfoCodec - implementation of this interface defines how we
+// encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
+// Currently we use FlatBuffers for encoding and decoding.
 type SsTableInfoCodec interface {
 	encode(info *SSTableInfo) []byte
 	decode(data []byte) *SSTableInfo
