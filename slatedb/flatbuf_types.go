@@ -124,10 +124,6 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT)
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
-	rowFeatures := make([]RowFeature, 0)
-	for _, rowFeature := range info.RowFeatures {
-		rowFeatures = append(rowFeatures, RowFeature(rowFeature))
-	}
 	return &SSTableInfo{
 		firstKey:         firstKey,
 		indexOffset:      info.IndexOffset,
@@ -135,7 +131,6 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT)
 		filterOffset:     info.FilterOffset,
 		filterLen:        info.FilterLen,
 		compressionCodec: compressionCodecFromFlatBuf(info.CompressionFormat),
-		rowFeatures:      rowFeatures,
 	}
 }
 
@@ -243,11 +238,6 @@ func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *SSTableInfo {
 		firstKey = mo.Some(keyBytes)
 	}
 
-	rowFeatures := make([]RowFeature, 0)
-	for i := 0; i < info.RowFeaturesLength(); i++ {
-		rowFeatures = append(rowFeatures, rowFeatureFromFlatBuf(info.RowFeatures(i)))
-	}
-
 	return &SSTableInfo{
 		firstKey:         firstKey,
 		indexOffset:      info.IndexOffset(),
@@ -255,7 +245,6 @@ func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *SSTableInfo {
 		filterOffset:     info.FilterOffset(),
 		filterLen:        info.FilterLen(),
 		compressionCodec: compressionCodecFromFlatBuf(info.CompressionFormat()),
-		rowFeatures:      rowFeatures,
 	}
 }
 
@@ -265,11 +254,6 @@ func sstInfoToFlatBuf(info *SSTableInfo) *flatbuf.SsTableInfoT {
 		firstKey, _ = info.firstKey.Get()
 	}
 
-	rowFeatures := make([]flatbuf.SstRowFeature, 0)
-	for _, rowFeature := range info.rowFeatures {
-		rowFeatures = append(rowFeatures, rowFeatureToFlatBuf(rowFeature))
-	}
-
 	return &flatbuf.SsTableInfoT{
 		FirstKey:          firstKey,
 		IndexOffset:       info.indexOffset,
@@ -277,29 +261,6 @@ func sstInfoToFlatBuf(info *SSTableInfo) *flatbuf.SsTableInfoT {
 		FilterOffset:      info.filterOffset,
 		FilterLen:         info.filterLen,
 		CompressionFormat: compressionCodecToFlatBuf(info.compressionCodec),
-		RowFeatures:       rowFeatures,
-	}
-}
-
-func rowFeatureFromFlatBuf(sstRowFeature flatbuf.SstRowFeature) RowFeature {
-	switch sstRowFeature {
-	case flatbuf.SstRowFeatureFlags:
-		return RowFeatureFlags
-	case flatbuf.SstRowFeatureTimestamp:
-		return RowFeatureTimestamp
-	default:
-		panic("invalid RowFeature")
-	}
-}
-
-func rowFeatureToFlatBuf(rowFeature RowFeature) flatbuf.SstRowFeature {
-	switch rowFeature {
-	case RowFeatureFlags:
-		return flatbuf.SstRowFeatureFlags
-	case RowFeatureTimestamp:
-		return flatbuf.SstRowFeatureTimestamp
-	default:
-		panic("invalid RowFeature")
 	}
 }
 

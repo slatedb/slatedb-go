@@ -23,7 +23,8 @@ func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	// TODO: Rust implementation uses partition_point() which internally uses binary search
 	//  we are doing linear search. See if we can optimize
 	for i, sst := range s.sstList {
-		firstKey := sst.info.borrow().FirstKeyBytes()
+		firstKey, ok := sst.info.firstKey.Get()
+		common.AssertTrue(ok, "sst must have first key")
 		if bytes.Compare(firstKey, key) > 0 {
 			index = i
 			break
@@ -74,7 +75,7 @@ func newSortedRunIterator(
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
-) *SortedRunIterator {
+) (*SortedRunIterator, error) {
 	return newSortedRunIter(sortedRun.sstList, tableStore, maxFetchTasks, numBlocksToFetch, mo.None[[]byte]())
 }
 
@@ -84,7 +85,7 @@ func newSortedRunIteratorFromKey(
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
-) *SortedRunIterator {
+) (*SortedRunIterator, error) {
 	sstList := sortedRun.sstList
 	idx, ok := sortedRun.indexOfSSTWithKey(key).Get()
 	if ok {
@@ -100,18 +101,25 @@ func newSortedRunIter(
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
 	fromKey mo.Option[[]byte],
-) *SortedRunIterator {
+) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*SSTIterator]()
 	sst, ok := sstListIter.Next()
 	if ok {
 		var iter *SSTIterator
+		var err error
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter = newSSTIteratorFromKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = newSSTIteratorFromKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
+			if err != nil {
+				return nil, err
+			}
 		} else {
-			iter = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		currentKVIter = mo.Some(iter)
@@ -123,7 +131,7 @@ func newSortedRunIter(
 		tableStore:        tableStore,
 		numBlocksToFetch:  maxFetchTasks,
 		numBlocksToBuffer: numBlocksToFetch,
-	}
+	}, nil
 }
 
 func (iter *SortedRunIterator) Next() (mo.Option[common.KV], error) {
@@ -170,7 +178,12 @@ func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KVDeletable], error
 		if !ok {
 			return mo.None[common.KVDeletable](), nil
 		}
-		newKVIter := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
+
+		newKVIter, err := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
+		if err != nil {
+			return mo.None[common.KVDeletable](), err
+		}
+
 		iter.currentKVIter = mo.Some(newKVIter)
 	}
 }

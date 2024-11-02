@@ -276,7 +276,7 @@ func (h *SSTableHandle) rangeCoversKey(key []byte) bool {
 	if h.info.firstKey.IsAbsent() {
 		return false
 	}
-	firstKey := h.info.firstKey
+	firstKey, _ := h.info.firstKey.Get()
 	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
 }
 
@@ -287,13 +287,6 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 	}
 }
 
-type RowFeature int8
-
-const (
-	RowFeatureFlags RowFeature = iota
-	RowFeatureTimestamp
-)
-
 type SSTableInfo struct {
 	firstKey         mo.Option[[]byte]
 	indexOffset      uint64
@@ -301,7 +294,24 @@ type SSTableInfo struct {
 	filterOffset     uint64
 	filterLen        uint64
 	compressionCodec CompressionCodec
-	rowFeatures      []RowFeature
+}
+
+func (info *SSTableInfo) clone() *SSTableInfo {
+	firstKey := mo.None[[]byte]()
+	if info.firstKey.IsPresent() {
+		key, _ := info.firstKey.Get()
+		k := make([]byte, len(key))
+		copy(k, key)
+		firstKey = mo.Some(k)
+	}
+	return &SSTableInfo{
+		firstKey:         firstKey,
+		indexOffset:      info.indexOffset,
+		indexLen:         info.indexLen,
+		filterOffset:     info.filterOffset,
+		filterLen:        info.filterLen,
+		compressionCodec: info.compressionCodec,
+	}
 }
 
 type SsTableInfoCodec interface {

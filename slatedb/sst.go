@@ -32,7 +32,6 @@ type SSTableFormat struct {
 	sstCodec         SsTableInfoCodec
 	filterBitsPerKey uint32
 	compressionCodec CompressionCodec
-	rowFeatures      []RowFeature
 }
 
 func defaultSSTableFormat() *SSTableFormat {
@@ -42,7 +41,6 @@ func defaultSSTableFormat() *SSTableFormat {
 		sstCodec:         &FlatBufferSSTableInfoCodec{},
 		filterBitsPerKey: 10,
 		compressionCodec: CompressionNone,
-		rowFeatures:      []RowFeature{RowFeatureFlags, RowFeatureTimestamp},
 	}
 }
 
@@ -266,7 +264,13 @@ func (f *SSTableFormat) readBlockRaw(
 }
 
 func (f *SSTableFormat) tableBuilder() *EncodedSSTableBuilder {
-	return newEncodedSSTableBuilder(f.blockSize, f.minFilterKeys, f.compressionCodec)
+	return newEncodedSSTableBuilder(
+		f.blockSize,
+		f.minFilterKeys,
+		f.sstCodec,
+		f.filterBitsPerKey,
+		f.compressionCodec,
+	)
 }
 
 func (f *SSTableFormat) clone() *SSTableFormat {
@@ -297,7 +301,6 @@ type EncodedSSTableBuilder struct {
 	blockMetaList []*flatbuf.BlockMetaT
 
 	blocks        *deque.Deque[[]byte]
-	rowFeatures   []RowFeature
 	blockSize     uint64
 	currentLen    uint64
 	minFilterKeys uint32
@@ -314,10 +317,9 @@ func newEncodedSSTableBuilder(
 	sstCodec SsTableInfoCodec,
 	filterBitsPerKey uint32,
 	compressionCodec CompressionCodec,
-	rowFeatures []RowFeature,
 ) *EncodedSSTableBuilder {
 	return &EncodedSSTableBuilder{
-		blockBuilder:  newBlockBuilder(blockSize, rowFeatures),
+		blockBuilder:  newBlockBuilder(blockSize),
 		filterBuilder: filter.NewBloomFilterBuilder(filterBitsPerKey),
 		indexBuilder:  flatbuffers.NewBuilder(0),
 
@@ -326,7 +328,6 @@ func newEncodedSSTableBuilder(
 		blockMetaList: []*flatbuf.BlockMetaT{},
 
 		blocks:        deque.New[[]byte](0),
-		rowFeatures:   rowFeatures,
 		blockSize:     blockSize,
 		currentLen:    0,
 		minFilterKeys: minFilterKeys,
@@ -433,8 +434,8 @@ func (b *EncodedSSTableBuilder) finishBlock() (mo.Option[[]byte], error) {
 	}
 
 	firstKey, _ := b.firstKey.Get()
-	blockMetaT := flatbuf.BlockMetaT{Offset: b.currentLen, FirstKey: firstKey}
-	b.blockMetaList = append(b.blockMetaList, &blockMetaT)
+	blockMeta := flatbuf.BlockMetaT{Offset: b.currentLen, FirstKey: firstKey}
+	b.blockMetaList = append(b.blockMetaList, &blockMeta)
 
 	checksum := crc32.ChecksumIEEE(compressedBlock)
 
@@ -461,31 +462,44 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 	if b.numKeys >= b.minFilterKeys {
 		filtr := b.filterBuilder.Build()
 		encodedFilter := filtr.EncodeToBytes()
-		filterLen = len(encodedFilter)
-		buf = append(buf, encodedFilter...)
+		compressedFilter, err := b.compress(encodedFilter, b.compressionCodec)
+		if err != nil {
+			return nil, err
+		}
+		filterLen = len(compressedFilter)
+		buf = append(buf, compressedFilter...)
 		maybeFilter = mo.Some(*filtr)
 	}
 
-	metaOffset := b.currentLen + uint64(len(buf))
-	sstFirstKey, _ := b.sstFirstKey.Get()
-	ssTableInfoT := flatbuf.SsTableInfoT{
-		FirstKey:     sstFirstKey,
-		BlockMeta:    b.blockMetaList,
-		FilterOffset: filterOffset,
-		FilterLen:    uint64(filterLen),
+	// write the index block
+	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
+	offset := sstIndex.Pack(b.indexBuilder)
+	b.indexBuilder.Finish(offset)
+	indexBlock := b.indexBuilder.FinishedBytes()
+	compressedIndexBlock, err := b.compress(indexBlock, b.compressionCodec)
+	if err != nil {
+		return nil, err
 	}
-	infoOffset := ssTableInfoT.Pack(b.sstInfoBuilder)
-	b.sstInfoBuilder.Finish(infoOffset)
+	indexOffset := b.currentLen + uint64(len(buf))
+	buf = append(buf, compressedIndexBlock...)
 
-	info := newSSTableInfo(b.sstInfoBuilder.FinishedBytes())
-	info.encode(&buf)
+	metaOffset := b.currentLen + uint64(len(buf))
+	sstInfo := &SSTableInfo{
+		firstKey:         b.sstFirstKey,
+		indexOffset:      indexOffset,
+		indexLen:         uint64(len(compressedIndexBlock)),
+		filterOffset:     filterOffset,
+		filterLen:        uint64(filterLen),
+		compressionCodec: b.compressionCodec,
+	}
+	sstInfo.encode(&buf, b.sstCodec)
 
 	// write the metadata offset at the end of the file.
 	buf = binary.BigEndian.AppendUint32(buf, uint32(metaOffset))
 	b.blocks.PushBack(buf)
 
 	return &EncodedSSTable{
-		sstInfo:          info,
+		sstInfo:          sstInfo,
 		filter:           maybeFilter,
 		unconsumedBlocks: b.blocks,
 	}, nil
@@ -525,6 +539,7 @@ func decodeBytesToSSTableInfo(rawInfo []byte, sstCodec SsTableInfoCodec) (*SSTab
 
 type SSTIterator struct {
 	table               *SSTableHandle
+	indexData           *SSTableIndexData
 	tableStore          *TableStore
 	currentBlockIter    mo.Option[*BlockIterator]
 	fromKey             mo.Option[[]byte]
@@ -539,9 +554,15 @@ func newSSTIterator(
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
-) *SSTIterator {
+) (*SSTIterator, error) {
+	indexData, err := tableStore.readIndex(table)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SSTIterator{
 		table:               table,
+		indexData:           indexData,
 		tableStore:          tableStore,
 		currentBlockIter:    mo.None[*BlockIterator](),
 		fromKey:             mo.None[[]byte](),
@@ -549,7 +570,7 @@ func newSSTIterator(
 		fetchTasks:          make(chan chan mo.Option[[]Block], maxFetchTasks),
 		maxFetchTasks:       maxFetchTasks,
 		numBlocksToFetch:    numBlocksToFetch,
-	}
+	}, nil
 }
 
 func newSSTIteratorFromKey(
@@ -558,9 +579,15 @@ func newSSTIteratorFromKey(
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
-) *SSTIterator {
+) (*SSTIterator, error) {
+	indexData, err := tableStore.readIndex(table)
+	if err != nil {
+		return nil, err
+	}
+
 	iter := &SSTIterator{
 		table:            table,
+		indexData:        indexData,
 		tableStore:       tableStore,
 		currentBlockIter: mo.None[*BlockIterator](),
 		fromKey:          mo.Some(fromKey),
@@ -568,8 +595,8 @@ func newSSTIteratorFromKey(
 		maxFetchTasks:    maxFetchTasks,
 		numBlocksToFetch: numBlocksToFetch,
 	}
-	iter.nextBlockIdxToFetch = iter.firstBlockWithDataIncludingOrAfterKey(table, fromKey)
-	return iter
+	iter.nextBlockIdxToFetch = iter.firstBlockWithDataIncludingOrAfterKey(indexData, fromKey)
+	return iter, nil
 }
 
 func (iter *SSTIterator) Next() (mo.Option[common.KV], error) {
@@ -630,7 +657,11 @@ func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
 // Range{blocksStart, blocksEnd} for a given SST from object storage
 func (iter *SSTIterator) spawnFetches() {
 
-	numBlocks := iter.table.info.borrow().BlockMetaLength()
+	numBlocks := iter.indexData.ssTableIndex().BlockMetaLength()
+	table := iter.table.clone()
+	tableStore := iter.tableStore.clone()
+	index := iter.indexData.clone()
+
 	for len(iter.fetchTasks) < int(iter.maxFetchTasks) && int(iter.nextBlockIdxToFetch) < numBlocks {
 		numBlocksToFetch := math.Min(
 			float64(iter.numBlocksToFetch),
@@ -642,15 +673,17 @@ func (iter *SSTIterator) spawnFetches() {
 		blocksCh := make(chan mo.Option[[]Block], 1)
 		iter.fetchTasks <- blocksCh
 
+		blocksRange := common.Range{Start: blocksStart, End: blocksEnd}
+
 		// TODO: ensure goroutine does not leak.
-		go func(table *SSTableHandle, store *TableStore, blocksStart uint64, blocksEnd uint64) {
-			blocks, err := store.readBlocks(table, common.Range{Start: blocksStart, End: blocksEnd})
+		go func() {
+			blocks, err := tableStore.readBlocksUsingIndex(table, blocksRange, index)
 			if err != nil {
 				blocksCh <- mo.None[[]Block]()
 			} else {
 				blocksCh <- mo.Some(blocks)
 			}
-		}(iter.table.clone(), iter.tableStore.clone(), blocksStart, blocksEnd)
+		}()
 
 		iter.nextBlockIdxToFetch = blocksEnd
 	}
@@ -660,7 +693,7 @@ func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
 	for {
 		iter.spawnFetches()
 		if len(iter.fetchTasks) == 0 {
-			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.table.info.borrow().BlockMetaLength(), "")
+			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.ssTableIndex().BlockMetaLength(), "")
 			return mo.None[*BlockIterator](), nil
 		}
 
@@ -686,17 +719,17 @@ func (iter *SSTIterator) nextBlockIter() (mo.Option[*BlockIterator], error) {
 	}
 }
 
-func (iter *SSTIterator) firstBlockWithDataIncludingOrAfterKey(sst *SSTableHandle, key []byte) uint64 {
-	handle := sst.info.borrow()
+func (iter *SSTIterator) firstBlockWithDataIncludingOrAfterKey(indexData *SSTableIndexData, key []byte) uint64 {
+	sstIndex := indexData.ssTableIndex()
 	low := 0
-	high := handle.BlockMetaLength() - 1
+	high := sstIndex.BlockMetaLength() - 1
 	// if the key is less than all the blocks' first key, scan the whole sst
 	foundBlockID := 0
 
 loop:
 	for low <= high {
 		mid := low + (high-low)/2
-		midBlockFirstKey := handle.UnPack().BlockMeta[mid].FirstKey
+		midBlockFirstKey := sstIndex.UnPack().BlockMeta[mid].FirstKey
 		cmp := bytes.Compare(midBlockFirstKey, key)
 		switch cmp {
 		case -1:

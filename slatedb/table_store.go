@@ -114,7 +114,21 @@ func (ts *TableStore) openSST(id SSTableID) (*SSTableHandle, error) {
 
 func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange common.Range) ([]Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
-	return ts.sstFormat.readBlocks(sstHandle.info, blocksRange, obj)
+	index, err := ts.sstFormat.readIndex(sstHandle.info, obj)
+	if err != nil {
+		return nil, err
+	}
+	return ts.sstFormat.readBlocks(sstHandle.info, index, blocksRange, obj)
+}
+
+// Reads specified blocks from an SSTable using the provided index.
+func (ts *TableStore) readBlocksUsingIndex(
+	sstHandle *SSTableHandle,
+	blocksRange common.Range,
+	index *SSTableIndexData,
+) ([]Block, error) {
+	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
+	return ts.sstFormat.readBlocks(sstHandle.info, index, blocksRange, obj)
 }
 
 func (ts *TableStore) cacheFilter(sstID SSTableID, filter mo.Option[filter.BloomFilter]) {
@@ -139,6 +153,15 @@ func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[filter.Blo
 
 	ts.cacheFilter(sstHandle.id, filtr)
 	return filtr, nil
+}
+
+func (ts *TableStore) readIndex(sstHandle *SSTableHandle) (*SSTableIndexData, error) {
+	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
+	index, err := ts.sstFormat.readIndex(sstHandle.info, obj)
+	if err != nil {
+		return nil, err
+	}
+	return index, nil
 }
 
 func (ts *TableStore) sstPath(id SSTableID) string {

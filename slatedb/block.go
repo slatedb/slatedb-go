@@ -66,20 +66,18 @@ func decodeBytesToBlock(bytes []byte) *Block {
 // ------------------------------------------------
 
 type BlockBuilder struct {
-	offsets     []uint16
-	data        []byte
-	blockSize   uint64
-	firstKey    []byte
-	rowFeatures []RowFeature
+	offsets   []uint16
+	data      []byte
+	blockSize uint64
+	firstKey  []byte
 }
 
-func newBlockBuilder(blockSize uint64, rowFeatures []RowFeature) *BlockBuilder {
+func newBlockBuilder(blockSize uint64) *BlockBuilder {
 	return &BlockBuilder{
-		offsets:     make([]uint16, 0),
-		data:        make([]byte, 0),
-		blockSize:   blockSize,
-		firstKey:    make([]byte, 0),
-		rowFeatures: rowFeatures,
+		offsets:   make([]uint16, 0),
+		data:      make([]byte, 0),
+		blockSize: blockSize,
+		firstKey:  make([]byte, 0),
 	}
 }
 
