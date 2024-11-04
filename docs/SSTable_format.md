@@ -96,23 +96,23 @@ The format is as follows
 ```
 type SsTableInfo struct {
     // contains the firstKey of the SSTable
-	FirstKey          []byte
-
+    FirstKey          []byte
+    
     // the offset at which SsTableIndex starts when SSTable is serialized.
-	// SsTableIndex holds the meta info about each block.
-	IndexOffset       uint64
-
+    // SsTableIndex holds the meta info about each block.
+    IndexOffset       uint64
+    
     // the length of the SSTableIndex.
-	IndexLen          uint64
-
+    IndexLen          uint64
+    
     // the offset at which BloomFilter starts when SSTable is serialized.
-	FilterOffset      uint64
-
+    FilterOffset      uint64
+    
     // the length of the BloomFilter
-	FilterLen         uint64
-
+    FilterLen         uint64
+    
     // the codec used to compress/decompress SSTable before serializing/desirializing
-	CompressionFormat CompressionFormat
+    CompressionFormat CompressionFormat
 }
 ```
 
