@@ -5,7 +5,8 @@ At a high level the SSTable consists of the following in this order:
 1. List of `Blocks` (where each Block contains KeyValue pairs)
 2. `BloomFilter` if the number of keys in SSTable is atleast DBOptions.MinFilterKeys
 3. `SsTableIndex` which contains the `Offset` and `FirstKey` of each Block added above
-4. `SsTableInfo` which is the meta information of the SSTable
+4. `SsTableInfo` which contains meta information of the SSTable like offset, length of `BloomFilter` and offset, length of `SsTableIndex`
+5. Finally the offset(4 bytes) of `SsTableInfo`
 
 
 ### KeyValue format
