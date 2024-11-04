@@ -46,7 +46,8 @@ func TestCompactorCompactsL0(t *testing.T) {
 	assert.Equal(t, 1, len(compactedSSTList))
 
 	sst := compactedSSTList[0]
-	iter := newSSTIterator(&sst, tableStore, 1, 1)
+	iter, err := newSSTIterator(&sst, tableStore, 1, 1)
+	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
 		next, err := iter.Next()
 		assert.NoError(t, err)
@@ -128,7 +129,10 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(testPath, bucket, options)
 	common.AssertTrue(err == nil, "Failed to open test database")
-	sstFormat := newSSTableFormat(32, 10, options.CompressionCodec)
+	sstFormat := defaultSSTableFormat()
+	sstFormat.blockSize = 32
+	sstFormat.minFilterKeys = 10
+	sstFormat.compressionCodec = options.CompressionCodec
 	manifestStore := newManifestStore(testPath, bucket)
 	tableStore := newTableStore(bucket, sstFormat, testPath)
 	return bucket, manifestStore, tableStore, db

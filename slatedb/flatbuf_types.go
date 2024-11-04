@@ -38,6 +38,25 @@ func (info *SSTableIndexData) clone() *SSTableIndexData {
 }
 
 // ------------------------------------------------
+// FlatBufferSSTableIndexCodec
+// ------------------------------------------------
+
+// FlatBufferSSTableIndexCodec defines how we
+// encode SsTableIndex to byte slice and decode byte slice back to SSTableIndex
+type FlatBufferSSTableIndexCodec struct{}
+
+func (f FlatBufferSSTableIndexCodec) encode(index flatbuf.SsTableIndexT) []byte {
+	builder := flatbuffers.NewBuilder(0)
+	dbFBBuilder := newDBFlatBufferBuilder(builder)
+	return dbFBBuilder.createSSTIndex(index)
+}
+
+func (f FlatBufferSSTableIndexCodec) decode(data []byte) *flatbuf.SsTableIndexT {
+	indexData := newSSTableIndexData(data)
+	return indexData.ssTableIndex().UnPack()
+}
+
+// ------------------------------------------------
 // FlatBufferSSTableInfoCodec
 // ------------------------------------------------
 
@@ -45,13 +64,13 @@ func (info *SSTableIndexData) clone() *SSTableIndexData {
 // encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
 type FlatBufferSSTableInfoCodec struct{}
 
-func (f *FlatBufferSSTableInfoCodec) encode(info *SSTableInfo) []byte {
+func (f FlatBufferSSTableInfoCodec) encode(info *SSTableInfo) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	dbFBBuilder := newDBFlatBufferBuilder(builder)
 	return dbFBBuilder.createSSTInfo(info)
 }
 
-func (f *FlatBufferSSTableInfoCodec) decode(data []byte) *SSTableInfo {
+func (f FlatBufferSSTableInfoCodec) decode(data []byte) *SSTableInfo {
 	info := flatbuf.GetRootAsSsTableInfo(data, 0)
 	return sstInfoFromFlatBuf(info)
 }
@@ -184,6 +203,12 @@ func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 	}
 	manifestOffset := manifestV1.Pack(fb.builder)
 	fb.builder.Finish(manifestOffset)
+	return fb.builder.FinishedBytes()
+}
+
+func (fb *DBFlatBufferBuilder) createSSTIndex(index flatbuf.SsTableIndexT) []byte {
+	offset := index.Pack(fb.builder)
+	fb.builder.Finish(offset)
 	return fb.builder.FinishedBytes()
 }
 

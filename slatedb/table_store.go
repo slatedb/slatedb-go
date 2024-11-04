@@ -21,7 +21,7 @@ import (
 
 // ------------------------------------------------
 // TableStore is an abstraction over object storage
-// to read/write data
+// to read/write SSTable data
 // ------------------------------------------------
 
 type TableStore struct {

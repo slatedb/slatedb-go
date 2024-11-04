@@ -11,7 +11,6 @@ import (
 	"math"
 
 	"github.com/gammazero/deque"
-	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/filter"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
@@ -52,7 +51,7 @@ func defaultSSTableFormat() *SSTableFormat {
 		blockSize:        4096,
 		minFilterKeys:    0,
 		filterBitsPerKey: 10,
-		sstCodec:         &FlatBufferSSTableInfoCodec{},
+		sstCodec:         FlatBufferSSTableInfoCodec{},
 		compressionCodec: CompressionNone,
 	}
 }
@@ -315,9 +314,6 @@ type EncodedSSTableBuilder struct {
 	blockBuilder  *BlockBuilder
 	filterBuilder *filter.BloomFilterBuilder
 
-	// As we build the SSTable, we also build a SSTableIndex which keeps track of the offset and firstKey of each Block
-	indexBuilder *flatbuffers.Builder
-
 	// The metadata for each block held by the SSTableIndex
 	blockMetaList []*flatbuf.BlockMetaT
 
@@ -357,7 +353,6 @@ func newEncodedSSTableBuilder(
 	return &EncodedSSTableBuilder{
 		blockBuilder:  newBlockBuilder(blockSize),
 		filterBuilder: filter.NewBloomFilterBuilder(filterBitsPerKey),
-		indexBuilder:  flatbuffers.NewBuilder(0),
 
 		firstKey:      mo.None[[]byte](),
 		sstFirstKey:   mo.None[[]byte](),
@@ -509,9 +504,7 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 
 	// write the index block
 	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
-	offset := sstIndex.Pack(b.indexBuilder)
-	b.indexBuilder.Finish(offset)
-	indexBlock := b.indexBuilder.FinishedBytes()
+	indexBlock := FlatBufferSSTableIndexCodec{}.encode(sstIndex)
 	compressedIndexBlock, err := b.compress(indexBlock, b.compressionCodec)
 	if err != nil {
 		return nil, err

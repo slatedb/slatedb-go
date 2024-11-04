@@ -288,7 +288,8 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 	}
 }
 
-// SSTableInfo contains information on the SSTable when it is serialized.
+// SSTableInfo contains meta information on the SSTable when it is serialized.
+// This is used when we read SSTable as a slice of bytes from object storage and we want to parse the slice of bytes
 // Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
 type SSTableInfo struct {
 	// contains the firstKey of the SSTable

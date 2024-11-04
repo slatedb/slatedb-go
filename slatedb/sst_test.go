@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/samber/mo"
@@ -8,6 +9,7 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
+	"strconv"
 	"testing"
 )
 
@@ -52,7 +54,8 @@ func buildSSTWithNBlocks(
 
 func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(32, 0, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 32
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 	builder.add([]byte("aaaaaaaa"), mo.Some([]byte("11111111")))
@@ -91,7 +94,8 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 	}
 
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(32, 0, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 32
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 	for _, kv := range kvList {
@@ -110,8 +114,11 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 		rawSST = append(rawSST, encodedSST.unconsumedBlocks.PopFront()...)
 	}
 
+	index, err := format.readIndexRaw(encodedSST.sstInfo, rawSST)
+	assert.NoError(t, err)
+
 	for i, kv := range kvList {
-		block, err := format.readBlockRaw(encodedSST.sstInfo, uint64(i), rawSST)
+		block, err := format.readBlockRaw(encodedSST.sstInfo, index, uint64(i), rawSST)
 		assert.NoError(t, err)
 		iterator := newBlockIteratorFromFirstKey(block)
 		iter.AssertIterNextEntry(t, iterator, kv.Key, kv.Value)
@@ -123,7 +130,7 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 
 func TestSSTable(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 0, CompressionNone)
+	format := defaultSSTableFormat()
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -138,25 +145,30 @@ func TestSSTable(t *testing.T) {
 	sstHandle, err := tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
-	sstInfo := sstHandle.info.borrow()
-	assert.Equal(t, 1, sstInfo.BlockMetaLength())
-	assert.Equal(t, []byte("key1"), sstInfo.FirstKeyBytes())
-	assert.Equal(t, []byte("key1"), sstInfo.UnPack().BlockMeta[0].FirstKey)
+	firstKey, ok := sstHandle.info.firstKey.Get()
+	assert.True(t, ok)
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 
 	// construct sst info from the raw bytes and validate that it matches the original info.
 	sstHandleFromStore, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandleFromStore.info)
 
-	sstInfoFromStore := sstHandleFromStore.info.borrow()
-	assert.Equal(t, 1, sstInfoFromStore.BlockMetaLength())
-	assert.Equal(t, []byte("key1"), sstInfoFromStore.FirstKeyBytes())
-	assert.Equal(t, []byte("key1"), sstInfoFromStore.UnPack().BlockMeta[0].FirstKey)
+	sstInfoFromStore := sstHandleFromStore.info
+	index, err := tableStore.readIndex(sstHandleFromStore)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, index.ssTableIndex().BlockMetaLength())
+	firstKey, ok = sstInfoFromStore.firstKey.Get()
+	assert.True(t, ok)
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
+	firstKey = index.ssTableIndex().UnPack().BlockMeta[0].FirstKey
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 }
 
 func TestSSTableNoFilter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -172,14 +184,35 @@ func TestSSTableNoFilter(t *testing.T) {
 	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
-	assert.Equal(t, uint64(0), sstHandle.info.borrow().FilterLen())
+	assert.Equal(t, uint64(0), sstHandle.info.filterLen)
+}
+
+func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
+	filterBits := []uint32{10, 20}
+	for _, filterBitsPerKey := range filterBits {
+		bucket := objstore.NewInMemBucket()
+		format := defaultSSTableFormat()
+		format.filterBitsPerKey = filterBitsPerKey
+		tableStore := newTableStore(bucket, format, "")
+		builder := tableStore.tableBuilder()
+		for i := 0; i < 8; i++ {
+			builder.add([]byte(strconv.Itoa(i)), mo.Some([]byte("value")))
+		}
+		encodedSST, err := builder.build()
+		assert.NoError(t, err)
+		filter, _ := encodedSST.filter.Get()
+		// filters are encoded as a 2 byte number of probes followed by the filter
+		// Since we have added 8 keys, the filter will have (8 * filterBitsPerKey) bits or filterBitsPerKey bytes
+		assert.Equal(t, 2+int(filterBitsPerKey), len(filter.EncodeToBytes()))
+	}
 }
 
 func TestSSTableWithCompression(t *testing.T) {
 	codecs := []CompressionCodec{CompressionSnappy, CompressionZlib, CompressionLz4, CompressionZstd}
 	for _, compression := range codecs {
 		bucket := objstore.NewInMemBucket()
-		format := newSSTableFormat(4096, 0, compression)
+		format := defaultSSTableFormat()
+		format.compressionCodec = compression
 		tableStore := newTableStore(bucket, format, "")
 		builder := tableStore.tableBuilder()
 
@@ -194,16 +227,22 @@ func TestSSTableWithCompression(t *testing.T) {
 		assert.NoError(t, err)
 		sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 		assert.NoError(t, err)
+		index, err := tableStore.readIndex(sstHandle)
+		assert.NoError(t, err)
+
 		assert.Equal(t, encodedInfo, sstHandle.info)
-		sstInfo := sstHandle.info.borrow()
-		assert.Equal(t, 1, sstInfo.BlockMetaLength())
-		assert.Equal(t, []byte("key1"), sstInfo.FirstKeyBytes())
+		assert.Equal(t, 1, index.ssTableIndex().BlockMetaLength())
+		firstKey, ok := sstHandle.info.firstKey.Get()
+		assert.True(t, ok)
+		assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 	}
 }
 
 func TestReadBlocks(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(32, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 32
+	format.minFilterKeys = 1
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -222,7 +261,9 @@ func TestReadBlocks(t *testing.T) {
 	}
 
 	blob := BytesBlob{data}
-	blocks, err := format.readBlocks(encodedInfo, common.Range{Start: 0, End: 2}, blob)
+	index, err := format.readIndexRaw(encodedInfo, data)
+	assert.NoError(t, err)
+	blocks, err := format.readBlocks(encodedInfo, index, common.Range{Start: 0, End: 2}, blob)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(blocks))
 
@@ -242,7 +283,9 @@ func TestReadBlocks(t *testing.T) {
 
 func TestReadAllBlocks(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(32, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 32
+	format.minFilterKeys = 1
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -261,7 +304,9 @@ func TestReadAllBlocks(t *testing.T) {
 	}
 
 	blob := BytesBlob{data}
-	blocks, err := format.readBlocks(encodedInfo, common.Range{Start: 0, End: 3}, blob)
+	index, err := format.readIndexRaw(encodedInfo, data)
+	assert.NoError(t, err)
+	blocks, err := format.readBlocks(encodedInfo, index, common.Range{Start: 0, End: 3}, blob)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(blocks))
 
@@ -289,7 +334,8 @@ func TestReadAllBlocks(t *testing.T) {
 
 func TestOneBlockSSTIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -303,9 +349,12 @@ func TestOneBlockSSTIter(t *testing.T) {
 	tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
-	assert.Equal(t, 1, sstHandle.info.borrow().BlockMetaLength())
+	index, err := tableStore.readIndex(sstHandle)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, index.ssTableIndex().BlockMetaLength())
 
-	iterator := newSSTIterator(sstHandle, tableStore, 1, 1)
+	iterator, err := newSSTIterator(sstHandle, tableStore, 1, 1)
+	assert.NoError(t, err)
 	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
 	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
 	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
@@ -318,7 +367,8 @@ func TestOneBlockSSTIter(t *testing.T) {
 
 func TestManyBlockSSTIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 	builder := tableStore.tableBuilder()
 
@@ -333,9 +383,11 @@ func TestManyBlockSSTIter(t *testing.T) {
 	tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
-	assert.Equal(t, 6, sstHandle.info.borrow().BlockMetaLength())
+	index, err := tableStore.readIndex(sstHandle)
+	assert.Equal(t, 6, index.ssTableIndex().BlockMetaLength())
 
-	iterator := newSSTIterator(sstHandle, tableStore, 1, 1)
+	iterator, err := newSSTIterator(sstHandle, tableStore, 1, 1)
+	assert.NoError(t, err)
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value%d", i))
@@ -349,7 +401,9 @@ func TestManyBlockSSTIter(t *testing.T) {
 
 func TestIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(128, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 128
+	format.minFilterKeys = 1
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -367,7 +421,8 @@ func TestIterFromKey(t *testing.T) {
 		expectedValGen := testCaseValGen.Clone()
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
-		kvIter := newSSTIteratorFromKey(sst, fromKey, tableStore, 1, 1)
+		kvIter, err := newSSTIteratorFromKey(sst, fromKey, tableStore, 1, 1)
+		assert.NoError(t, err)
 
 		for j := 0; j < nKeys-i; j++ {
 			iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -380,7 +435,9 @@ func TestIterFromKey(t *testing.T) {
 
 func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(128, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 128
+	format.minFilterKeys = 1
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("bbbbbbbbbbbbbbbb")
@@ -392,7 +449,8 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	expectedValGen := valGen.Clone()
 
 	sst, nKeys := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
-	kvIter := newSSTIteratorFromKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
+	kvIter, err := newSSTIteratorFromKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
+	assert.NoError(t, err)
 
 	for i := 0; i < nKeys; i++ {
 		iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -404,7 +462,9 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 
 func TestIterFromKeyLargerThanLast(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(128, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 128
+	format.minFilterKeys = 1
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("bbbbbbbbbbbbbbbb")
@@ -414,7 +474,8 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
 	sst, _ := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
-	kvIter := newSSTIteratorFromKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	kvIter, err := newSSTIteratorFromKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	assert.NoError(t, err)
 
 	next, err := kvIter.Next()
 	assert.NoError(t, err)

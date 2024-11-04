@@ -34,7 +34,8 @@ func buildSRWithSSTs(
 
 func TestOneSstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 
 	builder := tableStore.tableBuilder()
@@ -48,7 +49,8 @@ func TestOneSstSRIter(t *testing.T) {
 	assert.NoError(t, err)
 
 	sr := SortedRun{0, []SSTableHandle{*sstHandle}}
-	iterator := newSortedRunIterator(sr, tableStore, 1, 1)
+	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
+	assert.NoError(t, err)
 	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
 	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
 	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
@@ -60,7 +62,8 @@ func TestOneSstSRIter(t *testing.T) {
 
 func TestManySstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 
 	builder := tableStore.tableBuilder()
@@ -81,7 +84,8 @@ func TestManySstSRIter(t *testing.T) {
 	assert.NoError(t, err)
 
 	sr := SortedRun{0, []SSTableHandle{*sstHandle, *sstHandle2}}
-	iterator := newSortedRunIterator(sr, tableStore, 1, 1)
+	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
+	assert.NoError(t, err)
 	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
 	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
 	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
@@ -93,7 +97,8 @@ func TestManySstSRIter(t *testing.T) {
 
 func TestSRIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -112,7 +117,8 @@ func TestSRIterFromKey(t *testing.T) {
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
 
-		kvIter := newSortedRunIteratorFromKey(sr, fromKey, tableStore, 1, 1)
+		kvIter, err := newSortedRunIteratorFromKey(sr, fromKey, tableStore, 1, 1)
+		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
 			iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -125,7 +131,8 @@ func TestSRIterFromKey(t *testing.T) {
 
 func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -137,7 +144,8 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	expectedValGen := valGen.Clone()
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
+	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
+	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
 		iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
@@ -149,7 +157,8 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(4096, 3, CompressionNone)
+	format := defaultSSTableFormat()
+	format.minFilterKeys = 3
 	tableStore := newTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -159,7 +168,8 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
-	kvIter := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	assert.NoError(t, err)
 	next, err := kvIter.Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())
