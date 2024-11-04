@@ -2,15 +2,15 @@
 ## SSTable
 
 At a high level the SSTable consists of the following in this order:
-1. List of Blocks (where each Block contains KeyValue pairs)
-2. BloomFilter if the number of keys in SSTable is atleast DBOptions.MinFilterKeys
-3. SsTableIndex which contains the `Offset` and `FirstKey` of each Block added above
-4. SsTableInfo which is the meta information of the SSTable
+1. List of `Blocks` (where each Block contains KeyValue pairs)
+2. `BloomFilter` if the number of keys in SSTable is atleast DBOptions.MinFilterKeys
+3. `SsTableIndex` which contains the `Offset` and `FirstKey` of each Block added above
+4. `SsTableInfo` which is the meta information of the SSTable
 
 
 ### KeyValue format
-If not a tombstone then KeyValue is represented as 
-
+```
+If not a tombstone then KeyValue is represented as
 ╭─────────┬────────────────┬────────────┬──────────────────╮
 │keyLength│ key            │ valueLength│ value            │
 ├─────────┼────────────────┼────────────┼──────────────────┤
@@ -18,19 +18,18 @@ If not a tombstone then KeyValue is represented as
 ╰─────────┴────────────────┴────────────┴──────────────────╯
 
 If it is a tombstone then KeyValue is represented as
-
 ╭─────────┬────────────────┬──────────╮
 │keyLength│ key            │ Tombstone│
 ├─────────┼────────────────┼──────────┤
 │2 bytes  │ keyLength bytes│ 4 bytes  │
 ╰─────────┴────────────────┴──────────╯
-
+```
 
 ### Block format
-Each Block contains the following: (Assume Block contains n KeyValue pairs and no compression)
-
+Each Block contains the following: (Assume Block contains 'n' KeyValue pairs)
+```
 ╭────────╮
-│KeyValue│ ... repeat 'n' KeyValue pairs in above [KeyValue format](#keyvalue-format)
+│KeyValue│ ... repeat 'n' KeyValue pairs in above KeyValue format.
 ╰────────╯
 
 Then we have offsets of each KeyValue pair
@@ -53,17 +52,17 @@ Then we have checksum of the above data combined
 ├────────┤
 │4 bytes │
 ╰────────╯
-
+```
 
 ### BloomFilter format 
-Assume no compression and number of keys added to BloomFilter is 'n'
-
+Assume number of keys added to BloomFilter is 'n'
+```
 ╭─────────────────────┬────────────────────╮
 │numberOfHashFunctions│ bitArray of filter │
 ├─────────────────────┼────────────────────┤
 │2 bytes              │ n * bitsPerKey bits│
 ╰─────────────────────┴────────────────────╯
-
+```
 
 ### SsTableIndex format
 SsTableIndex contains the `Offset` and `FirstKey` of each Block present in the SSTable. 
@@ -86,12 +85,13 @@ SsTableInfo contains the meta information of the SSTable
 This is serialized to bytes using flatbuffers
 
 The format is as follows
+```
 ╭──────────────────────┬─────────╮
 │serialized SsTableInfo│ checksum│
 ├──────────────────────┼─────────┤
 │                      │ 4 bytes │
 ╰──────────────────────┴─────────╯
-
+```
 
 ```
 type SsTableInfo struct {
