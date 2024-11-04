@@ -203,7 +203,7 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 
 		err = m.writeManifest()
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			logger.Error("conflicting manifest version. retry write", zap.Error(err))
+			logger.Warn("conflicting manifest version. retry write", zap.Error(err))
 		} else if err != nil {
 			return err
 		} else {

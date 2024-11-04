@@ -291,7 +291,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 		core := o.state.dbState.clone()
 		err = o.manifest.updateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			logger.Error("conflicting manifest version. retry write", zap.Error(err))
+			logger.Warn("conflicting manifest version. retry write", zap.Error(err))
 			continue
 		}
 		return err
@@ -301,7 +301,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		logger.Error("invalid compaction", zap.Error(err))
+		logger.Warn("invalid compaction", zap.Error(err))
 		return nil
 	}
 	o.startCompaction(compaction)

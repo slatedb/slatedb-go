@@ -48,7 +48,6 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 	}
 
 	if exists {
-		logger.Warn("object store already exists")
 		return common.ErrObjectExists
 	}
 
