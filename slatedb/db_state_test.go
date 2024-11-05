@@ -1,25 +1,21 @@
 package slatedb
 
 import (
-	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	flatbuf "github.com/slatedb/slatedb-go/gen"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func addL0sToDBState(dbState *DBState, n uint32) {
-	builder := flatbuffers.NewBuilder(0)
-	ssTableInfoT := flatbuf.SsTableInfoT{
-		FirstKey:     nil,
-		BlockMeta:    []*flatbuf.BlockMetaT{},
-		FilterOffset: 0,
-		FilterLen:    uint64(0),
+	sstInfo := &SSTableInfo{
+		firstKey:         mo.None[[]byte](),
+		indexOffset:      0,
+		indexLen:         0,
+		filterOffset:     0,
+		filterLen:        0,
+		compressionCodec: CompressionNone,
 	}
-	infoOffset := ssTableInfoT.Pack(builder)
-	builder.Finish(infoOffset)
-	sstInfo := newSSTableInfoOwned(builder.FinishedBytes())
 
 	for i := 0; i < int(n); i++ {
 		dbState.freezeMemtable(uint64(i))

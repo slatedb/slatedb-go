@@ -56,7 +56,8 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.True(t, stored.IsPresent())
 
 	storedManifest, _ := stored.Get()
-	sstFormat := newSSTableFormat(4096, 10, CompressionNone)
+	sstFormat := defaultSSTableFormat()
+	sstFormat.minFilterKeys = 10
 	tableStore := newTableStore(bucket, sstFormat, dbPath)
 
 	lastCompacted := uint64(0)
@@ -82,7 +83,8 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
 		sst := l0[2-i]
-		iter := newSSTIterator(&sst, tableStore, 1, 1)
+		iter, err := newSSTIterator(&sst, tableStore, 1, 1)
+		assert.NoError(t, err)
 
 		kvOption, err := iter.Next()
 		assert.NoError(t, err)

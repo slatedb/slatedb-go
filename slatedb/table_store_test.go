@@ -11,7 +11,9 @@ import (
 
 func TestSSTWriter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := newSSTableFormat(32, 1, CompressionNone)
+	format := defaultSSTableFormat()
+	format.blockSize = 32
+	format.filterBitsPerKey = 1
 	tableStore := newTableStore(bucket, format, "")
 	sstID := newSSTableIDCompacted(ulid.Make())
 
@@ -23,7 +25,8 @@ func TestSSTWriter(t *testing.T) {
 	sst, err := writer.close()
 	assert.NoError(t, err)
 
-	iterator := newSSTIterator(sst, tableStore, 1, 1)
+	iterator, err := newSSTIterator(sst, tableStore, 1, 1)
+	assert.NoError(t, err)
 	iter.AssertIterNextEntry(t, iterator, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
 	iter.AssertIterNextEntry(t, iterator, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
 	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccc"), nil)

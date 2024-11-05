@@ -72,7 +72,7 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 func (f *FenceableManifest) dbState() (*CoreDBState, error) {
 	err := f.checkEpoch()
 	if err != nil {
-		logger.Error("unable to get db state", zap.Error(err))
+		logger.Warn("unable to get db state", zap.Error(err))
 		return nil, err
 	}
 	return f.storedManifest.dbState(), nil
@@ -104,7 +104,7 @@ func (f *FenceableManifest) storedEpoch() uint64 {
 
 func (f *FenceableManifest) checkEpoch() error {
 	if f.localEpoch.Load() < f.storedEpoch() {
-		logger.Warn("detenced newer client")
+		logger.Warn("detected newer client")
 		return common.ErrFenced
 	}
 	if f.localEpoch.Load() > f.storedEpoch() {
@@ -181,7 +181,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 	newID := s.id + 1
 	err := s.manifestStore.writeManifest(newID, manifest)
 	if err != nil {
-		logger.Error("unable to write store manifest", zap.Error(err))
+		logger.Warn("unable to write store manifest", zap.Error(err))
 		return err
 	}
 	s.manifest = manifest
@@ -231,7 +231,7 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
 	filepath := s.manifestPath(fmt.Sprintf("%020d.%s", id, s.manifestSuffix))
 	err := s.objectStore.putIfNotExists(filepath, s.codec.encode(manifest))
 	if err != nil {
-		logger.Error("failed to complete the operation", zap.Error(err))
+		logger.Warn("failed objectStore.putIfNotExists", zap.Error(err))
 		if errors.Is(err, common.ErrObjectExists) {
 			return common.ErrManifestVersionExists
 		}

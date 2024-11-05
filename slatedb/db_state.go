@@ -263,17 +263,21 @@ func (s *SSTableID) clone() SSTableID {
 // SSTableHandle
 // ------------------------------------------------
 
+// SSTableHandle represents the SSTable
 type SSTableHandle struct {
 	id   SSTableID
-	info *SSTableInfoOwned
+	info *SSTableInfo
 }
 
-func newSSTableHandle(id SSTableID, info *SSTableInfoOwned) *SSTableHandle {
+func newSSTableHandle(id SSTableID, info *SSTableInfo) *SSTableHandle {
 	return &SSTableHandle{id, info}
 }
 
 func (h *SSTableHandle) rangeCoversKey(key []byte) bool {
-	firstKey := h.info.borrow().FirstKeyBytes()
+	if h.info.firstKey.IsAbsent() {
+		return false
+	}
+	firstKey, _ := h.info.firstKey.Get()
 	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
 }
 
@@ -282,4 +286,54 @@ func (h *SSTableHandle) clone() *SSTableHandle {
 		id:   h.id.clone(),
 		info: h.info.clone(),
 	}
+}
+
+// SSTableInfo contains meta information on the SSTable when it is serialized.
+// This is used when we read SSTable as a slice of bytes from object storage and we want to parse the slice of bytes
+// Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
+type SSTableInfo struct {
+	// contains the firstKey of the SSTable
+	firstKey mo.Option[[]byte]
+
+	// the offset at which SSTableIndex starts when SSTable is serialized.
+	// SSTableIndex holds the meta info about each block. SSTableIndex is defined in schemas/sst.fbs
+	indexOffset uint64
+
+	// the length of the SSTableIndex.
+	indexLen uint64
+
+	// the offset at which Bloom filter starts when SSTable is serialized.
+	filterOffset uint64
+
+	// the length of the Bloom filter
+	filterLen uint64
+
+	// the codec used to compress/decompress SSTable before writing/reading from object storage
+	compressionCodec CompressionCodec
+}
+
+func (info *SSTableInfo) clone() *SSTableInfo {
+	firstKey := mo.None[[]byte]()
+	if info.firstKey.IsPresent() {
+		key, _ := info.firstKey.Get()
+		k := make([]byte, len(key))
+		copy(k, key)
+		firstKey = mo.Some(k)
+	}
+	return &SSTableInfo{
+		firstKey:         firstKey,
+		indexOffset:      info.indexOffset,
+		indexLen:         info.indexLen,
+		filterOffset:     info.filterOffset,
+		filterLen:        info.filterLen,
+		compressionCodec: info.compressionCodec,
+	}
+}
+
+// SsTableInfoCodec - implementation of this interface defines how we
+// encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
+// Currently we use FlatBuffers for encoding and decoding.
+type SsTableInfoCodec interface {
+	encode(info *SSTableInfo) []byte
+	decode(data []byte) *SSTableInfo
 }

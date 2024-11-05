@@ -2,10 +2,10 @@ package slatedb
 
 import "time"
 
-type CompressionCodec int
+type CompressionCodec int8
 
 const (
-	CompressionNone CompressionCodec = iota + 1
+	CompressionNone CompressionCodec = iota
 	CompressionSnappy
 	CompressionZlib
 	CompressionLz4

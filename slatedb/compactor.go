@@ -291,7 +291,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 		core := o.state.dbState.clone()
 		err = o.manifest.updateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			logger.Error("conflicting manifest version. retry write", zap.Error(err))
+			logger.Warn("conflicting manifest version. retry write", zap.Error(err))
 			continue
 		}
 		return err
@@ -301,7 +301,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		logger.Error("invalid compaction", zap.Error(err))
+		logger.Warn("invalid compaction", zap.Error(err))
 		return nil
 	}
 	o.startCompaction(compaction)
@@ -358,14 +358,22 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 
 	l0Iters := make([]iter.KVIterator, 0)
 	for _, sst := range compaction.sstList {
-		sstIter := newSSTIterator(&sst, e.tableStore.clone(), 4, 256)
+		sstIter, err := newSSTIterator(&sst, e.tableStore.clone(), 4, 256)
+		if err != nil {
+			return nil, err
+		}
+
 		sstIter.spawnFetches()
 		l0Iters = append(l0Iters, sstIter)
 	}
 
 	srIters := make([]iter.KVIterator, 0)
 	for _, sr := range compaction.sortedRuns {
-		srIter := newSortedRunIterator(sr, e.tableStore.clone(), 16, 256)
+		srIter, err := newSortedRunIterator(sr, e.tableStore.clone(), 16, 256)
+		if err != nil {
+			return nil, err
+		}
+
 		if srIter.currentKVIter.IsPresent() {
 			sstIter, _ := srIter.currentKVIter.Get()
 			sstIter.spawnFetches()

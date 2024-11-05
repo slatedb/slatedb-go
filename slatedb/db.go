@@ -41,7 +41,11 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
 	logger.Init()
 	logger.Info("Application started")
-	sstFormat := newSSTableFormat(BlockSize, options.MinFilterKeys, options.CompressionCodec)
+	sstFormat := defaultSSTableFormat()
+	sstFormat.blockSize = BlockSize
+	sstFormat.minFilterKeys = options.MinFilterKeys
+	sstFormat.compressionCodec = options.CompressionCodec
+
 	tableStore := newTableStore(bucket, sstFormat, path)
 	manifestStore := newManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
@@ -166,11 +170,16 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in SSTs in L0
 	for _, sst := range snapshot.state.core.l0 {
 		if db.sstMayIncludeKey(sst, key) {
-			iter := newSSTIteratorFromKey(&sst, key, db.tableStore.clone(), 1, 1)
+			iter, err := newSSTIteratorFromKey(&sst, key, db.tableStore.clone(), 1, 1)
+			if err != nil {
+				return nil, err
+			}
+
 			entry, err := iter.NextEntry()
 			if err != nil {
 				return nil, err
 			}
+
 			kv, ok := entry.Get()
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.ValueDel)
@@ -181,11 +190,16 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.state.core.compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter := newSortedRunIteratorFromKey(sr, key, db.tableStore.clone(), 1, 1)
+			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.clone(), 1, 1)
+			if err != nil {
+				return nil, err
+			}
+
 			entry, err := iter.NextEntry()
 			if err != nil {
 				return nil, err
 			}
+
 			kv, ok := entry.Get()
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.ValueDel)
@@ -255,7 +269,11 @@ func (db *DB) replayWAL() error {
 		common.AssertTrue(sst.id.walID().IsPresent(), "Invalid WAL ID")
 
 		// iterate through kv pairs in sst and populate walReplayBuf
-		iter := newSSTIterator(sst, db.tableStore.clone(), 1, 1)
+		iter, err := newSSTIterator(sst, db.tableStore.clone(), 1, 1)
+		if err != nil {
+			return err
+		}
+
 		walReplayBuf := make([]common.KVDeletable, 0)
 		for {
 			entry, err := iter.NextEntry()

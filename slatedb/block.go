@@ -136,6 +136,7 @@ func (b *BlockBuilder) build() (*Block, error) {
 // BlockIterator
 // ------------------------------------------------
 
+// BlockIterator helps in iterating through KeyValue pairs present in the Block.
 type BlockIterator struct {
 	block       *Block
 	offsetIndex uint64
