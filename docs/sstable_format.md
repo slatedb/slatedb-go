@@ -8,6 +8,10 @@ At a high level the SSTable consists of the following in this order:
 4. `SsTableInfo` which contains meta information of the SSTable like offset, length of `BloomFilter` and offset, length of `SsTableIndex`
 5. Finally the offset(4 bytes) of `SsTableInfo`
 
+Note: The WAL `.sst` files stored under `wal/` directory of object storage and  
+the compacted `.sst` files stored under `compacted/` directory of object storage have the same SSTable format.    
+The compacted directory includes `.sst` files for both Level0 and SortedRun.
+
 
 ### KeyValue format
 ```
