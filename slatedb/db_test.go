@@ -192,8 +192,10 @@ func TestFlushMemtableToL0(t *testing.T) {
 		assert.True(t, memtable.table.get(kv.Key).IsPresent())
 	}
 
-	db.flushMemtableToL0()
-	// verify that Memtable is empty after flushMemtableToL0()
+	err = db.FlushMemtableToL0()
+	assert.NoError(t, err)
+
+	// verify that Memtable is empty after FlushMemtableToL0()
 	assert.Equal(t, int64(0), db.state.memtable.size.Load())
 
 	// verify that we can read keys from Level0

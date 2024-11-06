@@ -317,9 +317,9 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 	db.memtableFlushNotifierCh <- FlushImmutableMemtables
 }
 
-// Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
+// FlushMemtableToL0 - Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
 // This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
-func (db *DB) flushMemtableToL0() error {
+func (db *DB) FlushMemtableToL0() error {
 	lastWalID := db.state.memtable.lastWalID
 	if lastWalID.IsAbsent() {
 		return errors.New("WAL is not yet flushed to Memtable")
