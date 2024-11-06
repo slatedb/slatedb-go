@@ -14,11 +14,11 @@ import (
 const BlockSize = 4096
 
 type DB struct {
-	state         *DBState
-	options       DBOptions
-	tableStore    *TableStore
-	manifestStore *ManifestStore
-	compactor     *Compactor
+	state      *DBState
+	options    DBOptions
+	tableStore *TableStore
+	manifest   *FenceableManifest
+	compactor  *Compactor
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
 	// and the goroutine running the walFlush task reads this channel and shuts down
@@ -65,7 +65,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	if err != nil {
 		return nil, err
 	}
-	db.manifestStore = manifestStore
+	db.manifest = manifest
 
 	db.walFlushNotifierCh = make(chan bool, math.MaxUint8)
 	// we start 2 background threads
@@ -326,16 +326,12 @@ func (db *DB) flushMemtableToL0() {
 
 	walID, _ := lastWalID.Get()
 	db.state.freezeMemtable(walID)
-	manifest, err := getManifest(db.manifestStore)
-	if err != nil {
-		return
-	}
 
 	flusher := MemtableFlusher{
 		db:       db,
-		manifest: manifest,
+		manifest: db.manifest,
 	}
-	err = flusher.flushImmMemtablesToL0()
+	err := flusher.flushImmMemtablesToL0()
 	if err != nil {
 		logger.Error("Error flushing memtable", zap.Error(err))
 	}

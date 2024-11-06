@@ -223,13 +223,6 @@ func newMemtable() *Memtable {
 	}
 }
 
-func (m *Memtable) clone() *Memtable {
-	return &Memtable{
-		WritableKVTable: m.WritableKVTable.clone(),
-		lastWalID:       m.lastWalID,
-	}
-}
-
 // ------------------------------------------------
 // ImmutableMemtable
 // ------------------------------------------------
