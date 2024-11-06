@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"errors"
 	"math"
 	"sync"
 
@@ -318,10 +319,10 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 
 // Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
 // This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
-func (db *DB) flushMemtableToL0() {
+func (db *DB) flushMemtableToL0() error {
 	lastWalID := db.state.memtable.lastWalID
 	if lastWalID.IsAbsent() {
-		return
+		return errors.New("WAL is not yet flushed to Memtable")
 	}
 
 	walID, _ := lastWalID.Get()
@@ -331,10 +332,7 @@ func (db *DB) flushMemtableToL0() {
 		db:       db,
 		manifest: db.manifest,
 	}
-	err := flusher.flushImmMemtablesToL0()
-	if err != nil {
-		logger.Error("Error flushing memtable", zap.Error(err))
-	}
+	return flusher.flushImmMemtablesToL0()
 }
 
 func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {
