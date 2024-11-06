@@ -162,6 +162,48 @@ func TestFlushWhileIterating(t *testing.T) {
 	assert.Equal(t, []byte("value3333"), kv.Value)
 }
 
+func TestFlushMemtableToL0(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	dbPath := "/tmp/test_kv_store"
+	db, err := OpenWithOptions(dbPath, bucket, DefaultDBOptions())
+	assert.NoError(t, err)
+	defer db.Close()
+
+	kvPairs := []common.KV{
+		{Key: []byte("abc1111"), Value: []byte("value1111")},
+		{Key: []byte("abc2222"), Value: []byte("value2222")},
+		{Key: []byte("abc3333"), Value: []byte("value3333")},
+	}
+
+	// write KV pairs to DB and call db.FlushWAL()
+	for _, kv := range kvPairs {
+		db.Put(kv.Key, kv.Value)
+	}
+	err = db.FlushWAL()
+	assert.NoError(t, err)
+
+	// verify that WAL is empty after FlushWAL() is called
+	assert.Equal(t, int64(0), db.state.wal.size.Load())
+	assert.Equal(t, 0, db.state.state.immWAL.Len())
+
+	// verify that all KV pairs are present in Memtable
+	memtable := db.state.memtable
+	for _, kv := range kvPairs {
+		assert.True(t, memtable.table.get(kv.Key).IsPresent())
+	}
+
+	db.flushMemtableToL0()
+	// verify that Memtable is empty after flushMemtableToL0()
+	assert.Equal(t, int64(0), db.state.memtable.size.Load())
+
+	// verify that we can read keys from Level0
+	for _, kv := range kvPairs {
+		val, err := db.Get(kv.Key)
+		assert.NoError(t, err)
+		assert.True(t, bytes.Equal(kv.Value, val))
+	}
+}
+
 func TestBasicRestore(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
