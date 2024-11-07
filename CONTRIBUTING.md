@@ -3,6 +3,7 @@
 SlateDB is an open source project and we welcome contributions. Please open Github issues for bugs, feature requests, or other issues. We also welcome pull requests.
 
 Join our [Discord server](https://discord.gg/mHYmGy5MgA) to chat with the developers.
+Please read the [docs](https://github.com/slatedb/slatedb-go/tree/main/docs) to get familiar with the project.
 
 Please follow the instructions below before making a PR:
 
