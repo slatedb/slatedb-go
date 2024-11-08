@@ -33,10 +33,17 @@ func (s *COWDBState) clone() *COWDBState {
 }
 
 type CoreDBState struct {
-	l0LastCompacted       mo.Option[ulid.ULID]
-	l0                    []SSTableHandle
-	compacted             []SortedRun
-	nextWalSstID          uint64
+	l0LastCompacted mo.Option[ulid.ULID]
+	l0              []SSTableHandle
+	compacted       []SortedRun
+
+	// nextWalSstID is used as the ID of new ImmutableWAL created during WAL flush process
+	// It is initialized to 1 and keeps getting incremented by 1 for new ImmutableWALs
+	nextWalSstID uint64
+
+	// lastCompactedWalSSTID is the ID of the last ImmutableWAL that has been flushed to Memtable and then to Level0 of object store.
+	// This value is updated when Memtable is flushed to Level0 of object store.
+	// It is later used during crash recovery to recover only those WALs that have not yet been flushed to Level0.
 	lastCompactedWalSSTID uint64
 }
 
@@ -84,14 +91,14 @@ type DBStateSnapshot struct {
 
 type DBState struct {
 	sync.RWMutex
-	memtable *WritableKVTable
+	memtable *Memtable
 	wal      *WritableKVTable
 	state    *COWDBState
 }
 
 func newDBState(coreDBState *CoreDBState) *DBState {
 	return &DBState{
-		memtable: newWritableKVTable(),
+		memtable: newMemtable(),
 		wal:      newWritableKVTable(),
 		state: &COWDBState{
 			immMemtable: deque.New[ImmutableMemtable](0),
@@ -123,9 +130,9 @@ func (s *DBState) freezeMemtable(walID uint64) {
 	defer s.Unlock()
 
 	oldMemtable := s.memtable
-	immMemtable := newImmutableMemtable(oldMemtable, walID)
+	immMemtable := newImmutableMemtable(oldMemtable.WritableKVTable, walID)
 
-	s.memtable = newWritableKVTable()
+	s.memtable = newMemtable()
 	s.state.immMemtable.PushFront(immMemtable)
 }
 

@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"errors"
 	"math"
 	"sync"
 
@@ -17,6 +18,7 @@ type DB struct {
 	state      *DBState
 	options    DBOptions
 	tableStore *TableStore
+	manifest   *FenceableManifest
 	compactor  *Compactor
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
@@ -64,6 +66,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	if err != nil {
 		return nil, err
 	}
+	db.manifest = manifest
 
 	db.walFlushNotifierCh = make(chan bool, math.MaxUint8)
 	// we start 2 background threads
@@ -312,6 +315,24 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 	}
 	state.freezeMemtable(walID)
 	db.memtableFlushNotifierCh <- FlushImmutableMemtables
+}
+
+// FlushMemtableToL0 - Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
+// This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
+func (db *DB) FlushMemtableToL0() error {
+	lastWalID := db.state.memtable.lastWalID
+	if lastWalID.IsAbsent() {
+		return errors.New("WAL is not yet flushed to Memtable")
+	}
+
+	walID, _ := lastWalID.Get()
+	db.state.freezeMemtable(walID)
+
+	flusher := MemtableFlusher{
+		db:       db,
+		manifest: db.manifest,
+	}
+	return flusher.flushImmMemtablesToL0()
 }
 
 func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {

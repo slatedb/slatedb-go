@@ -206,6 +206,24 @@ func (i *ImmutableWAL) clone() *ImmutableWAL {
 }
 
 // ------------------------------------------------
+// Memtable
+// ------------------------------------------------
+
+type Memtable struct {
+	*WritableKVTable
+
+	// As WALs get written to Memtable, this value holds the ID of the last WAL that was written to Memtable
+	lastWalID mo.Option[uint64]
+}
+
+func newMemtable() *Memtable {
+	return &Memtable{
+		WritableKVTable: newWritableKVTable(),
+		lastWalID:       mo.None[uint64](),
+	}
+}
+
+// ------------------------------------------------
 // ImmutableMemtable
 // ------------------------------------------------
 

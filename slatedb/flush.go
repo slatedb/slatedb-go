@@ -53,6 +53,7 @@ func (db *DB) flushImmWALs() error {
 			break
 		}
 		immWal := walList.Back()
+		// Flush Immutable WAL to Object store
 		_, err := db.flushImmWAL(immWal)
 		if err != nil {
 			return err
@@ -60,7 +61,7 @@ func (db *DB) flushImmWALs() error {
 		db.state.popImmWAL()
 
 		// flush to the memtable before notifying so that data is available for reads
-		db.flushImmWALToMemtable(db.state.memtable, immWal.table)
+		db.flushImmWALToMemtable(immWal, db.state.memtable)
 		db.maybeFreezeMemtable(db.state, immWal.id)
 		immWal.table.notifyWALFlushed()
 	}
@@ -72,8 +73,8 @@ func (db *DB) flushImmWAL(imm ImmutableWAL) (*SSTableHandle, error) {
 	return db.flushImmTable(walID, imm.table)
 }
 
-func (db *DB) flushImmWALToMemtable(memtable *WritableKVTable, immTable *KVTable) {
-	iter := immTable.iter()
+func (db *DB) flushImmWALToMemtable(immWal ImmutableWAL, memtable *Memtable) {
+	iter := immWal.table.iter()
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil || entry.IsAbsent() {
@@ -86,6 +87,7 @@ func (db *DB) flushImmWALToMemtable(memtable *WritableKVTable, immTable *KVTable
 			memtable.put(kv.Key, kv.ValueDel.Value)
 		}
 	}
+	memtable.lastWalID = mo.Some(immWal.id)
 }
 
 func (db *DB) flushImmTable(id SSTableID, immTable *KVTable) (*SSTableHandle, error) {
