@@ -7,6 +7,7 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"go.uber.org/zap"
+	"sort"
 )
 
 // ------------------------------------------------
@@ -19,20 +20,11 @@ type SortedRun struct {
 }
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
-	index := 0
-	// TODO: Rust implementation uses partition_point() which internally uses binary search
-	//  we are doing linear search. See if we can optimize
-	for i, sst := range s.sstList {
-		firstKey, ok := sst.info.firstKey.Get()
+	index := sort.Search(len(s.sstList), func(i int) bool {
+		firstKey, ok := s.sstList[i].info.firstKey.Get()
 		common.AssertTrue(ok, "sst must have first key")
-		if bytes.Compare(firstKey, key) > 0 {
-			index = i
-			break
-		} else if i == len(s.sstList)-1 {
-			index = i + 1
-			break
-		}
-	}
+		return bytes.Compare(firstKey, key) > 0
+	})
 	if index > 0 {
 		return mo.Some(index - 1)
 	}

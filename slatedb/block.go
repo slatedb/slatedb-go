@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"sort"
 
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
@@ -146,19 +147,13 @@ type BlockIterator struct {
 // key greater than the given key if the exact key given is not in the block.
 func newBlockIteratorFromKey(block *Block, key []byte) *BlockIterator {
 	data := block.data
-	index := len(block.offsets)
-	// TODO: Rust implementation uses partition_point() which internally uses binary search
-	//  we are doing linear search. See if we can optimize
-	for i, offset := range block.offsets {
-		off := offset
+	index := sort.Search(len(block.offsets), func(i int) bool {
+		off := block.offsets[i]
 		keyLen := binary.BigEndian.Uint16(data[off:])
 		off += common.SizeOfUint16InBytes
 		curKey := data[off : off+keyLen]
-		if bytes.Compare(curKey, key) >= 0 {
-			index = i
-			break
-		}
-	}
+		return bytes.Compare(curKey, key) >= 0
+	})
 
 	return &BlockIterator{
 		block:       block,
