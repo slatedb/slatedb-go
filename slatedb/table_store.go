@@ -60,7 +60,7 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 			}
 		}
 		return nil
-	}, objstore.WithRecursiveIter)
+	}, objstore.WithRecursiveIter())
 	if err != nil {
 		logger.Error("unable to iterate over the table list", zap.Error(err))
 		return nil, common.ErrObjectStore

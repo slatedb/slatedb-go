@@ -56,11 +56,15 @@ func TestDelegatingShouldList(t *testing.T) {
 
 	list, err := store.list(mo.None[string]())
 	assert.NoError(t, err)
+	pathList := make([]string, 0, len(list))
+	for _, objMeta := range list {
+		pathList = append(pathList, objMeta.Location)
+	}
 
 	expected := []string{"/root/path/obj", "/root/path/foo/bar"}
 	sort.Strings(expected)
-	sort.Strings(list)
-	assert.Equal(t, expected, list)
+	sort.Strings(pathList)
+	assert.Equal(t, expected, pathList)
 }
 
 func TestDelegatingShouldPutWithPrefix(t *testing.T) {

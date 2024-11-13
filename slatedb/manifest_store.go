@@ -1,18 +1,18 @@
 package slatedb
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/thanos-io/objstore"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
-
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
+	"time"
 )
 
 const manifestDir = "manifest"
@@ -72,7 +72,6 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 func (f *FenceableManifest) dbState() (*CoreDBState, error) {
 	err := f.checkEpoch()
 	if err != nil {
-		logger.Warn("unable to get db state", zap.Error(err))
 		return nil, err
 	}
 	return f.storedManifest.dbState(), nil
@@ -104,7 +103,6 @@ func (f *FenceableManifest) storedEpoch() uint64 {
 
 func (f *FenceableManifest) checkEpoch() error {
 	if f.localEpoch.Load() < f.storedEpoch() {
-		logger.Warn("detected newer client")
 		return common.ErrFenced
 	}
 	if f.localEpoch.Load() > f.storedEpoch() {
@@ -136,7 +134,6 @@ func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest
 	}
 	err := store.writeManifest(1, manifest)
 	if err != nil {
-		logger.Error("unable to store manifest", zap.Error(err))
 		return nil, err
 	}
 
@@ -150,12 +147,12 @@ func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest
 func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error) {
 	stored, err := store.readLatestManifest()
 	if err != nil {
-		logger.Error("unable to read latest manifest", zap.Error(err))
 		return mo.None[StoredManifest](), err
 	}
 	if stored.IsAbsent() {
 		return mo.None[StoredManifest](), nil
 	}
+
 	storedInfo, _ := stored.Get()
 	return mo.Some(StoredManifest{
 		id:            storedInfo.id,
@@ -181,7 +178,6 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 	newID := s.id + 1
 	err := s.manifestStore.writeManifest(newID, manifest)
 	if err != nil {
-		logger.Warn("unable to write store manifest", zap.Error(err))
 		return err
 	}
 	s.manifest = manifest
@@ -192,7 +188,6 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	stored, err := s.manifestStore.readLatestManifest()
 	if err != nil {
-		logger.Error("unable to load latest manifest", zap.Error(err))
 		return nil, err
 	}
 	if stored.IsAbsent() {
@@ -208,6 +203,20 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 // ------------------------------------------------
 // ManifestStore
 // ------------------------------------------------
+
+type ManifestFileMetadata struct {
+	ID uint64
+	// LastModified is the timestamp the object was last modified.
+	LastModified time.Time
+
+	// Location is the path of the object
+	Location string
+}
+
+type manifestInfo struct {
+	id       uint64
+	manifest *Manifest
+}
 
 type ManifestStore struct {
 	objectStore    ObjectStore
@@ -231,7 +240,6 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
 	filepath := s.manifestPath(fmt.Sprintf("%020d.%s", id, s.manifestSuffix))
 	err := s.objectStore.putIfNotExists(filepath, s.codec.encode(manifest))
 	if err != nil {
-		logger.Warn("failed objectStore.putIfNotExists", zap.Error(err))
 		if errors.Is(err, common.ErrObjectExists) {
 			return common.ErrManifestVersionExists
 		}
@@ -240,62 +248,58 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
 	return nil
 }
 
-type manifestInfo struct {
-	id       uint64
-	manifest *Manifest
+func (s *ManifestStore) listManifests() ([]ManifestFileMetadata, error) {
+	objMetaList, err := s.objectStore.list(mo.Some(manifestDir))
+	if err != nil {
+		return nil, common.ErrObjectStore
+	}
+
+	manifests := make([]ManifestFileMetadata, 0)
+	for _, objMeta := range objMetaList {
+		id, err := s.parseID(objMeta.Location, "."+s.manifestSuffix)
+		if err != nil {
+			continue
+		}
+
+		manifests = append(manifests, ManifestFileMetadata{
+			ID:           id,
+			LastModified: objMeta.LastModified,
+			Location:     objMeta.Location,
+		})
+	}
+
+	slices.SortFunc(manifests, func(a, b ManifestFileMetadata) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
+	return manifests, nil
 }
 
 func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
-	files, err := s.objectStore.list(mo.Some(manifestDir))
-	if err != nil {
-		logger.Error("unable to list manifest files", zap.Error(err))
-		return mo.None[manifestInfo](), common.ErrObjectStore
+	manifestList, err := s.listManifests()
+	if err != nil || len(manifestList) == 0 {
+		return mo.None[manifestInfo](), err
 	}
 
-	latestManifestPath := ""
-	latestManifestID := uint64(0)
-	// This loop will search for the manifest with the highest ID
-	// (which is the latest manifest)
-	for _, filepath := range files {
-		foundID, err := s.parseID(filepath, "."+s.manifestSuffix)
-		if err != nil {
-			logger.Error("unable to parse manifest file", zap.Error(err))
-			continue
-		}
-
-		if latestManifestPath == "" {
-			latestManifestID = foundID
-			latestManifestPath = filepath
-			continue
-		}
-
-		if foundID > latestManifestID {
-			latestManifestID = foundID
-			latestManifestPath = filepath
-		}
-	}
-	if latestManifestPath == "" {
+	latestManifest := manifestList[len(manifestList)-1]
+	if latestManifest.Location == "" {
 		return mo.None[manifestInfo](), nil
 	}
 
 	// read the latest manifest from object store and return the manifest
-	manifestBytes, err := s.objectStore.get(s.manifestPath(basePath(latestManifestPath)))
+	manifestBytes, err := s.objectStore.get(s.manifestPath(basePath(latestManifest.Location)))
 	if err != nil {
-		logger.Error("unable to read latest manifest from the store", zap.Error(err))
 		return mo.None[manifestInfo](), common.ErrObjectStore
 	}
 
 	manifest, err := s.codec.decode(manifestBytes)
 	if err != nil {
-		logger.Error("unable to decode manifest", zap.Error(err))
 		return mo.None[manifestInfo](), err
 	}
-	return mo.Some(manifestInfo{latestManifestID, manifest}), nil
+	return mo.Some(manifestInfo{latestManifest.ID, manifest}), nil
 }
 
 func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, error) {
 	if path.Ext(filepath) != expectedExt {
-		logger.Warn("invalid file extension")
 		return 0, common.ErrInvalidDBState
 	}
 
@@ -303,7 +307,6 @@ func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, er
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		logger.Error("invalid id", zap.Error(err))
 		return 0, common.ErrInvalidDBState
 	}
 

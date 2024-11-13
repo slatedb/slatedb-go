@@ -3,8 +3,10 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"path"
+	"time"
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -18,7 +20,15 @@ type ObjectStore interface {
 
 	get(path string) ([]byte, error)
 
-	list(path mo.Option[string]) ([]string, error)
+	list(path mo.Option[string]) ([]ObjectMeta, error)
+}
+
+type ObjectMeta struct {
+	// LastModified is the timestamp the object was last modified.
+	LastModified time.Time
+
+	// Location is the path of the object
+	Location string
 }
 
 type DelegatingObjectStore struct {
@@ -43,7 +53,6 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 	fullPath := d.getPath(objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
-		logger.Warn("invalid object path")
 		return common.ErrObjectStore
 	}
 
@@ -53,7 +62,6 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 
 	err = d.bucket.Upload(context.Background(), fullPath, bytes.NewReader(data))
 	if err != nil {
-		logger.Error("unable to upload", zap.Error(err))
 		return common.ErrObjectStore
 	}
 	return nil
@@ -63,7 +71,6 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	fullPath := d.getPath(objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
-		logger.Error("unable to get reader for object "+fullPath, zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
@@ -75,22 +82,27 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]string, error) {
+func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, error) {
 	fullPath := d.rootPath
 	if objPath.IsPresent() {
 		p, _ := objPath.Get()
 		fullPath = d.getPath(p)
 	}
 
-	objList := make([]string, 0)
-	err := d.bucket.Iter(context.Background(), fullPath, func(filepath string) error {
-		objList = append(objList, filepath)
+	objMetaList := make([]ObjectMeta, 0)
+	iterFn := func(attrs objstore.IterObjectAttributes) error {
+		lastModified, _ := attrs.LastModified()
+		objMetaList = append(objMetaList, ObjectMeta{
+			LastModified: lastModified,
+			Location:     attrs.Name,
+		})
 		return nil
-	}, objstore.WithRecursiveIter)
+	}
+	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, objstore.WithRecursiveIter())
 	if err != nil {
-		logger.Error("unable to lsit objects", zap.Error(err))
+		fmt.Println(err)
 		return nil, common.ErrObjectStore
 	}
 
-	return objList, nil
+	return objMetaList, nil
 }
