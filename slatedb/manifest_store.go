@@ -206,6 +206,7 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 
 type ManifestFileMetadata struct {
 	ID uint64
+
 	// LastModified is the timestamp the object was last modified.
 	LastModified time.Time
 

@@ -3,9 +3,9 @@ package slatedb
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"path"
+	"slices"
 	"time"
 
 	"github.com/samber/mo"
@@ -40,7 +40,7 @@ func newDelegatingObjectStore(rootPath string, bucket objstore.Bucket) *Delegati
 	return &DelegatingObjectStore{rootPath, bucket}
 }
 
-func (d *DelegatingObjectStore) getPath(objPath string) string {
+func (d *DelegatingObjectStore) prependRootPath(objPath string) string {
 	return path.Join(d.rootPath, objPath)
 }
 
@@ -50,7 +50,7 @@ func basePath(objPath string) string {
 
 // TODO: We should make this atomic
 func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) error {
-	fullPath := d.getPath(objPath)
+	fullPath := d.prependRootPath(objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
 		return common.ErrObjectStore
@@ -68,7 +68,7 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 }
 
 func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
-	fullPath := d.getPath(objPath)
+	fullPath := d.prependRootPath(objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
 		return nil, common.ErrObjectStore
@@ -86,23 +86,32 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, e
 	fullPath := d.rootPath
 	if objPath.IsPresent() {
 		p, _ := objPath.Get()
-		fullPath = d.getPath(p)
+		fullPath = d.prependRootPath(p)
 	}
 
 	objMetaList := make([]ObjectMeta, 0)
 	iterFn := func(attrs objstore.IterObjectAttributes) error {
 		lastModified, _ := attrs.LastModified()
-		objMetaList = append(objMetaList, ObjectMeta{
-			LastModified: lastModified,
-			Location:     attrs.Name,
-		})
+		objMetaList = append(objMetaList, ObjectMeta{lastModified, attrs.Name})
 		return nil
 	}
-	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, objstore.WithRecursiveIter())
+	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, d.objStoreIterOptions()...)
 	if err != nil {
-		fmt.Println(err)
 		return nil, common.ErrObjectStore
 	}
 
 	return objMetaList, nil
+}
+
+// objStoreIterOptions gets IterOptions supported by the storage provider
+func (d *DelegatingObjectStore) objStoreIterOptions() []objstore.IterOption {
+	iterOptions := make([]objstore.IterOption, 0)
+	requiredOptions := []objstore.IterOption{objstore.WithRecursiveIter(), objstore.WithUpdatedAt()}
+
+	for _, required := range requiredOptions {
+		if slices.Contains(d.bucket.SupportedIterOptions(), required.Type) {
+			iterOptions = append(iterOptions, required)
+		}
+	}
+	return iterOptions
 }
