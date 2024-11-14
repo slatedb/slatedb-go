@@ -207,10 +207,10 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 type ManifestFileMetadata struct {
 	ID uint64
 
-	// LastModified is the timestamp the object was last modified.
+	// LastModified is the timestamp the manifest was last modified.
 	LastModified time.Time
 
-	// Location is the path of the object
+	// Location is the path of the manifest
 	Location string
 }
 
