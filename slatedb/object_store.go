@@ -15,20 +15,20 @@ import (
 	"go.uber.org/zap"
 )
 
+type ObjectMeta struct {
+	// LastModified is the time the object was last modified.
+	LastModified time.Time
+
+	// Location is the path of the object
+	Location string
+}
+
 type ObjectStore interface {
 	putIfNotExists(path string, data []byte) error
 
 	get(path string) ([]byte, error)
 
 	list(path mo.Option[string]) ([]ObjectMeta, error)
-}
-
-type ObjectMeta struct {
-	// LastModified is the timestamp the object was last modified.
-	LastModified time.Time
-
-	// Location is the path of the object
-	Location string
 }
 
 type DelegatingObjectStore struct {
@@ -40,17 +40,9 @@ func newDelegatingObjectStore(rootPath string, bucket objstore.Bucket) *Delegati
 	return &DelegatingObjectStore{rootPath, bucket}
 }
 
-func (d *DelegatingObjectStore) prependRootPath(objPath string) string {
-	return path.Join(d.rootPath, objPath)
-}
-
-func basePath(objPath string) string {
-	return path.Base(objPath)
-}
-
 // TODO: We should make this atomic
 func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) error {
-	fullPath := d.prependRootPath(objPath)
+	fullPath := path.Join(d.rootPath, objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
 		return common.ErrObjectStore
@@ -68,7 +60,7 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 }
 
 func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
-	fullPath := d.prependRootPath(objPath)
+	fullPath := path.Join(d.rootPath, objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
 		return nil, common.ErrObjectStore
@@ -86,7 +78,7 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, e
 	fullPath := d.rootPath
 	if objPath.IsPresent() {
 		p, _ := objPath.Get()
-		fullPath = d.prependRootPath(p)
+		fullPath = path.Join(d.rootPath, p)
 	}
 
 	objMetaList := make([]ObjectMeta, 0)
@@ -95,7 +87,7 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, e
 		objMetaList = append(objMetaList, ObjectMeta{lastModified, attrs.Name})
 		return nil
 	}
-	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, d.objStoreIterOptions()...)
+	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, objStoreIterOptions(d.bucket)...)
 	if err != nil {
 		return nil, common.ErrObjectStore
 	}
@@ -104,12 +96,12 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, e
 }
 
 // objStoreIterOptions gets IterOptions supported by the storage provider
-func (d *DelegatingObjectStore) objStoreIterOptions() []objstore.IterOption {
+func objStoreIterOptions(bucket objstore.Bucket) []objstore.IterOption {
 	iterOptions := make([]objstore.IterOption, 0)
 	requiredOptions := []objstore.IterOption{objstore.WithRecursiveIter(), objstore.WithUpdatedAt()}
 
 	for _, required := range requiredOptions {
-		if slices.Contains(d.bucket.SupportedIterOptions(), required.Type) {
+		if slices.Contains(bucket.SupportedIterOptions(), required.Type) {
 			iterOptions = append(iterOptions, required)
 		}
 	}

@@ -287,7 +287,8 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	}
 
 	// read the latest manifest from object store and return the manifest
-	manifestBytes, err := s.objectStore.get(s.manifestPath(basePath(latestManifest.Location)))
+	filename := path.Base(latestManifest.Location)
+	manifestBytes, err := s.objectStore.get(s.manifestPath(filename))
 	if err != nil {
 		return mo.None[manifestInfo](), common.ErrObjectStore
 	}
