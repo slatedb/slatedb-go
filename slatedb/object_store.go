@@ -47,7 +47,6 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 	if err != nil {
 		return common.ErrObjectStore
 	}
-
 	if exists {
 		return common.ErrObjectExists
 	}

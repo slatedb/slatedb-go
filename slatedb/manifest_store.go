@@ -165,6 +165,7 @@ func (s *StoredManifest) dbState() *CoreDBState {
 	return s.manifest.core
 }
 
+// write new Manifest with updated DB state to object store and update StoredManifest with new manifest
 func (s *StoredManifest) updateDBState(core *CoreDBState) error {
 	manifest := &Manifest{
 		core: core,
@@ -174,6 +175,7 @@ func (s *StoredManifest) updateDBState(core *CoreDBState) error {
 	return s.updateManifest(manifest)
 }
 
+// write given manifest to object store and update StoredManifest with given manifest
 func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 	newID := s.id + 1
 	err := s.manifestStore.writeManifest(newID, manifest)
@@ -185,6 +187,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 	return nil
 }
 
+// read latest manifest from object store and update StoredManifest with the latest manifest.
 func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	stored, err := s.manifestStore.readLatestManifest()
 	if err != nil {
@@ -219,6 +222,7 @@ type manifestInfo struct {
 	manifest *Manifest
 }
 
+// ManifestStore helps in reading and writing manifest to object store
 type ManifestStore struct {
 	objectStore    ObjectStore
 	codec          ManifestCodec

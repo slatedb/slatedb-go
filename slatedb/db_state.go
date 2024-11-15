@@ -32,6 +32,7 @@ func (s *COWDBState) clone() *COWDBState {
 	}
 }
 
+// CoreDBState is the DB state that gets written to Manifest
 type CoreDBState struct {
 	l0LastCompacted mo.Option[ulid.ULID]
 	l0              []SSTableHandle
