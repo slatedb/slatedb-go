@@ -32,7 +32,7 @@ func (s *COWDBState) clone() *COWDBState {
 	}
 }
 
-// CoreDBState is the DB state that gets written to Manifest
+// CoreDBState is the DB state that gets read/written to Manifest stored on object store
 type CoreDBState struct {
 	l0LastCompacted mo.Option[ulid.ULID]
 	l0              []SSTableHandle
@@ -84,6 +84,7 @@ func (c *CoreDBState) logState() {
 	logger.Info("-----------------")
 }
 
+// DBStateSnapshot contains state required for read methods (eg. GET)
 type DBStateSnapshot struct {
 	memtable *KVTable
 	wal      *KVTable

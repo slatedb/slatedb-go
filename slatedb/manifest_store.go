@@ -222,7 +222,7 @@ type manifestInfo struct {
 	manifest *Manifest
 }
 
-// ManifestStore helps in reading and writing manifest to object store
+// ManifestStore has helper methods to read and write manifest to object store
 type ManifestStore struct {
 	objectStore    ObjectStore
 	codec          ManifestCodec
