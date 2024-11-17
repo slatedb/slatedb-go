@@ -330,9 +330,9 @@ func TestSnapshotState(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 	snapshot := db.state.snapshot()
-	assert.Equal(t, uint64(2), snapshot.state.core.lastCompactedWalSSTID)
-	assert.Equal(t, uint64(3), snapshot.state.core.nextWalSstID)
-	assert.Equal(t, 2, len(snapshot.state.core.l0))
+	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID)
+	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID)
+	assert.Equal(t, 2, len(snapshot.core.l0))
 
 	val1, err := db.Get(key1)
 	assert.NoError(t, err)
