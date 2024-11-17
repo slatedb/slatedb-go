@@ -19,9 +19,12 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 
 	for i := 0; i < int(n); i++ {
 		dbState.freezeMemtable(uint64(i))
-		imm := dbState.state.immMemtable.Back()
+		immMemtable := dbState.oldestImmMemtable()
+		if immMemtable.IsAbsent() {
+			break
+		}
 		sst := newSSTableHandle(newSSTableIDCompacted(ulid.Make()), sstInfo)
-		dbState.moveImmMemtableToL0(imm, sst)
+		dbState.moveImmMemtableToL0(immMemtable.MustGet(), sst)
 	}
 }
 
