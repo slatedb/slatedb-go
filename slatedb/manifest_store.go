@@ -165,7 +165,7 @@ func (s *StoredManifest) dbState() *CoreDBState {
 	return s.manifest.core
 }
 
-// write new Manifest with updated DB state to object store and update StoredManifest with new manifest
+// write Manifest with updated DB state to object store and update StoredManifest with the new manifest
 func (s *StoredManifest) updateDBState(core *CoreDBState) error {
 	manifest := &Manifest{
 		core: core,
