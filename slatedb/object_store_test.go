@@ -54,13 +54,17 @@ func TestDelegatingShouldList(t *testing.T) {
 	err = bucket.Upload(context.Background(), "biz/baz", bytes.NewReader([]byte("data1")))
 	assert.NoError(t, err)
 
-	list, err := store.list(mo.None[string]())
+	objList, err := store.list(mo.None[string]())
 	assert.NoError(t, err)
+	pathList := make([]string, 0, len(objList))
+	for _, objMeta := range objList {
+		pathList = append(pathList, objMeta.Location)
+	}
 
-	expected := []string{"/root/path/obj", "/root/path/foo/bar"}
+	expected := []string{path.Join(rootPath, "obj"), path.Join(rootPath, "foo/bar")}
 	sort.Strings(expected)
-	sort.Strings(list)
-	assert.Equal(t, expected, list)
+	sort.Strings(pathList)
+	assert.Equal(t, expected, pathList)
 }
 
 func TestDelegatingShouldPutWithPrefix(t *testing.T) {

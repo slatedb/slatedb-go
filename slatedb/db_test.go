@@ -184,7 +184,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 
 	// verify that WAL is empty after FlushWAL() is called
 	assert.Equal(t, int64(0), db.state.wal.size.Load())
-	assert.Equal(t, 0, db.state.state.immWAL.Len())
+	assert.Equal(t, 0, db.state.immWAL.Len())
 
 	// verify that all KV pairs are present in Memtable
 	memtable := db.state.memtable
@@ -330,9 +330,9 @@ func TestSnapshotState(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 	snapshot := db.state.snapshot()
-	assert.Equal(t, uint64(2), snapshot.state.core.lastCompactedWalSSTID)
-	assert.Equal(t, uint64(3), snapshot.state.core.nextWalSstID)
-	assert.Equal(t, 2, len(snapshot.state.core.l0))
+	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID)
+	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID)
+	assert.Equal(t, 2, len(snapshot.core.l0))
 
 	val1, err := db.Get(key1)
 	assert.NoError(t, err)

@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"path"
+	"slices"
+	"time"
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -13,12 +15,20 @@ import (
 	"go.uber.org/zap"
 )
 
+type ObjectMeta struct {
+	// LastModified is the time the object was last modified.
+	LastModified time.Time
+
+	// Location is the path of the object
+	Location string
+}
+
 type ObjectStore interface {
 	putIfNotExists(path string, data []byte) error
 
 	get(path string) ([]byte, error)
 
-	list(path mo.Option[string]) ([]string, error)
+	list(path mo.Option[string]) ([]ObjectMeta, error)
 }
 
 type DelegatingObjectStore struct {
@@ -30,40 +40,28 @@ func newDelegatingObjectStore(rootPath string, bucket objstore.Bucket) *Delegati
 	return &DelegatingObjectStore{rootPath, bucket}
 }
 
-func (d *DelegatingObjectStore) getPath(objPath string) string {
-	return path.Join(d.rootPath, objPath)
-}
-
-func basePath(objPath string) string {
-	return path.Base(objPath)
-}
-
 // TODO: We should make this atomic
 func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) error {
-	fullPath := d.getPath(objPath)
+	fullPath := path.Join(d.rootPath, objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
-		logger.Warn("invalid object path")
 		return common.ErrObjectStore
 	}
-
 	if exists {
 		return common.ErrObjectExists
 	}
 
 	err = d.bucket.Upload(context.Background(), fullPath, bytes.NewReader(data))
 	if err != nil {
-		logger.Error("unable to upload", zap.Error(err))
 		return common.ErrObjectStore
 	}
 	return nil
 }
 
 func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
-	fullPath := d.getPath(objPath)
+	fullPath := path.Join(d.rootPath, objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
-		logger.Error("unable to get reader for object "+fullPath, zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
@@ -75,22 +73,36 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	return data, nil
 }
 
-func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]string, error) {
+func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, error) {
 	fullPath := d.rootPath
 	if objPath.IsPresent() {
 		p, _ := objPath.Get()
-		fullPath = d.getPath(p)
+		fullPath = path.Join(d.rootPath, p)
 	}
 
-	objList := make([]string, 0)
-	err := d.bucket.Iter(context.Background(), fullPath, func(filepath string) error {
-		objList = append(objList, filepath)
+	objMetaList := make([]ObjectMeta, 0)
+	iterFn := func(attrs objstore.IterObjectAttributes) error {
+		lastModified, _ := attrs.LastModified()
+		objMetaList = append(objMetaList, ObjectMeta{lastModified, attrs.Name})
 		return nil
-	}, objstore.WithRecursiveIter)
+	}
+	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, objStoreIterOptions(d.bucket)...)
 	if err != nil {
-		logger.Error("unable to lsit objects", zap.Error(err))
 		return nil, common.ErrObjectStore
 	}
 
-	return objList, nil
+	return objMetaList, nil
+}
+
+// objStoreIterOptions gets IterOptions supported by the storage provider
+func objStoreIterOptions(bucket objstore.Bucket) []objstore.IterOption {
+	iterOptions := make([]objstore.IterOption, 0)
+	requiredOptions := []objstore.IterOption{objstore.WithRecursiveIter(), objstore.WithUpdatedAt()}
+
+	for _, required := range requiredOptions {
+		if slices.Contains(bucket.SupportedIterOptions(), required.Type) {
+			iterOptions = append(iterOptions, required)
+		}
+	}
+	return iterOptions
 }

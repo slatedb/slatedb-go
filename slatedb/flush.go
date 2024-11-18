@@ -31,12 +31,8 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 }
 
 // FlushWAL
-//  1. Convert mutable WAL to Immutable WAL
-//  2. For each Immutable WAL
-//     Flush Immutable WAL to Object store
-//     Flush Immutable WAL to mutable Memtable
-//     If memtable has reached size L0SSTBytes then convert memtable to Immutable memtable
-//     Notify any client(with AwaitFlush set to true) that flush has happened
+// 1. Convert mutable WAL to Immutable WAL
+// 2. Flush each Immutable WAL to object store and then to memtable
 func (db *DB) FlushWAL() error {
 	db.state.freezeWAL()
 	err := db.flushImmWALs()
@@ -46,13 +42,19 @@ func (db *DB) FlushWAL() error {
 	return nil
 }
 
+// For each Immutable WAL
+// Flush Immutable WAL to Object store
+// Flush Immutable WAL to mutable Memtable
+// If memtable has reached size L0SSTBytes then convert memtable to Immutable memtable
+// Notify any client(with AwaitFlush set to true) that flush has happened
 func (db *DB) flushImmWALs() error {
 	for {
-		walList := db.state.getState().immWAL
-		if walList == nil || walList.Len() == 0 {
+		oldestWal := db.state.oldestImmWAL()
+		if oldestWal.IsAbsent() {
 			break
 		}
-		immWal := walList.Back()
+
+		immWal := oldestWal.MustGet()
 		// Flush Immutable WAL to Object store
 		_, err := db.flushImmWAL(immWal)
 		if err != nil {
@@ -192,7 +194,7 @@ func (m *MemtableFlusher) loadManifest() error {
 }
 
 func (m *MemtableFlusher) writeManifest() error {
-	core := m.db.state.getState().core
+	core := m.db.state.getCore()
 	return m.manifest.updateDBState(core)
 }
 
@@ -216,19 +218,18 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 
 func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 	for {
-		state := m.db.state.getState()
-		if state.immMemtable.Len() == 0 {
+		immMemtable := m.db.state.oldestImmMemtable()
+		if immMemtable.IsAbsent() {
 			break
 		}
 
-		immMemtable := state.immMemtable.Back()
 		id := newSSTableIDCompacted(ulid.Make())
-		sstHandle, err := m.db.flushImmTable(id, immMemtable.table)
+		sstHandle, err := m.db.flushImmTable(id, immMemtable.MustGet().table)
 		if err != nil {
 			return err
 		}
 
-		m.db.state.moveImmMemtableToL0(immMemtable, sstHandle)
+		m.db.state.moveImmMemtableToL0(immMemtable.MustGet(), sstHandle)
 		err = m.writeManifestSafely()
 		if err != nil {
 			return err

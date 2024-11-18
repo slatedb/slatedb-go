@@ -145,7 +145,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 			return checkValue(val)
 		}
 		// search for key in ImmutableWALs
-		immWALList := snapshot.state.immWAL
+		immWALList := snapshot.immWAL
 		for i := 0; i < immWALList.Len(); i++ {
 			table := immWALList.At(i).table
 			val, ok := table.get(key).Get()
@@ -161,7 +161,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 		return checkValue(val)
 	}
 	// search for key in Immutable memtables
-	immMemtables := snapshot.state.immMemtable
+	immMemtables := snapshot.immMemtable
 	for i := 0; i < immMemtables.Len(); i++ {
 		table := immMemtables.At(i).table
 		val, ok := table.get(key).Get()
@@ -171,7 +171,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	}
 
 	// search for key in SSTs in L0
-	for _, sst := range snapshot.state.core.l0 {
+	for _, sst := range snapshot.core.l0 {
 		if db.sstMayIncludeKey(sst, key) {
 			iter, err := newSSTIteratorFromKey(&sst, key, db.tableStore.clone(), 1, 1)
 			if err != nil {
@@ -191,7 +191,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	}
 
 	// search for key in compacted Sorted runs
-	for _, sr := range snapshot.state.core.compacted {
+	for _, sr := range snapshot.core.compacted {
 		if db.srMayIncludeKey(sr, key) {
 			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.clone(), 1, 1)
 			if err != nil {
@@ -256,7 +256,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 // this is to recover from a crash. we read the WALs from object store (considered to be Uncommmitted)
 // and write the kv pairs to memtable
 func (db *DB) replayWAL() error {
-	walIDLastCompacted := db.state.getState().core.lastCompactedWalSSTID
+	walIDLastCompacted := db.state.getCore().lastCompactedWalSSTID
 	walSSTList, err := db.tableStore.getWalSSTList(walIDLastCompacted)
 	if err != nil {
 		return err
@@ -300,12 +300,12 @@ func (db *DB) replayWAL() error {
 		}
 
 		db.maybeFreezeMemtable(db.state, sstID)
-		if db.state.state.core.nextWalSstID == sstID {
+		if db.state.core.nextWalSstID == sstID {
 			db.state.incrementNextWALID()
 		}
 	}
 
-	common.AssertTrue(lastSSTID+1 == db.state.getState().core.nextWalSstID, "")
+	common.AssertTrue(lastSSTID+1 == db.state.getCore().nextWalSstID, "")
 	return nil
 }
 

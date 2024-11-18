@@ -19,16 +19,19 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 
 	for i := 0; i < int(n); i++ {
 		dbState.freezeMemtable(uint64(i))
-		imm := dbState.state.immMemtable.Back()
+		immMemtable := dbState.oldestImmMemtable()
+		if immMemtable.IsAbsent() {
+			break
+		}
 		sst := newSSTableHandle(newSSTableIDCompacted(ulid.Make()), sstInfo)
-		dbState.moveImmMemtableToL0(imm, sst)
+		dbState.moveImmMemtableToL0(immMemtable.MustGet(), sst)
 	}
 }
 
 func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
 	dbState := newDBState(newCoreDBState())
 	addL0sToDBState(dbState, 4)
-	compactorState := dbState.state.core
+	compactorState := dbState.core
 	size := len(compactorState.l0)
 	lastCompacted := compactorState.l0[size-1]
 	compactorState.l0 = compactorState.l0[:size-1]
@@ -42,7 +45,7 @@ func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
 
 	for i := 0; i < len(compactorState.l0); i++ {
 		expected := compactorState.l0[i]
-		actual := dbState.state.core.l0[i]
+		actual := dbState.core.l0[i]
 		assert.Equal(t, expected, actual)
 	}
 }
@@ -50,13 +53,13 @@ func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
 func TestRefreshDBStateWithAllL0sIfNoneCompacted(t *testing.T) {
 	dbState := newDBState(newCoreDBState())
 	addL0sToDBState(dbState, 4)
-	l0SSTList := dbState.state.core.l0
+	l0SSTList := dbState.core.l0
 
 	dbState.refreshDBState(newCoreDBState())
 
 	for i := 0; i < len(l0SSTList); i++ {
 		expected := l0SSTList[i]
-		actual := dbState.state.core.l0[i]
+		actual := dbState.core.l0[i]
 		assert.Equal(t, expected, actual)
 	}
 }
