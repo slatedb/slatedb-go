@@ -1,4 +1,4 @@
-package slatedb
+package table
 
 import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -15,7 +15,7 @@ func TestMemtableIter(t *testing.T) {
 		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
-	table := newWritableKVTable()
+	table := newKVTable()
 
 	// Put keys in random order
 	table.put(kvPairs[2].Key, kvPairs[2].Value)
@@ -24,7 +24,7 @@ func TestMemtableIter(t *testing.T) {
 	table.put(kvPairs[3].Key, kvPairs[3].Value)
 	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
-	iter := table.table.iter()
+	iter := table.iter()
 
 	// Verify that iterator returns keys in sorted order
 	for i := 0; i < len(kvPairs); i++ {
@@ -46,7 +46,7 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
-	table := newWritableKVTable()
+	table := newKVTable()
 
 	// Put keys in random order
 	table.put(kvPairs[2].Key, kvPairs[2].Value)
@@ -55,7 +55,7 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 	table.put(kvPairs[3].Key, kvPairs[3].Value)
 	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
-	iter := table.table.rangeFrom([]byte("abc333"))
+	iter := table.rangeFrom([]byte("abc333"))
 
 	// Verify that iterator starts from index 2 which contains key abc333
 	for i := 2; i < len(kvPairs); i++ {
@@ -77,7 +77,7 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 		{Key: []byte("abc555"), Value: []byte("value5")},
 	}
 
-	table := newWritableKVTable()
+	table := newKVTable()
 
 	// Put keys in random order
 	table.put(kvPairs[2].Key, kvPairs[2].Value)
@@ -86,7 +86,7 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 	table.put(kvPairs[3].Key, kvPairs[3].Value)
 	table.put(kvPairs[1].Key, kvPairs[1].Value)
 
-	iter := table.table.rangeFrom([]byte("abc345"))
+	iter := table.rangeFrom([]byte("abc345"))
 
 	// Verify that iterator starts from index 3 which contains key abc444
 	for i := 3; i < len(kvPairs); i++ {
@@ -100,15 +100,15 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 }
 
 func TestMemtableIterDelete(t *testing.T) {
-	table := newWritableKVTable()
+	table := newKVTable()
 
 	table.put([]byte("abc333"), []byte("value3"))
-	next, err := table.table.iter().Next()
+	next, err := table.iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
 	table.delete([]byte("abc333"))
-	next, err = table.table.iter().Next()
+	next, err = table.iter().Next()
 	assert.NoError(t, err)
 	assert.False(t, next.IsPresent())
 }

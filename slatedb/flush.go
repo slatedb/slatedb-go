@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"errors"
+	"github.com/slatedb/slatedb-go/slatedb/table"
 	"sync"
 	"time"
 
@@ -64,19 +65,19 @@ func (db *DB) flushImmWALs() error {
 
 		// flush to the memtable before notifying so that data is available for reads
 		db.flushImmWALToMemtable(immWal, db.state.memtable)
-		db.maybeFreezeMemtable(db.state, immWal.id)
-		immWal.table.notifyWALFlushed()
+		db.maybeFreezeMemtable(db.state, immWal.ID())
+		immWal.Table().NotifyWALFlushed()
 	}
 	return nil
 }
 
-func (db *DB) flushImmWAL(imm ImmutableWAL) (*SSTableHandle, error) {
-	walID := newSSTableIDWal(imm.id)
-	return db.flushImmTable(walID, imm.table)
+func (db *DB) flushImmWAL(immWAL *table.ImmutableWAL) (*SSTableHandle, error) {
+	walID := newSSTableIDWal(immWAL.ID())
+	return db.flushImmTable(walID, immWAL.Iter())
 }
 
-func (db *DB) flushImmWALToMemtable(immWal ImmutableWAL, memtable *Memtable) {
-	iter := immWal.table.iter()
+func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.Memtable) {
+	iter := immWal.Iter()
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil || entry.IsAbsent() {
@@ -84,17 +85,16 @@ func (db *DB) flushImmWALToMemtable(immWal ImmutableWAL, memtable *Memtable) {
 		}
 		kv, _ := entry.Get()
 		if kv.ValueDel.IsTombstone {
-			memtable.delete(kv.Key)
+			memtable.Delete(kv.Key)
 		} else {
-			memtable.put(kv.Key, kv.ValueDel.Value)
+			memtable.Put(kv.Key, kv.ValueDel.Value)
 		}
 	}
-	memtable.lastWalID = mo.Some(immWal.id)
+	memtable.SetLastWalID(mo.Some(immWal.ID()))
 }
 
-func (db *DB) flushImmTable(id SSTableID, immTable *KVTable) (*SSTableHandle, error) {
+func (db *DB) flushImmTable(id SSTableID, iter *table.KVTableIterator) (*SSTableHandle, error) {
 	sstBuilder := db.tableStore.tableBuilder()
-	iter := immTable.iter()
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil || entry.IsAbsent() {
@@ -224,7 +224,8 @@ func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 		}
 
 		id := newSSTableIDCompacted(ulid.Make())
-		sstHandle, err := m.db.flushImmTable(id, immMemtable.MustGet().table)
+		immTable := immMemtable.MustGet()
+		sstHandle, err := m.db.flushImmTable(id, immTable.Iter())
 		if err != nil {
 			return err
 		}
