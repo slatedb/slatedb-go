@@ -16,6 +16,7 @@ func TestMemtableOps(t *testing.T) {
 	memtable := NewMemtable()
 
 	var size int64
+	// Put KV pairs and verify Get
 	for _, kvPair := range kvPairs {
 		size += memtable.Put(kvPair.Key, kvPair.Value)
 	}
@@ -24,6 +25,7 @@ func TestMemtableOps(t *testing.T) {
 	}
 	assert.Equal(t, size, memtable.Size())
 
+	// Delete KV and verify that it is tombstoned
 	memtable.Delete(kvPairs[1].Key)
 	assert.True(t, memtable.Get(kvPairs[1].Key).MustGet().IsTombstone)
 
@@ -145,10 +147,12 @@ func TestImmMemtableOps(t *testing.T) {
 	}
 
 	memtable := NewMemtable()
+	// Put KV pairs to memtable
 	for _, kvPair := range kvPairs {
 		memtable.Put(kvPair.Key, kvPair.Value)
 	}
 
+	// create ImmutableMemtable from memtable and verify Get
 	immMemtable := NewImmutableMemtable(memtable, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immMemtable.Get(kvPair.Key).MustGet().Value)

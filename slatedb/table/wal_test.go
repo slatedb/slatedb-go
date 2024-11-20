@@ -17,6 +17,7 @@ func TestWALOps(t *testing.T) {
 	assert.Equal(t, int64(0), wal.Size())
 
 	var size int64
+	// Put KV pairs and verify Get
 	for _, kvPair := range kvPairs {
 		size += wal.Put(kvPair.Key, kvPair.Value)
 	}
@@ -25,6 +26,7 @@ func TestWALOps(t *testing.T) {
 	}
 	assert.Equal(t, size, wal.Size())
 
+	// Delete KV and verify that it is tombstoned
 	wal.Delete(kvPairs[1].Key)
 	assert.True(t, wal.Get(kvPairs[1].Key).MustGet().IsTombstone)
 }
@@ -81,10 +83,12 @@ func TestImmWALOps(t *testing.T) {
 	}
 
 	wal := NewWAL()
+	// Put KV pairs to wal
 	for _, kvPair := range kvPairs {
 		wal.Put(kvPair.Key, kvPair.Value)
 	}
 
+	// create ImmutableWal from wal and verify Get
 	immWAL := NewImmutableWal(wal, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immWAL.Get(kvPair.Key).MustGet().Value)
