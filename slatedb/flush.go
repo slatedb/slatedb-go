@@ -224,8 +224,7 @@ func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 		}
 
 		id := newSSTableIDCompacted(ulid.Make())
-		immTable := immMemtable.MustGet()
-		sstHandle, err := m.db.flushImmTable(id, immTable.Iter())
+		sstHandle, err := m.db.flushImmTable(id, immMemtable.MustGet().Iter())
 		if err != nil {
 			return err
 		}

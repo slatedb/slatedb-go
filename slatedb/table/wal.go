@@ -88,33 +88,33 @@ func NewImmutableWal(id uint64, wal *WAL) *ImmutableWAL {
 	}
 }
 
-func (i *ImmutableWAL) Get(key []byte) mo.Option[common.ValueDeletable] {
-	i.RLock()
-	defer i.RUnlock()
-	return i.table.get(key)
+func (iw *ImmutableWAL) Get(key []byte) mo.Option[common.ValueDeletable] {
+	iw.RLock()
+	defer iw.RUnlock()
+	return iw.table.get(key)
 }
 
-func (i *ImmutableWAL) ID() uint64 {
-	i.RLock()
-	defer i.RUnlock()
-	return i.id
+func (iw *ImmutableWAL) ID() uint64 {
+	iw.RLock()
+	defer iw.RUnlock()
+	return iw.id
 }
 
-func (i *ImmutableWAL) Table() *KVTable {
-	i.RLock()
-	defer i.RUnlock()
-	return i.table
+func (iw *ImmutableWAL) Table() *KVTable {
+	iw.RLock()
+	defer iw.RUnlock()
+	return iw.table
 }
 
-func (i *ImmutableWAL) Iter() *KVTableIterator {
-	return i.table.iter()
+func (iw *ImmutableWAL) Iter() *KVTableIterator {
+	return iw.table.iter()
 }
 
-func (i *ImmutableWAL) clone() *ImmutableWAL {
-	i.RLock()
-	defer i.RUnlock()
+func (iw *ImmutableWAL) clone() *ImmutableWAL {
+	iw.RLock()
+	defer iw.RUnlock()
 	return &ImmutableWAL{
-		id:    i.id,
-		table: i.table.clone(),
+		id:    iw.id,
+		table: iw.table.clone(),
 	}
 }

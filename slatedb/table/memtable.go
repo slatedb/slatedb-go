@@ -94,29 +94,29 @@ func NewImmutableMemtable(memtable *Memtable, lastWalID uint64) *ImmutableMemtab
 	}
 }
 
-func (i *ImmutableMemtable) Get(key []byte) mo.Option[common.ValueDeletable] {
-	i.RLock()
-	defer i.RUnlock()
-	return i.table.get(key)
+func (im *ImmutableMemtable) Get(key []byte) mo.Option[common.ValueDeletable] {
+	im.RLock()
+	defer im.RUnlock()
+	return im.table.get(key)
 }
 
-func (i *ImmutableMemtable) LastWalID() uint64 {
-	i.RLock()
-	defer i.RUnlock()
-	return i.lastWalID
+func (im *ImmutableMemtable) LastWalID() uint64 {
+	im.RLock()
+	defer im.RUnlock()
+	return im.lastWalID
 }
 
-func (i *ImmutableMemtable) Iter() *KVTableIterator {
-	i.RLock()
-	defer i.RUnlock()
-	return i.table.iter()
+func (im *ImmutableMemtable) Iter() *KVTableIterator {
+	im.RLock()
+	defer im.RUnlock()
+	return im.table.iter()
 }
 
-func (i *ImmutableMemtable) clone() *ImmutableMemtable {
-	i.RLock()
-	defer i.RUnlock()
+func (im *ImmutableMemtable) clone() *ImmutableMemtable {
+	im.RLock()
+	defer im.RUnlock()
 	return &ImmutableMemtable{
-		table:     i.table.clone(),
-		lastWalID: i.lastWalID,
+		table:     im.table.clone(),
+		lastWalID: im.lastWalID,
 	}
 }

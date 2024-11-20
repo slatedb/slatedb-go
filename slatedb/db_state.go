@@ -73,28 +73,28 @@ func (c *CoreDBState) logState() {
 
 // DBStateSnapshot contains state required for read methods (eg. GET)
 type DBStateSnapshot struct {
-	memtable    *table.Memtable
 	wal         *table.WAL
-	immMemtable *deque.Deque[*table.ImmutableMemtable]
+	memtable    *table.Memtable
 	immWAL      *deque.Deque[*table.ImmutableWAL]
+	immMemtable *deque.Deque[*table.ImmutableMemtable]
 	core        *CoreDBState
 }
 
 type DBState struct {
 	sync.RWMutex
-	memtable    *table.Memtable
 	wal         *table.WAL
-	immMemtable *deque.Deque[*table.ImmutableMemtable]
+	memtable    *table.Memtable
 	immWAL      *deque.Deque[*table.ImmutableWAL]
+	immMemtable *deque.Deque[*table.ImmutableMemtable]
 	core        *CoreDBState
 }
 
 func newDBState(coreDBState *CoreDBState) *DBState {
 	return &DBState{
-		memtable:    table.NewMemtable(),
 		wal:         table.NewWAL(),
-		immMemtable: deque.New[*table.ImmutableMemtable](0),
+		memtable:    table.NewMemtable(),
 		immWAL:      deque.New[*table.ImmutableWAL](0),
+		immMemtable: deque.New[*table.ImmutableMemtable](0),
 		core:        coreDBState,
 	}
 }
@@ -110,10 +110,10 @@ func (s *DBState) snapshot() *DBStateSnapshot {
 	defer s.RUnlock()
 
 	return &DBStateSnapshot{
-		memtable:    s.memtable.Clone(),
 		wal:         s.wal.Clone(),
-		immMemtable: common.CopyDeque(s.immMemtable),
+		memtable:    s.memtable.Clone(),
 		immWAL:      common.CopyDeque(s.immWAL),
+		immMemtable: common.CopyDeque(s.immMemtable),
 		core:        s.core.clone(),
 	}
 }
