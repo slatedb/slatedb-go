@@ -90,7 +90,7 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 			memtable.Put(kv.Key, kv.ValueDel.Value)
 		}
 	}
-	memtable.SetLastWalID(mo.Some(immWal.ID()))
+	memtable.SetLastWalID(immWal.ID())
 }
 
 func (db *DB) flushImmTable(id SSTableID, iter *table.KVTableIterator) (*SSTableHandle, error) {

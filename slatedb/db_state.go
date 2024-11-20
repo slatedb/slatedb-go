@@ -133,12 +133,12 @@ func (s *DBState) freezeWAL() mo.Option[uint64] {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.wal.IsEmpty() {
+	if s.wal.Size() == 0 {
 		return mo.None[uint64]()
 	}
 
 	oldWAL := s.wal
-	immWAL := table.NewImmutableWal(s.core.nextWalSstID, oldWAL)
+	immWAL := table.NewImmutableWal(oldWAL, s.core.nextWalSstID)
 	s.wal = table.NewWAL()
 	s.immWAL.PushFront(immWAL)
 	s.core.nextWalSstID += 1

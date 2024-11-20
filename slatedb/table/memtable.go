@@ -25,10 +25,10 @@ func NewMemtable() *Memtable {
 	}
 }
 
-func (m *Memtable) Put(key []byte, value []byte) {
+func (m *Memtable) Put(key []byte, value []byte) int64 {
 	m.Lock()
 	defer m.Unlock()
-	m.table.put(key, value)
+	return m.table.put(key, value)
 }
 
 func (m *Memtable) Get(key []byte) mo.Option[common.ValueDeletable] {
@@ -55,10 +55,16 @@ func (m *Memtable) LastWalID() mo.Option[uint64] {
 	return m.lastWalID
 }
 
-func (m *Memtable) SetLastWalID(lastWalID mo.Option[uint64]) {
+func (m *Memtable) SetLastWalID(lastWalID uint64) {
 	m.Lock()
 	defer m.Unlock()
-	m.lastWalID = lastWalID
+	m.lastWalID = mo.Some(lastWalID)
+}
+
+func (m *Memtable) RangeFrom(start []byte) *KVTableIterator {
+	m.RLock()
+	defer m.RUnlock()
+	return m.table.rangeFrom(start)
 }
 
 func (m *Memtable) Iter() *KVTableIterator {

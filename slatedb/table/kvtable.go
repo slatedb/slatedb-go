@@ -38,7 +38,7 @@ func (t *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
 	return mo.Some(elem.Value.(common.ValueDeletable))
 }
 
-func (t *KVTable) put(key []byte, value []byte) {
+func (t *KVTable) put(key []byte, value []byte) int64 {
 	t.maybeSubtractOldValFromSize(key)
 	valueDel := common.ValueDeletable{
 		Value:       value,
@@ -47,6 +47,7 @@ func (t *KVTable) put(key []byte, value []byte) {
 	t.skl.Set(key, valueDel)
 	newSize := int64(len(key)) + valueDel.Size()
 	t.size.Add(newSize)
+	return newSize
 }
 
 func (t *KVTable) delete(key []byte) {
@@ -58,10 +59,6 @@ func (t *KVTable) delete(key []byte) {
 	t.skl.Set(key, valueDel)
 	newSize := int64(len(key)) + valueDel.Size()
 	t.size.Add(newSize)
-}
-
-func (t *KVTable) isEmpty() bool {
-	return t.skl.Len() == 0
 }
 
 func (t *KVTable) iter() *KVTableIterator {

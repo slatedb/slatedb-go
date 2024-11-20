@@ -21,10 +21,10 @@ func NewWAL() *WAL {
 	}
 }
 
-func (w *WAL) Put(key []byte, value []byte) {
+func (w *WAL) Put(key []byte, value []byte) int64 {
 	w.Lock()
 	defer w.Unlock()
-	w.table.put(key, value)
+	return w.table.put(key, value)
 }
 
 func (w *WAL) Get(key []byte) mo.Option[common.ValueDeletable] {
@@ -37,12 +37,6 @@ func (w *WAL) Delete(key []byte) {
 	w.Lock()
 	defer w.Unlock()
 	w.table.delete(key)
-}
-
-func (w *WAL) IsEmpty() bool {
-	w.RLock()
-	defer w.RUnlock()
-	return w.table.isEmpty()
 }
 
 func (w *WAL) Table() *KVTable {
@@ -81,7 +75,7 @@ type ImmutableWAL struct {
 	table *KVTable
 }
 
-func NewImmutableWal(id uint64, wal *WAL) *ImmutableWAL {
+func NewImmutableWal(wal *WAL, id uint64) *ImmutableWAL {
 	return &ImmutableWAL{
 		id:    id,
 		table: wal.table,
