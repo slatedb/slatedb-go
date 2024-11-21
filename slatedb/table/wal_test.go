@@ -93,7 +93,7 @@ func TestImmWALOps(t *testing.T) {
 	}
 
 	// create ImmutableMemtable from memtable and verify Get values for all KV pairs
-	immWAL := NewImmutableWal(wal, 1)
+	immWAL := NewImmutableWAL(wal, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immWAL.Get(kvPair.Key).MustGet().Value)
 	}
@@ -130,7 +130,7 @@ func TestWALClone(t *testing.T) {
 	assert.NotEqual(t, wal.table, clonedWAL.table)
 	assert.True(t, bytes.Equal(wal.table.toBytes(), clonedWAL.table.toBytes()))
 
-	immWAL := NewImmutableWal(wal, 1)
+	immWAL := NewImmutableWAL(wal, 1)
 	clonedImmWAL := immWAL.Clone()
 	// verify that the clone does not point to same data in memory but the contents are equal
 	assert.NotEqual(t, immWAL.table, clonedImmWAL.table)

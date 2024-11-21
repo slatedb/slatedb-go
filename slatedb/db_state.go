@@ -138,7 +138,7 @@ func (s *DBState) freezeWAL() mo.Option[uint64] {
 	}
 
 	oldWAL := s.wal
-	immWAL := table.NewImmutableWal(oldWAL, s.core.nextWalSstID)
+	immWAL := table.NewImmutableWAL(oldWAL, s.core.nextWalSstID)
 	s.wal = table.NewWAL()
 	s.immWALs.PushFront(immWAL)
 	s.core.nextWalSstID += 1

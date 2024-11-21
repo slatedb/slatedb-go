@@ -76,7 +76,7 @@ type ImmutableWAL struct {
 	table *KVTable
 }
 
-func NewImmutableWal(wal *WAL, id uint64) *ImmutableWAL {
+func NewImmutableWAL(wal *WAL, id uint64) *ImmutableWAL {
 	return &ImmutableWAL{
 		id:    id,
 		table: wal.table,
