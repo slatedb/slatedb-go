@@ -4,7 +4,6 @@ import (
 	"github.com/huandu/skiplist"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -18,14 +17,16 @@ type KVTable struct {
 	isDurableCh   chan chan bool
 
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
-	skl  *skiplist.SkipList
+	skl *skiplist.SkipList
+
+	// size of KVTable changes when we put/delete a key
 	size atomic.Int64
 }
 
 func newKVTable() *KVTable {
 	return &KVTable{
 		skl:         skiplist.New(skiplist.Bytes),
-		isDurableCh: make(chan chan bool, math.MaxUint8),
+		isDurableCh: make(chan chan bool, 1),
 	}
 }
 
@@ -34,30 +35,33 @@ func (t *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
 	if elem == nil {
 		return mo.None[common.ValueDeletable]()
 	}
-	return mo.Some(elem.Value.(common.ValueDeletable))
+
+	val := elem.Value.([]byte)
+	return mo.Some(common.ValueDelFromBytes(val))
 }
 
 func (t *KVTable) put(key []byte, value []byte) int64 {
-	t.maybeSubtractOldValFromSize(key)
+	oldSize := t.existingKVSize(key)
 	valueDel := common.ValueDeletable{
 		Value:       value,
 		IsTombstone: false,
 	}
-	t.skl.Set(key, valueDel)
-	newSize := int64(len(key)) + valueDel.Size()
-	t.size.Add(newSize)
+	valueBytes := valueDel.ToBytes()
+	t.skl.Set(key, valueBytes)
+
+	newSize := int64(len(key) + len(valueBytes))
+	t.size.Add(newSize - oldSize)
 	return newSize
 }
 
 func (t *KVTable) delete(key []byte) {
-	t.maybeSubtractOldValFromSize(key)
-	valueDel := common.ValueDeletable{
-		Value:       nil,
-		IsTombstone: true,
-	}
-	t.skl.Set(key, valueDel)
-	newSize := int64(len(key)) + valueDel.Size()
-	t.size.Add(newSize)
+	oldSize := t.existingKVSize(key)
+	valueDel := common.ValueDeletable{IsTombstone: true}
+	valueBytes := valueDel.ToBytes()
+	t.skl.Set(key, valueBytes)
+
+	newSize := int64(len(key) + len(valueBytes))
+	t.size.Add(newSize - oldSize)
 }
 
 func (t *KVTable) iter() *KVTableIterator {
@@ -69,13 +73,12 @@ func (t *KVTable) rangeFrom(start []byte) *KVTableIterator {
 	return newKVTableIterator(elem)
 }
 
-// if key is present then subtract the size of key+value from KVTable.size
-func (t *KVTable) maybeSubtractOldValFromSize(key []byte) {
-	oldValue := t.get(key)
-	if oldValue.IsPresent() {
-		oldSize := int64(len(key)) + oldValue.MustGet().Size()
-		t.size.Add(-oldSize)
+func (t *KVTable) existingKVSize(key []byte) int64 {
+	value := t.get(key)
+	if value.IsPresent() {
+		return int64(len(key) + len(value.MustGet().ToBytes()))
 	}
+	return 0
 }
 
 func (t *KVTable) AwaitWALFlush() <-chan bool {
@@ -99,7 +102,19 @@ func (t *KVTable) NotifyWALFlushed() {
 			close(done)
 		}
 	}
-	t.isDurableCh = make(chan chan bool, math.MaxUint8)
+	t.isDurableCh = make(chan chan bool, 1)
+}
+
+func (t *KVTable) toBytes() []byte {
+	current := t.skl.Front()
+	resBytes := make([]byte, 0)
+	for current != nil {
+		elem := current.Element()
+		resBytes = append(resBytes, elem.Key().([]byte)...)
+		resBytes = append(resBytes, elem.Value.([]byte)...)
+		current = current.Next()
+	}
+	return resBytes
 }
 
 func (t *KVTable) clone() *KVTable {
@@ -107,12 +122,13 @@ func (t *KVTable) clone() *KVTable {
 	current := t.skl.Front()
 	for current != nil {
 		key := current.Key().([]byte)
-		val := current.Value.(common.ValueDeletable)
+		val := current.Value.([]byte)
 		skl.Set(key, val)
 		current = current.Next()
 	}
+
 	return &KVTable{
-		isDurableCh: t.isDurableCh,
+		isDurableCh: make(chan chan bool, 1),
 		skl:         skl,
 	}
 }
@@ -161,8 +177,9 @@ func (iter *KVTableIterator) NextEntry() (mo.Option[common.KVDeletable], error) 
 
 	iter.element = iter.element.Next()
 
+	valueBytes := elem.Value.([]byte)
 	return mo.Some(common.KVDeletable{
 		Key:      elem.Key().([]byte),
-		ValueDel: elem.Value.(common.ValueDeletable),
+		ValueDel: common.ValueDelFromBytes(valueBytes),
 	}), nil
 }

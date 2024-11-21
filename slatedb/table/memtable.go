@@ -124,6 +124,7 @@ func (im *ImmutableMemtable) Iter() *KVTableIterator {
 func (im *ImmutableMemtable) Clone() *ImmutableMemtable {
 	im.RLock()
 	defer im.RUnlock()
+
 	return &ImmutableMemtable{
 		table:     im.table.clone(),
 		lastWalID: im.lastWalID,

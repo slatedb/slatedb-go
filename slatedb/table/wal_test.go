@@ -1,6 +1,7 @@
 package table
 
 import (
+	"bytes"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -106,4 +107,30 @@ func TestImmWALOps(t *testing.T) {
 		assert.Equal(t, kvPairs[i].Key, kv.Key)
 		assert.Equal(t, kvPairs[i].Value, kv.Value)
 	}
+}
+
+func TestWALClone(t *testing.T) {
+	kvPairs := []common.KV{
+		{Key: []byte("abc111"), Value: []byte("value1")},
+		{Key: []byte("abc222"), Value: []byte("value2")},
+		{Key: []byte("abc333"), Value: []byte("value3")},
+	}
+
+	wal := NewWAL()
+	// Put KV pairs to wal
+	for _, kvPair := range kvPairs {
+		wal.Put(kvPair.Key, kvPair.Value)
+	}
+
+	clonedWAL := wal.Clone()
+	// verify that they do not point to same data in memory but the contents are equal
+	assert.NotEqual(t, wal.table, clonedWAL.table)
+	assert.True(t, bytes.Equal(wal.table.toBytes(), clonedWAL.table.toBytes()))
+
+	immWAL := NewImmutableWal(wal, 1)
+	clonedImmWAL := immWAL.Clone()
+	// verify that they do not point to same data in memory but the contents are equal
+	assert.NotEqual(t, immWAL.table, clonedImmWAL.table)
+	assert.Equal(t, immWAL.ID(), clonedImmWAL.ID())
+	assert.True(t, bytes.Equal(immWAL.table.toBytes(), clonedImmWAL.table.toBytes()))
 }

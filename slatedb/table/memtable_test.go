@@ -1,6 +1,7 @@
 package table
 
 import (
+	"bytes"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -119,7 +120,6 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 	memtable := NewMemtable()
 
 	// Put keys in random order
-	// Put keys in random order
 	indexes := []int{2, 0, 4, 3, 1}
 	for i := range indexes {
 		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
@@ -146,9 +146,10 @@ func TestImmMemtableOps(t *testing.T) {
 	}
 
 	memtable := NewMemtable()
-	// Put KV pairs to memtable
-	for _, kvPair := range kvPairs {
-		memtable.Put(kvPair.Key, kvPair.Value)
+	// Put keys in random order
+	indexes := []int{1, 2, 0}
+	for i := range indexes {
+		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
 	}
 
 	// create ImmutableMemtable from memtable and verify Get
@@ -169,4 +170,32 @@ func TestImmMemtableOps(t *testing.T) {
 		assert.Equal(t, kvPairs[i].Key, kv.Key)
 		assert.Equal(t, kvPairs[i].Value, kv.Value)
 	}
+}
+
+func TestMemtableClone(t *testing.T) {
+	kvPairs := []common.KV{
+		{Key: []byte("abc111"), Value: []byte("value1")},
+		{Key: []byte("abc222"), Value: []byte("value2")},
+		{Key: []byte("abc333"), Value: []byte("value3")},
+	}
+
+	memtable := NewMemtable()
+	// Put KV pairs to memtable
+	for _, kvPair := range kvPairs {
+		memtable.Put(kvPair.Key, kvPair.Value)
+	}
+	memtable.SetLastWalID(1)
+
+	clonedMemtable := memtable.Clone()
+	// verify that they do not point to same data in memory but the contents are equal
+	assert.NotEqual(t, memtable.table, clonedMemtable.table)
+	assert.Equal(t, memtable.LastWalID(), clonedMemtable.LastWalID())
+	assert.True(t, bytes.Equal(memtable.table.toBytes(), clonedMemtable.table.toBytes()))
+
+	immMemtable := NewImmutableMemtable(memtable, 1)
+	clonedImmMemtable := immMemtable.Clone()
+	// verify that they do not point to same data in memory but the contents are equal
+	assert.NotEqual(t, immMemtable.table, clonedImmMemtable.table)
+	assert.Equal(t, immMemtable.LastWalID(), clonedImmMemtable.LastWalID())
+	assert.True(t, bytes.Equal(immMemtable.table.toBytes(), clonedImmMemtable.table.toBytes()))
 }

@@ -60,6 +60,7 @@ func (w *WAL) Iter() *KVTableIterator {
 func (w *WAL) Clone() *WAL {
 	w.RLock()
 	defer w.RUnlock()
+
 	return &WAL{
 		table: w.table.clone(),
 	}
@@ -107,6 +108,7 @@ func (iw *ImmutableWAL) Iter() *KVTableIterator {
 func (iw *ImmutableWAL) Clone() *ImmutableWAL {
 	iw.RLock()
 	defer iw.RUnlock()
+
 	return &ImmutableWAL{
 		id:    iw.id,
 		table: iw.table.clone(),
