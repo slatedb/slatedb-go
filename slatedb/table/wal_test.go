@@ -18,10 +18,11 @@ func TestWALOps(t *testing.T) {
 	assert.Equal(t, int64(0), wal.Size())
 
 	var size int64
-	// Put KV pairs and verify Get
+	// Put KV pairs
 	for _, kvPair := range kvPairs {
 		size += wal.Put(kvPair.Key, kvPair.Value)
 	}
+	// verify Get values for all KV pairs
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, wal.Get(kvPair.Key).MustGet().Value)
 	}
@@ -65,11 +66,13 @@ func TestWALIter(t *testing.T) {
 func TestWALIterDelete(t *testing.T) {
 	wal := NewWAL()
 
+	// verify that iter.Next() is present after adding a key
 	wal.Put([]byte("abc333"), []byte("value3"))
 	next, err := wal.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
+	// verify that iter.Next() is absent after deleting a key and no other key present
 	wal.Delete([]byte("abc333"))
 	next, err = wal.Iter().Next()
 	assert.NoError(t, err)
@@ -89,7 +92,7 @@ func TestImmWALOps(t *testing.T) {
 		wal.Put(kvPair.Key, kvPair.Value)
 	}
 
-	// create ImmutableWal from wal and verify Get
+	// create ImmutableMemtable from memtable and verify Get values for all KV pairs
 	immWAL := NewImmutableWal(wal, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immWAL.Get(kvPair.Key).MustGet().Value)
@@ -123,13 +126,13 @@ func TestWALClone(t *testing.T) {
 	}
 
 	clonedWAL := wal.Clone()
-	// verify that they do not point to same data in memory but the contents are equal
+	// verify that the clone does not point to same data in memory but the contents are equal
 	assert.NotEqual(t, wal.table, clonedWAL.table)
 	assert.True(t, bytes.Equal(wal.table.toBytes(), clonedWAL.table.toBytes()))
 
 	immWAL := NewImmutableWal(wal, 1)
 	clonedImmWAL := immWAL.Clone()
-	// verify that they do not point to same data in memory but the contents are equal
+	// verify that the clone does not point to same data in memory but the contents are equal
 	assert.NotEqual(t, immWAL.table, clonedImmWAL.table)
 	assert.Equal(t, immWAL.ID(), clonedImmWAL.ID())
 	assert.True(t, bytes.Equal(immWAL.table.toBytes(), clonedImmWAL.table.toBytes()))

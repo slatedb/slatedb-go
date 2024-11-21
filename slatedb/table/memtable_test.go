@@ -17,10 +17,11 @@ func TestMemtableOps(t *testing.T) {
 	memtable := NewMemtable()
 
 	var size int64
-	// Put KV pairs and verify Get
+	// Put KV pairs
 	for _, kvPair := range kvPairs {
 		size += memtable.Put(kvPair.Key, kvPair.Value)
 	}
+	// verify Get for all the KV pairs
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, memtable.Get(kvPair.Key).MustGet().Value)
 	}
@@ -67,11 +68,13 @@ func TestMemtableIter(t *testing.T) {
 func TestMemtableIterDelete(t *testing.T) {
 	memtable := NewMemtable()
 
+	// verify that iter.Next() is present after adding a key
 	memtable.Put([]byte("abc333"), []byte("value3"))
 	next, err := memtable.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
+	// verify that iter.Next() is absent after deleting a key and no other key present
 	memtable.Delete([]byte("abc333"))
 	next, err = memtable.Iter().Next()
 	assert.NoError(t, err)
@@ -152,7 +155,7 @@ func TestImmMemtableOps(t *testing.T) {
 		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
 	}
 
-	// create ImmutableMemtable from memtable and verify Get
+	// create ImmutableMemtable from memtable and verify Get values for all KV pairs
 	immMemtable := NewImmutableMemtable(memtable, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immMemtable.Get(kvPair.Key).MustGet().Value)
@@ -187,14 +190,14 @@ func TestMemtableClone(t *testing.T) {
 	memtable.SetLastWalID(1)
 
 	clonedMemtable := memtable.Clone()
-	// verify that they do not point to same data in memory but the contents are equal
+	// verify that the clone does not point to same data in memory but the contents are equal
 	assert.NotEqual(t, memtable.table, clonedMemtable.table)
 	assert.Equal(t, memtable.LastWalID(), clonedMemtable.LastWalID())
 	assert.True(t, bytes.Equal(memtable.table.toBytes(), clonedMemtable.table.toBytes()))
 
 	immMemtable := NewImmutableMemtable(memtable, 1)
 	clonedImmMemtable := immMemtable.Clone()
-	// verify that they do not point to same data in memory but the contents are equal
+	// verify that the clone does not point to same data in memory but the contents are equal
 	assert.NotEqual(t, immMemtable.table, clonedImmMemtable.table)
 	assert.Equal(t, immMemtable.LastWalID(), clonedImmMemtable.LastWalID())
 	assert.True(t, bytes.Equal(immMemtable.table.toBytes(), clonedImmMemtable.table.toBytes()))
