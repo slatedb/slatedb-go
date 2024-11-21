@@ -43,7 +43,7 @@ type Compactor struct {
 	compactorWG *sync.WaitGroup
 }
 
-func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, options *CompactorOptions) (*Compactor, error) {
+func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, options CompactorOptions) (*Compactor, error) {
 	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
 
 	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, options, compactorMsgCh)
@@ -69,7 +69,7 @@ func (c *Compactor) close() {
 func spawnAndRunCompactorOrchestrator(
 	manifestStore *ManifestStore,
 	tableStore *TableStore,
-	options *CompactorOptions,
+	options CompactorOptions,
 	compactorMsgCh <-chan CompactorMainMsg,
 ) (*sync.WaitGroup, chan error) {
 
@@ -116,7 +116,7 @@ func spawnAndRunCompactorOrchestrator(
 }
 
 type CompactorOrchestrator struct {
-	options   *CompactorOptions
+	options   CompactorOptions
 	manifest  *FenceableManifest
 	state     *CompactorState
 	scheduler CompactionScheduler
@@ -132,7 +132,7 @@ type CompactorOrchestrator struct {
 }
 
 func newCompactorOrchestrator(
-	options *CompactorOptions,
+	options CompactorOptions,
 	manifestStore *ManifestStore,
 	tableStore *TableStore,
 	compactorMsgCh <-chan CompactorMainMsg,
@@ -326,7 +326,7 @@ type CompactionJob struct {
 }
 
 type CompactionExecutor struct {
-	options    *CompactorOptions
+	options    CompactorOptions
 	tableStore *TableStore
 
 	workerCh chan<- WorkerToOrchestratorMsg
@@ -336,7 +336,7 @@ type CompactionExecutor struct {
 }
 
 func newCompactorExecutor(
-	options *CompactorOptions,
+	options CompactorOptions,
 	workerCh chan<- WorkerToOrchestratorMsg,
 	tableStore *TableStore,
 ) *CompactionExecutor {

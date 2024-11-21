@@ -1,16 +1,36 @@
 package slatedb
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
-type CompressionCodec int8
+type CompressionCodec int
 
 const (
-	CompressionNone CompressionCodec = iota
+	CompressionNone CompressionCodec = iota + 1
 	CompressionSnappy
 	CompressionZlib
 	CompressionLz4
 	CompressionZstd
 )
+
+func (c CompressionCodec) String() string {
+	switch c {
+	case CompressionNone:
+		return "none"
+	case CompressionSnappy:
+		return "snappy"
+	case CompressionZlib:
+		return "zlib"
+	case CompressionLz4:
+		return "lz4"
+	case CompressionZstd:
+		return "zstd"
+	default:
+		return "unknown compression"
+	}
+}
 
 // DBOptions Configuration options for the database. These options are set on client startup.
 type DBOptions struct {
@@ -73,8 +93,11 @@ type DBOptions struct {
 	L0SSTSizeBytes uint64
 
 	// Configuration options for the compactor.
-	CompactorOptions *CompactorOptions
+	CompactorOptions CompactorOptions
 	CompressionCodec CompressionCodec
+
+	// Log is the logging implementation used by SlateDB; Defaults to slog.Default().
+	Log *slog.Logger
 }
 
 func DefaultDBOptions() DBOptions {
@@ -131,6 +154,9 @@ func DefaultWriteOptions() WriteOptions {
 }
 
 type CompactorOptions struct {
+	// Enabled is true if the compactor is enabled and should run on this instance of slateDB
+	Enabled bool
+
 	// The interval at which the compactor checks for a new manifest and decides
 	// if a compaction must be scheduled
 	PollInterval time.Duration
@@ -141,8 +167,8 @@ type CompactorOptions struct {
 	MaxSSTSize uint64
 }
 
-func DefaultCompactorOptions() *CompactorOptions {
-	return &CompactorOptions{
+func DefaultCompactorOptions() CompactorOptions {
+	return CompactorOptions{
 		PollInterval: 5 * time.Second,
 		MaxSSTSize:   1024 * 1024 * 1024,
 	}

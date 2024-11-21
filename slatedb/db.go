@@ -2,14 +2,16 @@ package slatedb
 
 import (
 	"bytes"
-	"errors"
+	"context"
+	"fmt"
+	"log/slog"
 	"math"
 	"sync"
 
+	"github.com/kapetan-io/errors"
+	"github.com/kapetan-io/tackle/set"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
 )
 
 const BlockSize = 4096
@@ -41,8 +43,9 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 }
 
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
-	logger.Init()
-	logger.Info("Application started")
+	set.Default(&options.Log, slog.Default())
+
+	options.Log.LogAttrs(context.Background(), LevelDebug, "slatedb.OpenWithOptions()", optionsToAttr(options)...)
 	sstFormat := defaultSSTableFormat()
 	sstFormat.blockSize = BlockSize
 	sstFormat.minFilterKeys = options.MinFilterKeys
@@ -51,20 +54,25 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	tableStore := newTableStore(bucket, sstFormat, path)
 	manifestStore := newManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
-
 	if err != nil {
-		return nil, err
+		options.Log.LogAttrs(context.Background(), LevelError, "failed to load manifest",
+			errors.AttrsFromAll(err)...)
+		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	memtableFlushNotifierCh := make(chan MemtableFlushThreadMsg, math.MaxUint8)
 	state, err := manifest.dbState()
 	if err != nil {
-		return nil, err
+		options.Log.LogAttrs(context.Background(), LevelError, "failed to get manifest state",
+			errors.AttrsFromAll(err)...)
+		return nil, fmt.Errorf("failed to get manifest state: %s", err)
 	}
 
 	db, err := newDB(options, tableStore, state, memtableFlushNotifierCh)
 	if err != nil {
-		return nil, err
+		options.Log.LogAttrs(context.Background(), LevelError, "failed to instantiate database",
+			errors.AttrsFromAll(err)...)
+		return nil, fmt.Errorf("failed to instantiate database: %s", err)
 	}
 	db.manifest = manifest
 
@@ -77,22 +85,19 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	// 2. loading manifest from object store and update current DBState. This happens every ManifestPollInterval milliseconds
 	db.spawnMemtableFlushTask(manifest, memtableFlushNotifierCh, db.memtableFlushTaskWG)
 
-	var compactor *Compactor
-	if db.options.CompactorOptions != nil {
-		compactor, err = newCompactor(manifestStore, tableStore, db.options.CompactorOptions)
+	if options.CompactorOptions.Enabled {
+		db.compactor, err = newCompactor(manifestStore, tableStore, db.options.CompactorOptions)
 		if err != nil {
-			logger.Error("unable to create compactor", zap.Error(err))
-			return nil, err
+			options.Log.LogAttrs(context.Background(), LevelError, "filed to start compactor",
+				errors.AttrsFromAll(err)...)
+			return nil, fmt.Errorf("filed to start compactor: %w", err)
 		}
 	}
-	db.compactor = compactor
 
 	return db, nil
 }
 
 func (db *DB) Close() error {
-	defer logger.Sync()
-
 	if db.compactor != nil {
 		db.compactor.close()
 	}
