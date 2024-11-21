@@ -89,11 +89,10 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 	memtable := NewMemtable()
 
 	// Put keys in random order
-	memtable.Put(kvPairs[2].Key, kvPairs[2].Value)
-	memtable.Put(kvPairs[0].Key, kvPairs[0].Value)
-	memtable.Put(kvPairs[4].Key, kvPairs[4].Value)
-	memtable.Put(kvPairs[3].Key, kvPairs[3].Value)
-	memtable.Put(kvPairs[1].Key, kvPairs[1].Value)
+	indexes := []int{2, 0, 4, 3, 1}
+	for i := range indexes {
+		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
+	}
 
 	iter := memtable.RangeFrom([]byte("abc333"))
 
@@ -120,11 +119,11 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 	memtable := NewMemtable()
 
 	// Put keys in random order
-	memtable.Put(kvPairs[2].Key, kvPairs[2].Value)
-	memtable.Put(kvPairs[0].Key, kvPairs[0].Value)
-	memtable.Put(kvPairs[4].Key, kvPairs[4].Value)
-	memtable.Put(kvPairs[3].Key, kvPairs[3].Value)
-	memtable.Put(kvPairs[1].Key, kvPairs[1].Value)
+	// Put keys in random order
+	indexes := []int{2, 0, 4, 3, 1}
+	for i := range indexes {
+		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
+	}
 
 	iter := memtable.RangeFrom([]byte("abc345"))
 

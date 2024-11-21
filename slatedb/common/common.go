@@ -23,10 +23,14 @@ func AssertTrue(condition bool, errMsg string) {
 	}
 }
 
-func CopyDeque[T any](src *deque.Deque[T]) *deque.Deque[T] {
+type Cloneable[T any] interface {
+	Clone() T
+}
+
+func CopyDeque[T Cloneable[T]](src *deque.Deque[T]) *deque.Deque[T] {
 	dst := deque.New[T]()
 	for i := 0; i < src.Len(); i++ {
-		dst.PushBack(src.At(i))
+		dst.PushBack(src.At(i).Clone())
 	}
 	return dst
 }

@@ -25,6 +25,7 @@ func NewMemtable() *Memtable {
 	}
 }
 
+// Put adds KeyValue and returns the size in bytes of the KeyValue added
 func (m *Memtable) Put(key []byte, value []byte) int64 {
 	m.Lock()
 	defer m.Unlock()
@@ -61,10 +62,12 @@ func (m *Memtable) SetLastWalID(lastWalID uint64) {
 	m.lastWalID = mo.Some(lastWalID)
 }
 
-func (m *Memtable) RangeFrom(start []byte) *KVTableIterator {
+// RangeFrom returns a KVTableIterator that starts iterating from startKey,
+// if startKey is not present then the iterator starts from the next Key present which is higher than startKey
+func (m *Memtable) RangeFrom(startKey []byte) *KVTableIterator {
 	m.RLock()
 	defer m.RUnlock()
-	return m.table.rangeFrom(start)
+	return m.table.rangeFrom(startKey)
 }
 
 func (m *Memtable) Iter() *KVTableIterator {
@@ -118,7 +121,7 @@ func (im *ImmutableMemtable) Iter() *KVTableIterator {
 	return im.table.iter()
 }
 
-func (im *ImmutableMemtable) clone() *ImmutableMemtable {
+func (im *ImmutableMemtable) Clone() *ImmutableMemtable {
 	im.RLock()
 	defer im.RUnlock()
 	return &ImmutableMemtable{

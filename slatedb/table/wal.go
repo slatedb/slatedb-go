@@ -104,7 +104,7 @@ func (iw *ImmutableWAL) Iter() *KVTableIterator {
 	return iw.table.iter()
 }
 
-func (iw *ImmutableWAL) clone() *ImmutableWAL {
+func (iw *ImmutableWAL) Clone() *ImmutableWAL {
 	iw.RLock()
 	defer iw.RUnlock()
 	return &ImmutableWAL{

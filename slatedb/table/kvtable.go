@@ -14,7 +14,7 @@ import (
 // ------------------------------------------------
 
 type KVTable struct {
-	isDurableLock *sync.Mutex
+	isDurableLock sync.Mutex
 	isDurableCh   chan chan bool
 
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
@@ -24,9 +24,8 @@ type KVTable struct {
 
 func newKVTable() *KVTable {
 	return &KVTable{
-		skl:           skiplist.New(skiplist.Bytes),
-		isDurableLock: &sync.Mutex{},
-		isDurableCh:   make(chan chan bool, math.MaxUint8),
+		skl:         skiplist.New(skiplist.Bytes),
+		isDurableCh: make(chan chan bool, math.MaxUint8),
 	}
 }
 
@@ -70,10 +69,11 @@ func (t *KVTable) rangeFrom(start []byte) *KVTableIterator {
 	return newKVTableIterator(elem)
 }
 
+// if key is present then subtract the size of key+value from KVTable.size
 func (t *KVTable) maybeSubtractOldValFromSize(key []byte) {
-	oldDeletable, ok := t.get(key).Get()
-	if ok {
-		oldSize := int64(len(key)) + oldDeletable.Size()
+	oldValue := t.get(key)
+	if oldValue.IsPresent() {
+		oldSize := int64(len(key)) + oldValue.MustGet().Size()
 		t.size.Add(-oldSize)
 	}
 }
@@ -112,9 +112,8 @@ func (t *KVTable) clone() *KVTable {
 		current = current.Next()
 	}
 	return &KVTable{
-		isDurableLock: t.isDurableLock,
-		isDurableCh:   t.isDurableCh,
-		skl:           skl,
+		isDurableCh: t.isDurableCh,
+		skl:         skl,
 	}
 }
 

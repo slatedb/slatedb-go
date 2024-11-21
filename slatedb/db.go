@@ -145,7 +145,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 			return checkValue(val)
 		}
 		// search for key in ImmutableWALs
-		immWALList := snapshot.immWAL
+		immWALList := snapshot.immWALs
 		for i := 0; i < immWALList.Len(); i++ {
 			immWAL := immWALList.At(i)
 			val, ok := immWAL.Get(key).Get()
@@ -161,7 +161,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 		return checkValue(val)
 	}
 	// search for key in Immutable memtables
-	immMemtables := snapshot.immMemtable
+	immMemtables := snapshot.immMemtables
 	for i := 0; i < immMemtables.Len(); i++ {
 		immTable := immMemtables.At(i)
 		val, ok := immTable.Get(key).Get()
