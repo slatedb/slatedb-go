@@ -4,7 +4,6 @@ import (
 	"github.com/huandu/skiplist"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"sync"
 	"sync/atomic"
 )
 
@@ -13,20 +12,24 @@ import (
 // ------------------------------------------------
 
 type KVTable struct {
-	isDurableLock sync.Mutex
-	isDurableCh   chan chan bool
-
 	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
 	skl *skiplist.SkipList
 
 	// size of KVTable changes when we put/delete a key
 	size atomic.Int64
+
+	// Initially this KVTable is part of a WAL and clients wait on isDurableCh channel to know if the WAL is durably
+	// committed to object store
+	// The WALFlushTask goroutine converts the WAL to ImmutableWAL(backed by this same KVTable),
+	// then flushes the ImmutableWAL to object store and
+	// then closes this channel to notify clients waiting on isDurableCh channel
+	isDurableCh chan bool
 }
 
 func newKVTable() *KVTable {
 	return &KVTable{
 		skl:         skiplist.New(skiplist.Bytes),
-		isDurableCh: make(chan chan bool, 1),
+		isDurableCh: make(chan bool),
 	}
 }
 
@@ -81,28 +84,16 @@ func (t *KVTable) existingKVSize(key []byte) int64 {
 	return 0
 }
 
-func (t *KVTable) AwaitWALFlush() <-chan bool {
-	t.isDurableLock.Lock()
-	defer t.isDurableLock.Unlock()
-	done := make(chan bool, 1)
-	t.isDurableCh <- done
-	return done
+// AwaitWALFlush - This is called during DB.Put/DB.Delete to wait till the WAL is
+// durably committed to object store
+func (t *KVTable) AwaitWALFlush() {
+	<-t.isDurableCh
 }
 
+// NotifyWALFlushed - This is called by WALFlushTask goroutine to notify any client waiting
+// on AwaitWALFlush that the WAL contents have been durably committed to object store
 func (t *KVTable) NotifyWALFlushed() {
-	t.isDurableLock.Lock()
-	defer t.isDurableLock.Unlock()
-	if len(t.isDurableCh) == 0 {
-		return
-	}
-	for i := 0; i < len(t.isDurableCh); i++ {
-		done := <-t.isDurableCh
-		if len(done) == 0 {
-			done <- true
-			close(done)
-		}
-	}
-	t.isDurableCh = make(chan chan bool, 1)
+	close(t.isDurableCh)
 }
 
 func (t *KVTable) toBytes() []byte {
@@ -128,7 +119,7 @@ func (t *KVTable) clone() *KVTable {
 	}
 
 	return &KVTable{
-		isDurableCh: make(chan chan bool, 1),
+		isDurableCh: make(chan bool),
 		skl:         skl,
 	}
 }

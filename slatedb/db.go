@@ -121,7 +121,7 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
 		// because client can read the key from memtable
-		<-currentWAL.Table().AwaitWALFlush()
+		currentWAL.Table().AwaitWALFlush()
 	}
 }
 
@@ -223,7 +223,7 @@ func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	currentWAL := db.state.wal
 	currentWAL.Delete(key)
 	if options.AwaitFlush {
-		<-currentWAL.Table().AwaitWALFlush()
+		currentWAL.Table().AwaitWALFlush()
 	}
 }
 
