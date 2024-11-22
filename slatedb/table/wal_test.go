@@ -126,14 +126,19 @@ func TestWALClone(t *testing.T) {
 	}
 
 	clonedWAL := wal.Clone()
-	// verify that the clone does not point to same data in memory but the contents are equal
-	assert.NotEqual(t, wal.table, clonedWAL.table)
+	// verify that the contents are equal
 	assert.True(t, bytes.Equal(wal.table.toBytes(), clonedWAL.table.toBytes()))
+
+	// verify that the clone does not point to same data in memory
+	key := []byte("abc333")
+	newValue := []byte("newValue")
+	wal.Put(key, newValue)
+	assert.Equal(t, newValue, wal.Get(key).MustGet().Value)
+	assert.NotEqual(t, newValue, clonedWAL.Get(key).MustGet().Value)
 
 	immWAL := NewImmutableWAL(wal, 1)
 	clonedImmWAL := immWAL.Clone()
-	// verify that the clone does not point to same data in memory but the contents are equal
-	assert.NotEqual(t, immWAL.table, clonedImmWAL.table)
+	// verify that the contents are equal
 	assert.Equal(t, immWAL.ID(), clonedImmWAL.ID())
 	assert.True(t, bytes.Equal(immWAL.table.toBytes(), clonedImmWAL.table.toBytes()))
 }

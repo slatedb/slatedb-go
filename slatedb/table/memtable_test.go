@@ -190,15 +190,20 @@ func TestMemtableClone(t *testing.T) {
 	memtable.SetLastWalID(1)
 
 	clonedMemtable := memtable.Clone()
-	// verify that the clone does not point to same data in memory but the contents are equal
-	assert.NotEqual(t, memtable.table, clonedMemtable.table)
+	// verify that the contents are equal
 	assert.Equal(t, memtable.LastWalID(), clonedMemtable.LastWalID())
 	assert.True(t, bytes.Equal(memtable.table.toBytes(), clonedMemtable.table.toBytes()))
 
+	// verify that the clone does not point to same data in memory
+	key := []byte("abc333")
+	newValue := []byte("newValue")
+	memtable.Put(key, newValue)
+	assert.Equal(t, newValue, memtable.Get(key).MustGet().Value)
+	assert.NotEqual(t, newValue, clonedMemtable.Get(key).MustGet().Value)
+
 	immMemtable := NewImmutableMemtable(memtable, 1)
 	clonedImmMemtable := immMemtable.Clone()
-	// verify that the clone does not point to same data in memory but the contents are equal
-	assert.NotEqual(t, immMemtable.table, clonedImmMemtable.table)
+	// verify that the contents are equal
 	assert.Equal(t, immMemtable.LastWalID(), clonedImmMemtable.LastWalID())
 	assert.True(t, bytes.Equal(immMemtable.table.toBytes(), clonedImmMemtable.table.toBytes()))
 }
