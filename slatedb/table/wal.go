@@ -102,6 +102,8 @@ func (iw *ImmutableWAL) Table() *KVTable {
 }
 
 func (iw *ImmutableWAL) Iter() *KVTableIterator {
+	iw.RLock()
+	defer iw.RUnlock()
 	return iw.table.iter()
 }
 
