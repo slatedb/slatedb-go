@@ -116,12 +116,12 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.wal
-	currentWAL.put(key, value)
+	currentWAL.Put(key, value)
 	if options.AwaitFlush {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
 		// because client can read the key from memtable
-		<-currentWAL.table.awaitWALFlush()
+		currentWAL.Table().AwaitWALFlush()
 	}
 }
 
@@ -140,15 +140,15 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 
 	if options.ReadLevel == Uncommitted {
 		// search for key in mutable WAL
-		val, ok := snapshot.wal.get(key).Get()
+		val, ok := snapshot.wal.Get(key).Get()
 		if ok { // key is present or tombstoned
 			return checkValue(val)
 		}
 		// search for key in ImmutableWALs
-		immWALList := snapshot.immWAL
+		immWALList := snapshot.immWALs
 		for i := 0; i < immWALList.Len(); i++ {
-			table := immWALList.At(i).table
-			val, ok := table.get(key).Get()
+			immWAL := immWALList.At(i)
+			val, ok := immWAL.Get(key).Get()
 			if ok { // key is present or tombstoned
 				return checkValue(val)
 			}
@@ -156,15 +156,15 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	}
 
 	// search for key in mutable memtable
-	val, ok := snapshot.memtable.get(key).Get()
+	val, ok := snapshot.memtable.Get(key).Get()
 	if ok { // key is present or tombstoned
 		return checkValue(val)
 	}
 	// search for key in Immutable memtables
-	immMemtables := snapshot.immMemtable
+	immMemtables := snapshot.immMemtables
 	for i := 0; i < immMemtables.Len(); i++ {
-		table := immMemtables.At(i).table
-		val, ok := table.get(key).Get()
+		immTable := immMemtables.At(i)
+		val, ok := immTable.Get(key).Get()
 		if ok {
 			return checkValue(val)
 		}
@@ -221,9 +221,9 @@ func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.wal
-	currentWAL.delete(key)
+	currentWAL.Delete(key)
 	if options.AwaitFlush {
-		<-currentWAL.table.awaitWALFlush()
+		currentWAL.Table().AwaitWALFlush()
 	}
 }
 
@@ -293,9 +293,9 @@ func (db *DB) replayWAL() error {
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
 			if kvDel.ValueDel.IsTombstone {
-				db.state.memtable.delete(kvDel.Key)
+				db.state.memtable.Delete(kvDel.Key)
 			} else {
-				db.state.memtable.put(kvDel.Key, kvDel.ValueDel.Value)
+				db.state.memtable.Put(kvDel.Key, kvDel.ValueDel.Value)
 			}
 		}
 
@@ -310,7 +310,7 @@ func (db *DB) replayWAL() error {
 }
 
 func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
-	if state.memtable.size.Load() < int64(db.options.L0SSTSizeBytes) {
+	if state.memtable.Size() < int64(db.options.L0SSTSizeBytes) {
 		return
 	}
 	state.freezeMemtable(walID)
@@ -320,7 +320,7 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 // FlushMemtableToL0 - Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
 // This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
 func (db *DB) FlushMemtableToL0() error {
-	lastWalID := db.state.memtable.lastWalID
+	lastWalID := db.state.memtable.LastWalID()
 	if lastWalID.IsAbsent() {
 		return errors.New("WAL is not yet flushed to Memtable")
 	}

@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"fmt"
+	"github.com/slatedb/slatedb-go/slatedb/table"
 	"strconv"
 	"sync"
 
@@ -72,29 +73,29 @@ func (c *CoreDBState) logState() {
 
 // DBStateSnapshot contains state required for read methods (eg. GET)
 type DBStateSnapshot struct {
-	memtable    *KVTable
-	wal         *KVTable
-	immMemtable *deque.Deque[ImmutableMemtable]
-	immWAL      *deque.Deque[ImmutableWAL]
-	core        *CoreDBState
+	wal          *table.WAL
+	memtable     *table.Memtable
+	immWALs      *deque.Deque[*table.ImmutableWAL]
+	immMemtables *deque.Deque[*table.ImmutableMemtable]
+	core         *CoreDBState
 }
 
 type DBState struct {
 	sync.RWMutex
-	memtable    *Memtable
-	wal         *WritableKVTable
-	immMemtable *deque.Deque[ImmutableMemtable]
-	immWAL      *deque.Deque[ImmutableWAL]
-	core        *CoreDBState
+	wal          *table.WAL
+	memtable     *table.Memtable
+	immWALs      *deque.Deque[*table.ImmutableWAL]
+	immMemtables *deque.Deque[*table.ImmutableMemtable]
+	core         *CoreDBState
 }
 
 func newDBState(coreDBState *CoreDBState) *DBState {
 	return &DBState{
-		memtable:    newMemtable(),
-		wal:         newWritableKVTable(),
-		immMemtable: deque.New[ImmutableMemtable](0),
-		immWAL:      deque.New[ImmutableWAL](0),
-		core:        coreDBState,
+		wal:          table.NewWAL(),
+		memtable:     table.NewMemtable(),
+		immWALs:      deque.New[*table.ImmutableWAL](0),
+		immMemtables: deque.New[*table.ImmutableMemtable](0),
+		core:         coreDBState,
 	}
 }
 
@@ -109,11 +110,11 @@ func (s *DBState) snapshot() *DBStateSnapshot {
 	defer s.RUnlock()
 
 	return &DBStateSnapshot{
-		memtable:    s.memtable.table.clone(),
-		wal:         s.wal.table.clone(),
-		immMemtable: common.CopyDeque(s.immMemtable),
-		immWAL:      common.CopyDeque(s.immWAL),
-		core:        s.core.clone(),
+		wal:          s.wal.Clone(),
+		memtable:     s.memtable.Clone(),
+		immWALs:      common.CopyDeque(s.immWALs),
+		immMemtables: common.CopyDeque(s.immMemtables),
+		core:         s.core.clone(),
 	}
 }
 
@@ -122,66 +123,65 @@ func (s *DBState) freezeMemtable(walID uint64) {
 	defer s.Unlock()
 
 	oldMemtable := s.memtable
-	immMemtable := newImmutableMemtable(oldMemtable.WritableKVTable, walID)
+	immMemtable := table.NewImmutableMemtable(oldMemtable, walID)
 
-	s.memtable = newMemtable()
-	s.immMemtable.PushFront(immMemtable)
+	s.memtable = table.NewMemtable()
+	s.immMemtables.PushFront(immMemtable)
 }
 
 func (s *DBState) freezeWAL() mo.Option[uint64] {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.wal.table.isEmpty() {
+	if s.wal.Size() == 0 {
 		return mo.None[uint64]()
 	}
 
 	oldWAL := s.wal
-	immWAL := newImmutableWal(s.core.nextWalSstID, oldWAL)
-
-	s.wal = newWritableKVTable()
-	s.immWAL.PushFront(*immWAL)
+	immWAL := table.NewImmutableWAL(oldWAL, s.core.nextWalSstID)
+	s.wal = table.NewWAL()
+	s.immWALs.PushFront(immWAL)
 	s.core.nextWalSstID += 1
 
-	return mo.Some(immWAL.id)
+	return mo.Some(immWAL.ID())
 }
 
 func (s *DBState) popImmWAL() {
 	s.Lock()
 	defer s.Unlock()
 
-	s.immWAL.PopBack()
+	s.immWALs.PopBack()
 }
 
-func (s *DBState) oldestImmWAL() mo.Option[ImmutableWAL] {
+func (s *DBState) oldestImmWAL() mo.Option[*table.ImmutableWAL] {
 	s.RLock()
 	defer s.RUnlock()
 
-	if s.immWAL.Len() == 0 {
-		return mo.None[ImmutableWAL]()
+	if s.immWALs.Len() == 0 {
+		return mo.None[*table.ImmutableWAL]()
 	}
-	return mo.Some(s.immWAL.Back())
+	return mo.Some(s.immWALs.Back())
 }
 
-func (s *DBState) oldestImmMemtable() mo.Option[ImmutableMemtable] {
+func (s *DBState) oldestImmMemtable() mo.Option[*table.ImmutableMemtable] {
 	s.RLock()
 	defer s.RUnlock()
 
-	if s.immMemtable.Len() == 0 {
-		return mo.None[ImmutableMemtable]()
+	if s.immMemtables.Len() == 0 {
+		return mo.None[*table.ImmutableMemtable]()
 	}
-	return mo.Some(s.immMemtable.Back())
+	return mo.Some(s.immMemtables.Back())
 }
 
-func (s *DBState) moveImmMemtableToL0(immMemtable ImmutableMemtable, sstHandle *SSTableHandle) {
+func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstHandle *SSTableHandle) {
 	s.Lock()
 	defer s.Unlock()
 
-	popped := s.immMemtable.PopBack()
-	common.AssertTrue(popped.lastWalID == immMemtable.lastWalID, "")
+	popped := s.immMemtables.PopBack()
+	common.AssertTrue(popped.LastWalID() == immMemtable.LastWalID(), "")
 
 	s.core.l0 = append([]SSTableHandle{*sstHandle}, s.core.l0...)
-	s.core.lastCompactedWalSSTID = immMemtable.lastWalID
+	s.core.lastCompactedWalSSTID = immMemtable.LastWalID()
 }
 
 func (s *DBState) incrementNextWALID() {
