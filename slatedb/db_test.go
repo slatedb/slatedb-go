@@ -132,7 +132,7 @@ func TestFlushWhileIterating(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
-	wal := db.state.wal
+	wal := db.state.WAL()
 	wal.Put([]byte("abc1111"), []byte("value1111"))
 	wal.Put([]byte("abc2222"), []byte("value2222"))
 	wal.Put([]byte("abc3333"), []byte("value3333"))
@@ -182,11 +182,11 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.NoError(t, err)
 
 	// verify that WAL is empty after FlushWAL() is called
-	assert.Equal(t, int64(0), db.state.wal.Size())
+	assert.Equal(t, int64(0), db.state.WAL().Size())
 	assert.Equal(t, 0, db.state.immWALs.Len())
 
 	// verify that all KV pairs are present in Memtable
-	memtable := db.state.memtable
+	memtable := db.state.Memtable()
 	for _, kv := range kvPairs {
 		assert.True(t, memtable.Get(kv.Key).IsPresent())
 	}
@@ -195,7 +195,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.NoError(t, err)
 
 	// verify that Memtable is empty after FlushMemtableToL0()
-	assert.Equal(t, int64(0), db.state.memtable.Size())
+	assert.Equal(t, int64(0), db.state.Memtable().Size())
 
 	// verify that we can read keys from Level0
 	for _, kv := range kvPairs {

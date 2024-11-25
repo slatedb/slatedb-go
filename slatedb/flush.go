@@ -64,7 +64,7 @@ func (db *DB) flushImmWALs() error {
 		db.state.popImmWAL()
 
 		// flush to the memtable before notifying so that data is available for reads
-		db.flushImmWALToMemtable(immWal, db.state.memtable)
+		db.flushImmWALToMemtable(immWal, db.state.Memtable())
 		db.maybeFreezeMemtable(db.state, immWal.ID())
 		immWal.Table().NotifyWALFlushed()
 	}

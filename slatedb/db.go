@@ -115,7 +115,7 @@ func (db *DB) Put(key []byte, value []byte) {
 func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.wal
+	currentWAL := db.state.WAL()
 	currentWAL.Put(key, value)
 	if options.AwaitFlush {
 		// we wait for WAL to be flushed to memtable and then we send a notification
@@ -220,7 +220,7 @@ func (db *DB) Delete(key []byte) {
 func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.wal
+	currentWAL := db.state.WAL()
 	currentWAL.Delete(key)
 	if options.AwaitFlush {
 		currentWAL.Table().AwaitWALFlush()
@@ -293,14 +293,14 @@ func (db *DB) replayWAL() error {
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
 			if kvDel.ValueDel.IsTombstone {
-				db.state.memtable.Delete(kvDel.Key)
+				db.state.Memtable().Delete(kvDel.Key)
 			} else {
-				db.state.memtable.Put(kvDel.Key, kvDel.ValueDel.Value)
+				db.state.Memtable().Put(kvDel.Key, kvDel.ValueDel.Value)
 			}
 		}
 
 		db.maybeFreezeMemtable(db.state, sstID)
-		if db.state.core.nextWalSstID == sstID {
+		if db.state.NextWALID() == sstID {
 			db.state.incrementNextWALID()
 		}
 	}
@@ -310,7 +310,7 @@ func (db *DB) replayWAL() error {
 }
 
 func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
-	if state.memtable.Size() < int64(db.options.L0SSTSizeBytes) {
+	if state.Memtable().Size() < int64(db.options.L0SSTSizeBytes) {
 		return
 	}
 	state.freezeMemtable(walID)
@@ -320,7 +320,7 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 // FlushMemtableToL0 - Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
 // This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
 func (db *DB) FlushMemtableToL0() error {
-	lastWalID := db.state.memtable.LastWalID()
+	lastWalID := db.state.Memtable().LastWalID()
 	if lastWalID.IsAbsent() {
 		return errors.New("WAL is not yet flushed to Memtable")
 	}

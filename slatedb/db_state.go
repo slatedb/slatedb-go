@@ -99,6 +99,18 @@ func newDBState(coreDBState *CoreDBState) *DBState {
 	}
 }
 
+func (s *DBState) WAL() *table.WAL {
+	s.RLock()
+	defer s.RUnlock()
+	return s.wal
+}
+
+func (s *DBState) Memtable() *table.Memtable {
+	s.RLock()
+	defer s.RUnlock()
+	return s.memtable
+}
+
 func (s *DBState) getCore() *CoreDBState {
 	s.RLock()
 	defer s.RUnlock()
@@ -182,6 +194,12 @@ func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstH
 
 	s.core.l0 = append([]SSTableHandle{*sstHandle}, s.core.l0...)
 	s.core.lastCompactedWalSSTID = immMemtable.LastWalID()
+}
+
+func (s *DBState) NextWALID() uint64 {
+	s.RLock()
+	defer s.RUnlock()
+	return s.core.nextWalSstID
 }
 
 func (s *DBState) incrementNextWALID() {
