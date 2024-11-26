@@ -256,7 +256,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 // this is to recover from a crash. we read the WALs from object store (considered to be Uncommmitted)
 // and write the kv pairs to memtable
 func (db *DB) replayWAL() error {
-	walIDLastCompacted := db.state.getCore().lastCompactedWalSSTID
+	walIDLastCompacted := db.state.LastCompactedWALID()
 	walSSTList, err := db.tableStore.getWalSSTList(walIDLastCompacted)
 	if err != nil {
 		return err
@@ -305,7 +305,7 @@ func (db *DB) replayWAL() error {
 		}
 	}
 
-	common.AssertTrue(lastSSTID+1 == db.state.getCore().nextWalSstID, "")
+	common.AssertTrue(lastSSTID+1 == db.state.NextWALID(), "")
 	return nil
 }
 

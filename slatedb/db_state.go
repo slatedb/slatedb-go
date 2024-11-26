@@ -111,6 +111,30 @@ func (s *DBState) Memtable() *table.Memtable {
 	return s.memtable
 }
 
+func (s *DBState) ImmWALs() *deque.Deque[*table.ImmutableWAL] {
+	s.RLock()
+	defer s.RUnlock()
+	return s.immWALs
+}
+
+func (s *DBState) L0() []SSTableHandle {
+	s.RLock()
+	defer s.RUnlock()
+	return s.core.l0
+}
+
+func (s *DBState) NextWALID() uint64 {
+	s.RLock()
+	defer s.RUnlock()
+	return s.core.nextWalSstID
+}
+
+func (s *DBState) LastCompactedWALID() uint64 {
+	s.RLock()
+	defer s.RUnlock()
+	return s.core.lastCompactedWalSSTID
+}
+
 func (s *DBState) getCore() *CoreDBState {
 	s.RLock()
 	defer s.RUnlock()
@@ -196,16 +220,9 @@ func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstH
 	s.core.lastCompactedWalSSTID = immMemtable.LastWalID()
 }
 
-func (s *DBState) NextWALID() uint64 {
-	s.RLock()
-	defer s.RUnlock()
-	return s.core.nextWalSstID
-}
-
 func (s *DBState) incrementNextWALID() {
 	s.Lock()
 	defer s.Unlock()
-
 	s.core.nextWalSstID += 1
 }
 
