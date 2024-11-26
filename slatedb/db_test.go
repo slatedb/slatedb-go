@@ -71,10 +71,10 @@ func TestPutFlushesMemtable(t *testing.T) {
 		db.Put(key, value)
 
 		dbState := waitForManifestCondition(storedManifest, time.Second*30, func(state *CoreDBState) bool {
-			return state.lastCompactedWalSSTID > lastCompacted
+			return state.lastCompactedWalSSTID.Load() > lastCompacted
 		})
-		assert.Equal(t, uint64(i*2+2), dbState.lastCompactedWalSSTID)
-		lastCompacted = dbState.lastCompactedWalSSTID
+		assert.Equal(t, uint64(i*2+2), dbState.lastCompactedWalSSTID.Load())
+		lastCompacted = dbState.lastCompactedWalSSTID.Load()
 	}
 
 	dbState, err := storedManifest.refresh()
@@ -257,7 +257,7 @@ func TestBasicRestore(t *testing.T) {
 
 	storedManifest, _ := stored.Get()
 	dbState := storedManifest.dbState()
-	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.nextWalSstID)
+	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.nextWalSstID.Load())
 }
 
 func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
@@ -329,8 +329,8 @@ func TestSnapshotState(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 	snapshot := db.state.snapshot()
-	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID)
-	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID)
+	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID.Load())
+	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID.Load())
 	assert.Equal(t, 2, len(snapshot.core.l0))
 
 	val1, err := db.Get(key1)

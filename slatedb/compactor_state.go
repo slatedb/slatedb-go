@@ -164,8 +164,8 @@ func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 
 	merged := c.dbState.clone()
 	merged.l0 = mergedL0s
-	merged.lastCompactedWalSSTID = writerState.lastCompactedWalSSTID
-	merged.nextWalSstID = writerState.nextWalSstID
+	merged.lastCompactedWalSSTID.Store(writerState.lastCompactedWalSSTID.Load())
+	merged.nextWalSstID.Store(writerState.nextWalSstID.Load())
 	c.dbState = merged
 }
 

@@ -96,11 +96,12 @@ func (f FlatBufferManifestCodec) decode(data []byte) (*Manifest, error) {
 
 func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manifest {
 	core := &CoreDBState{
-		l0:                    f.parseFlatBufSSTList(manifest.L0),
-		compacted:             f.parseFlatBufSortedRuns(manifest.Compacted),
-		nextWalSstID:          manifest.WalIdLastSeen + 1,
-		lastCompactedWalSSTID: manifest.WalIdLastCompacted,
+		l0:        f.parseFlatBufSSTList(manifest.L0),
+		compacted: f.parseFlatBufSortedRuns(manifest.Compacted),
 	}
+	core.nextWalSstID.Store(manifest.WalIdLastSeen + 1)
+	core.lastCompactedWalSSTID.Store(manifest.WalIdLastCompacted)
+
 	l0LastCompacted := f.parseFlatBufSSTId(manifest.L0LastCompacted)
 	if l0LastCompacted == ulid.Zero {
 		core.l0LastCompacted = mo.None[ulid.ULID]()
@@ -194,8 +195,8 @@ func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 		ManifestId:         0,
 		WriterEpoch:        manifest.writerEpoch.Load(),
 		CompactorEpoch:     manifest.compactorEpoch.Load(),
-		WalIdLastCompacted: core.lastCompactedWalSSTID,
-		WalIdLastSeen:      core.nextWalSstID - 1,
+		WalIdLastCompacted: core.lastCompactedWalSSTID.Load(),
+		WalIdLastSeen:      core.nextWalSstID.Load() - 1,
 		L0LastCompacted:    l0LastCompacted,
 		L0:                 l0,
 		Compacted:          compacted,

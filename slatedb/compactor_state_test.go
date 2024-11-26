@@ -123,8 +123,8 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 			assert.Equal(t, srBefore.sstList[j].id, srAfter.sstList[j].id)
 		}
 	}
-	assert.Equal(t, writerDBState.lastCompactedWalSSTID, dbState.lastCompactedWalSSTID)
-	assert.Equal(t, writerDBState.nextWalSstID, dbState.nextWalSstID)
+	assert.Equal(t, writerDBState.lastCompactedWalSSTID.Load(), dbState.lastCompactedWalSSTID.Load())
+	assert.Equal(t, writerDBState.nextWalSstID.Load(), dbState.nextWalSstID.Load())
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {

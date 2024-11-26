@@ -54,10 +54,10 @@ func TestShouldUpdateLocalStateOnWrite(t *testing.T) {
 	sm, err := newStoredManifest(manifestStore, state)
 	assert.NoError(t, err)
 
-	state.nextWalSstID = 123
+	state.nextWalSstID.Store(123)
 	err = sm.updateDBState(state)
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID)
+	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID.Load())
 }
 
 func TestShouldRefresh(t *testing.T) {
@@ -73,14 +73,14 @@ func TestShouldRefresh(t *testing.T) {
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
 
-	state.nextWalSstID = 123
+	state.nextWalSstID.Store(123)
 	err = sm.updateDBState(state)
 	assert.NoError(t, err)
 
 	refreshed, err := sm2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(123), refreshed.nextWalSstID)
-	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID)
+	assert.Equal(t, uint64(123), refreshed.nextWalSstID.Load())
+	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID.Load())
 }
 
 func TestShouldBumpWriterEpoch(t *testing.T) {
@@ -127,13 +127,13 @@ func TestShouldFailOnWriterFenced(t *testing.T) {
 
 	_, err = writer1.refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
-	state.nextWalSstID = 123
+	state.nextWalSstID.Store(123)
 	err = writer1.updateDBState(state)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
 	refreshed, err := writer2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), refreshed.nextWalSstID)
+	assert.Equal(t, uint64(1), refreshed.nextWalSstID.Load())
 }
 
 func TestShouldBumpCompactorEpoch(t *testing.T) {
@@ -180,11 +180,11 @@ func TestShouldFailOnCompactorFenced(t *testing.T) {
 
 	_, err = compactor1.refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
-	state.nextWalSstID = 123
+	state.nextWalSstID.Store(123)
 	err = compactor1.updateDBState(state)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
 	refreshed, err := compactor2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), refreshed.nextWalSstID)
+	assert.Equal(t, uint64(1), refreshed.nextWalSstID.Load())
 }
