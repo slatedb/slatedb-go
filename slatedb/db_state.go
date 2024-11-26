@@ -117,6 +117,12 @@ func (s *DBState) ImmWALs() *deque.Deque[*table.ImmutableWAL] {
 	return s.immWALs
 }
 
+func (s *DBState) L0LastCompacted() mo.Option[ulid.ULID] {
+	s.RLock()
+	defer s.RUnlock()
+	return s.core.l0LastCompacted
+}
+
 func (s *DBState) L0() []SSTableHandle {
 	s.RLock()
 	defer s.RUnlock()
@@ -135,7 +141,7 @@ func (s *DBState) LastCompactedWALID() uint64 {
 	return s.core.lastCompactedWalSSTID
 }
 
-func (s *DBState) getCore() *CoreDBState {
+func (s *DBState) coreStateClone() *CoreDBState {
 	s.RLock()
 	defer s.RUnlock()
 	return s.core.clone()
@@ -230,7 +236,7 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 	s.Lock()
 	defer s.Unlock()
 
-	// copy over L0 up to l0_last_compacted
+	// copy over L0 up to l0LastCompacted
 	l0LastCompacted := compactorState.l0LastCompacted
 	newL0 := make([]SSTableHandle, 0)
 	for i := 0; i < len(s.core.l0); i++ {

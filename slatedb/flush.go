@@ -194,7 +194,7 @@ func (m *MemtableFlusher) loadManifest() error {
 }
 
 func (m *MemtableFlusher) writeManifest() error {
-	core := m.db.state.getCore()
+	core := m.db.state.coreStateClone()
 	return m.manifest.updateDBState(core)
 }
 
