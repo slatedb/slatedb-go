@@ -71,10 +71,10 @@ func TestPutFlushesMemtable(t *testing.T) {
 		db.Put(key, value)
 
 		dbState := waitForManifestCondition(storedManifest, time.Second*30, func(state *CoreDBState) bool {
-			return state.lastCompactedWalSSTID > lastCompacted
+			return state.lastCompactedWalSSTID.Load() > lastCompacted
 		})
-		assert.Equal(t, uint64(i*2+2), dbState.lastCompactedWalSSTID)
-		lastCompacted = dbState.lastCompactedWalSSTID
+		assert.Equal(t, uint64(i*2+2), dbState.lastCompactedWalSSTID.Load())
+		lastCompacted = dbState.lastCompactedWalSSTID.Load()
 	}
 
 	dbState, err := storedManifest.refresh()
@@ -132,7 +132,7 @@ func TestFlushWhileIterating(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
-	wal := db.state.wal
+	wal := db.state.WAL()
 	wal.Put([]byte("abc1111"), []byte("value1111"))
 	wal.Put([]byte("abc2222"), []byte("value2222"))
 	wal.Put([]byte("abc3333"), []byte("value3333"))
@@ -182,11 +182,11 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.NoError(t, err)
 
 	// verify that WAL is empty after FlushWAL() is called
-	assert.Equal(t, int64(0), db.state.wal.Size())
-	assert.Equal(t, 0, db.state.immWALs.Len())
+	assert.Equal(t, int64(0), db.state.WAL().Size())
+	assert.Equal(t, 0, db.state.ImmWALs().Len())
 
 	// verify that all KV pairs are present in Memtable
-	memtable := db.state.memtable
+	memtable := db.state.Memtable()
 	for _, kv := range kvPairs {
 		assert.True(t, memtable.Get(kv.Key).IsPresent())
 	}
@@ -195,7 +195,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.NoError(t, err)
 
 	// verify that Memtable is empty after FlushMemtableToL0()
-	assert.Equal(t, int64(0), db.state.memtable.Size())
+	assert.Equal(t, int64(0), db.state.Memtable().Size())
 
 	// verify that we can read keys from Level0
 	for _, kv := range kvPairs {
@@ -257,7 +257,7 @@ func TestBasicRestore(t *testing.T) {
 
 	storedManifest, _ := stored.Get()
 	dbState := storedManifest.dbState()
-	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.nextWalSstID)
+	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.nextWalSstID.Load())
 }
 
 func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
@@ -329,8 +329,8 @@ func TestSnapshotState(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 	snapshot := db.state.snapshot()
-	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID)
-	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID)
+	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID.Load())
+	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID.Load())
 	assert.Equal(t, 2, len(snapshot.core.l0))
 
 	val1, err := db.Get(key1)

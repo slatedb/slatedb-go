@@ -115,8 +115,7 @@ func (db *DB) Put(key []byte, value []byte) {
 func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.wal
-	currentWAL.Put(key, value)
+	currentWAL := db.state.PutKVToWAL(key, value)
 	if options.AwaitFlush {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
@@ -220,8 +219,7 @@ func (db *DB) Delete(key []byte) {
 func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.wal
-	currentWAL.Delete(key)
+	currentWAL := db.state.DeleteKVFromWAL(key)
 	if options.AwaitFlush {
 		currentWAL.Table().AwaitWALFlush()
 	}
@@ -256,7 +254,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 // this is to recover from a crash. we read the WALs from object store (considered to be Uncommmitted)
 // and write the kv pairs to memtable
 func (db *DB) replayWAL() error {
-	walIDLastCompacted := db.state.getCore().lastCompactedWalSSTID
+	walIDLastCompacted := db.state.LastCompactedWALID()
 	walSSTList, err := db.tableStore.getWalSSTList(walIDLastCompacted)
 	if err != nil {
 		return err
@@ -293,24 +291,24 @@ func (db *DB) replayWAL() error {
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
 			if kvDel.ValueDel.IsTombstone {
-				db.state.memtable.Delete(kvDel.Key)
+				db.state.DeleteKVFromMemtable(kvDel.Key)
 			} else {
-				db.state.memtable.Put(kvDel.Key, kvDel.ValueDel.Value)
+				db.state.PutKVToMemtable(kvDel.Key, kvDel.ValueDel.Value)
 			}
 		}
 
 		db.maybeFreezeMemtable(db.state, sstID)
-		if db.state.core.nextWalSstID == sstID {
+		if db.state.NextWALID() == sstID {
 			db.state.incrementNextWALID()
 		}
 	}
 
-	common.AssertTrue(lastSSTID+1 == db.state.getCore().nextWalSstID, "")
+	common.AssertTrue(lastSSTID+1 == db.state.NextWALID(), "")
 	return nil
 }
 
 func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
-	if state.memtable.Size() < int64(db.options.L0SSTSizeBytes) {
+	if state.Memtable().Size() < int64(db.options.L0SSTSizeBytes) {
 		return
 	}
 	state.freezeMemtable(walID)
@@ -320,7 +318,7 @@ func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
 // FlushMemtableToL0 - Normally Memtable is flushed to Level0 of object store when it reaches a size of DBOptions.L0SSTSizeBytes
 // This method allows the user to flush Memtable to Level0 irrespective of Memtable size.
 func (db *DB) FlushMemtableToL0() error {
-	lastWalID := db.state.memtable.LastWalID()
+	lastWalID := db.state.Memtable().LastWalID()
 	if lastWalID.IsAbsent() {
 		return errors.New("WAL is not yet flushed to Memtable")
 	}
