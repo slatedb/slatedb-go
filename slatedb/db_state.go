@@ -140,6 +140,32 @@ func (s *DBState) LastCompactedWALID() uint64 {
 	return s.core.lastCompactedWalSSTID.Load()
 }
 
+func (s *DBState) PutKVToWAL(key []byte, value []byte) *table.WAL {
+	s.Lock()
+	defer s.Unlock()
+	s.wal.Put(key, value)
+	return s.wal
+}
+
+func (s *DBState) DeleteKVFromWAL(key []byte) *table.WAL {
+	s.Lock()
+	defer s.Unlock()
+	s.wal.Delete(key)
+	return s.wal
+}
+
+func (s *DBState) PutKVToMemtable(key []byte, value []byte) {
+	s.Lock()
+	defer s.Unlock()
+	s.memtable.Put(key, value)
+}
+
+func (s *DBState) DeleteKVFromMemtable(key []byte) {
+	s.Lock()
+	defer s.Unlock()
+	s.memtable.Delete(key)
+}
+
 func (s *DBState) coreStateClone() *CoreDBState {
 	s.RLock()
 	defer s.RUnlock()

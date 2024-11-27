@@ -115,8 +115,7 @@ func (db *DB) Put(key []byte, value []byte) {
 func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.WAL()
-	currentWAL.Put(key, value)
+	currentWAL := db.state.PutKVToWAL(key, value)
 	if options.AwaitFlush {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
@@ -220,8 +219,7 @@ func (db *DB) Delete(key []byte) {
 func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	common.AssertTrue(len(key) > 0, "key cannot be empty")
 
-	currentWAL := db.state.WAL()
-	currentWAL.Delete(key)
+	currentWAL := db.state.DeleteKVFromWAL(key)
 	if options.AwaitFlush {
 		currentWAL.Table().AwaitWALFlush()
 	}
@@ -293,9 +291,9 @@ func (db *DB) replayWAL() error {
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
 			if kvDel.ValueDel.IsTombstone {
-				db.state.Memtable().Delete(kvDel.Key)
+				db.state.DeleteKVFromMemtable(kvDel.Key)
 			} else {
-				db.state.Memtable().Put(kvDel.Key, kvDel.ValueDel.Value)
+				db.state.PutKVToMemtable(kvDel.Key, kvDel.ValueDel.Value)
 			}
 		}
 
