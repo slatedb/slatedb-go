@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"io"
 	"path"
 	"slices"
@@ -112,7 +113,7 @@ func (ts *TableStore) openSST(id SSTableID) (*SSTableHandle, error) {
 	return newSSTableHandle(id, sstInfo), nil
 }
 
-func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange common.Range) ([]Block, error) {
+func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange common.Range) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	index, err := ts.sstFormat.readIndex(sstHandle.info, obj)
 	if err != nil {
@@ -126,7 +127,7 @@ func (ts *TableStore) readBlocksUsingIndex(
 	sstHandle *SSTableHandle,
 	blocksRange common.Range,
 	index *SSTableIndexData,
-) ([]Block, error) {
+) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	return ts.sstFormat.readBlocks(sstHandle.info, index, blocksRange, obj)
 }
@@ -203,6 +204,7 @@ func (ts *TableStore) clone() *TableStore {
 
 // ------------------------------------------------
 // EncodedSSTableWriter
+// Thrawn01: (Only Used By The Compactor)
 // ------------------------------------------------
 
 type EncodedSSTableWriter struct {

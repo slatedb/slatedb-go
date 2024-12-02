@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
@@ -29,11 +30,14 @@ func (b BytesBlob) Read() ([]byte, error) {
 	return b.data, nil
 }
 
-func nextBlockToIter(builder *EncodedSSTableBuilder) *BlockIterator {
+func nextBlockToIter(builder *EncodedSSTableBuilder) *block.Iterator {
 	blockBytes, ok := builder.nextBlock().Get()
 	common.AssertTrue(ok, "Block should not be empty")
-	block := decodeBytesToBlock(blockBytes[:len(blockBytes)-common.SizeOfUint32InBytes])
-	return newBlockIteratorFromFirstKey(block)
+	var decoded block.Block
+
+	// TODO(thrawn01): Handle this error when we refactor iterators
+	_ = block.Decode(&decoded, blockBytes[:len(blockBytes)-common.SizeOfUint32InBytes])
+	return block.NewIterator(&decoded)
 }
 
 func buildSSTWithNBlocks(
@@ -118,9 +122,9 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 	assert.NoError(t, err)
 
 	for i, kv := range kvList {
-		block, err := format.readBlockRaw(encodedSST.sstInfo, index, uint64(i), rawSST)
+		blk, err := format.readBlockRaw(encodedSST.sstInfo, index, uint64(i), rawSST)
 		assert.NoError(t, err)
-		iterator := newBlockIteratorFromFirstKey(block)
+		iterator := block.NewIterator(blk)
 		iter.AssertIterNextEntry(t, iterator, kv.Key, kv.Value)
 		nextEntry, err := iterator.NextEntry()
 		assert.NoError(t, err)
@@ -267,14 +271,14 @@ func TestReadBlocks(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(blocks))
 
-	iterator := newBlockIteratorFromFirstKey(&blocks[0])
+	iterator := block.NewIterator(&blocks[0])
 	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
 	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
 	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iterator = newBlockIteratorFromFirstKey(&blocks[1])
+	iterator = block.NewIterator(&blocks[1])
 	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
 	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
@@ -310,20 +314,20 @@ func TestReadAllBlocks(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(blocks))
 
-	iterator := newBlockIteratorFromFirstKey(&blocks[0])
+	iterator := block.NewIterator(&blocks[0])
 	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
 	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
 	nextEntry, err := iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iterator = newBlockIteratorFromFirstKey(&blocks[1])
+	iterator = block.NewIterator(&blocks[1])
 	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
 	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)
 	assert.True(t, nextEntry.IsAbsent())
 
-	iterator = newBlockIteratorFromFirstKey(&blocks[2])
+	iterator = block.NewIterator(&blocks[2])
 	iter.AssertIterNextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
 	nextEntry, err = iterator.NextEntry()
 	assert.NoError(t, err)

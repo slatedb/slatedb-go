@@ -7,7 +7,6 @@ var (
 	ErrChecksumMismatch        = errors.New("checksum mismatch")
 	ErrEmptySSTable            = errors.New("empty SSTable")
 	ErrEmptyBlockMeta          = errors.New("empty block metadata")
-	ErrEmptyBlock              = errors.New("empty block")
 	ErrObjectStore             = errors.New("object store error")
 	ErrManifestVersionExists   = errors.New("manifest file already exists")
 	ErrInvalidFlatbuffer       = errors.New("invalid sst error")
