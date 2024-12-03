@@ -34,6 +34,10 @@ func (b *BloomFilter) filterBits() uint32 {
 }
 
 func (b *BloomFilter) HasKey(key []byte) bool {
+	if len(b.buffer) == 0 {
+		return false
+	}
+
 	probes := probesForKey(filterHash(key), b.numProbes, b.filterBits())
 	for _, p := range probes {
 		if !checkBit(uint64(p), b.buffer) {
@@ -70,6 +74,10 @@ func (b *BloomFilterBuilder) filterBytes(numKeys uint32, bitsPerKey uint32) uint
 }
 
 func (b *BloomFilterBuilder) Build() *BloomFilter {
+	if len(b.keyHashes) == 0 {
+		return &BloomFilter{}
+	}
+
 	numProbes := optimalNumProbes(b.bitsPerKey)
 	filtrBytes := b.filterBytes(uint32(len(b.keyHashes)), b.bitsPerKey)
 	filterBits := uint32(filtrBytes * 8)

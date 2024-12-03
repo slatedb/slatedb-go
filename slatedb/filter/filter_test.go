@@ -112,3 +112,9 @@ func TestFilterEffective(t *testing.T) {
 	// observed fp is 0.00744
 	assert.True(t, float32(fp)/float32(keysToTest) < 0.01)
 }
+
+func TestEmptyFilter(t *testing.T) {
+	fb := NewBloomFilterBuilder(10)
+	filter := fb.Build()
+	assert.False(t, filter.HasKey([]byte("test")))
+}

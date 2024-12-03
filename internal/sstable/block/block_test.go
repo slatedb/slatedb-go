@@ -1,42 +1,46 @@
-package slatedb
+package block_test
 
 import (
 	"bytes"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func TestBlock(t *testing.T) {
-	builder := newBlockBuilder(4096)
-	assert.True(t, builder.isEmpty())
-	assert.True(t, builder.add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.True(t, builder.add([]byte("key2"), mo.Some([]byte("value2"))))
-	assert.False(t, builder.isEmpty())
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.IsEmpty())
+	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
+	assert.True(t, bb.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.False(t, bb.IsEmpty())
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	encoded := block.encodeToBytes()
-	decoded := decodeBytesToBlock(encoded)
-	assert.Equal(t, block.data, decoded.data)
-	assert.Equal(t, block.offsets, decoded.offsets)
+	encoded := block.Encode(b)
+	var decoded block.Block
+	require.NoError(t, block.Decode(&decoded, encoded))
+	assert.Equal(t, b.Data, decoded.Data)
+	assert.Equal(t, b.Offsets, decoded.Offsets)
 }
 
 func TestBlockWithTombstone(t *testing.T) {
-	builder := newBlockBuilder(4096)
-	assert.True(t, builder.add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.True(t, builder.add([]byte("key2"), mo.None[[]byte]()))
-	assert.True(t, builder.add([]byte("key3"), mo.Some([]byte("value3"))))
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
+	assert.True(t, bb.Add([]byte("key2"), mo.None[[]byte]()))
+	assert.True(t, bb.Add([]byte("key3"), mo.Some([]byte("value3"))))
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	encoded := block.encodeToBytes()
-	decoded := decodeBytesToBlock(encoded)
-	assert.Equal(t, block.data, decoded.data)
-	assert.Equal(t, block.offsets, decoded.offsets)
+	encoded := block.Encode(b)
+	var decoded block.Block
+	require.NoError(t, block.Decode(&decoded, encoded))
+	assert.Equal(t, b.Data, decoded.Data)
+	assert.Equal(t, b.Offsets, decoded.Offsets)
 }
 
 func TestBlockIterator(t *testing.T) {
@@ -46,15 +50,15 @@ func TestBlockIterator(t *testing.T) {
 		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
-	builder := newBlockBuilder(1024)
+	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
 	}
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	iter := newBlockIteratorFromFirstKey(block)
+	iter := block.NewIterator(b)
 	for i := 0; i < len(kvPairs); i++ {
 		next, err := iter.Next()
 		assert.NoError(t, err)
@@ -76,15 +80,15 @@ func TestIterFromExistingKey(t *testing.T) {
 		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
-	builder := newBlockBuilder(1024)
+	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
 	}
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	iter := newBlockIteratorFromKey(block, []byte("kratos"))
+	iter := block.NewIteratorAtKey(b, []byte("kratos"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
 		next, err := iter.Next()
@@ -107,15 +111,15 @@ func TestIterFromNonExistingKey(t *testing.T) {
 		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
-	builder := newBlockBuilder(1024)
+	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
 	}
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	iter := newBlockIteratorFromKey(block, []byte("ka"))
+	iter := block.NewIteratorAtKey(b, []byte("ka"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
 		next, err := iter.Next()
@@ -138,17 +142,19 @@ func TestIterFromEnd(t *testing.T) {
 		{Key: []byte("super"), Value: []byte("mario")},
 	}
 
-	builder := newBlockBuilder(1024)
+	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, builder.add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
 	}
 
-	block, err := builder.build()
+	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	iter := newBlockIteratorFromKey(block, []byte("zzz"))
+	iter := block.NewIteratorAtKey(b, []byte("zzz"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	kv, err := iter.Next()
 	assert.NoError(t, err)
 	assert.Equal(t, mo.None[common.KV](), kv)
 }
+
+// TODO(thrawn01): Add additional tests <-- do this next

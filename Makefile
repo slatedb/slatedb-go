@@ -1,3 +1,12 @@
+LINT = $(GOPATH)/bin/golangci-lint
+LINT_VERSION = v1.61.0
+
+$(LINT): ## Download Go linter
+        curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin $(LINT_VERSION)
+
+.PHONY: lint
+lint: $(LINT) ## Run Go linter
+	$(LINT) run -v ./...
 
 fmt:
 	go fmt ./...
@@ -5,26 +14,32 @@ fmt:
 vet:
 	go vet ./...
 
-.PHONY: gen_flatbuf
-gen_flatbuf:
+.PHONY: flatbuf
+flatbuf:
 	flatc -o gen --go --gen-object-api --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs
 	go fmt ./gen/*.go
 
 .PHONY: build
-build: gen_flatbuf fmt vet
+build: flatbuf fmt vet
 	go build -v -o bin/slatedb -race ./cmd
-
-.PHONY: test
-test: build
-	go test -v -count=1 -cover -race ./...
 
 test_coverage:
 	go test -coverprofile=coverage.out ./...; \
 	go tool cover -html="coverage.out"
 
-lint:
-	golangci-lint run
-
 clean:
 	go clean
 	rm -rf bin/
+
+.PHONY: test
+test:
+	go test -timeout 10m -v -p=1 -count=1 -race ./...
+
+.PHONY: tidy
+tidy:
+	go mod tidy && git diff --exit-code
+
+.PHONY: ci
+ci: tidy lint test
+	@echo
+	@echo "\033[32mEVERYTHING PASSED!\033[0m"
