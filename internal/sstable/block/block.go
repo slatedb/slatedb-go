@@ -140,7 +140,7 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) bool {
 	if ok {
 		valueLen = len(val)
 	}
-	newSize := b.estimatedSize() + len(key) + valueLen + (common.SizeOfUint16 * 2) + common.SizeOfUint32InBytes
+	newSize := b.estimatedSize() + len(key) + valueLen + (common.SizeOfUint16 * 2) + common.SizeOfUint32
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.
 	// (Unless the block is empty, in which case, allow the block to exceed the limit.)

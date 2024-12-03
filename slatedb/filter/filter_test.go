@@ -81,7 +81,7 @@ func TestComputeProbes(t *testing.T) {
 
 func TestFilterEffective(t *testing.T) {
 	keysToTest := uint32(100000)
-	keySize := common.SizeOfUint32InBytes
+	keySize := common.SizeOfUint32
 	builder := NewBloomFilterBuilder(10)
 
 	var i uint32

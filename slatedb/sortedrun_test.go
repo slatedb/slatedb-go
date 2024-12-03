@@ -3,8 +3,8 @@ package slatedb
 import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"
@@ -51,13 +51,13 @@ func TestOneSstSRIter(t *testing.T) {
 	sr := SortedRun{0, []SSTableHandle{*sstHandle}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
-	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
-	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
-	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
+	iter.AssertNext(t, iterator, []byte("key1"), []byte("value1"))
+	iter.AssertNext(t, iterator, []byte("key2"), []byte("value2"))
+	iter.AssertNext(t, iterator, []byte("key3"), []byte("value3"))
 
-	kv, err := iterator.Next()
-	assert.NoError(t, err)
-	assert.True(t, kv.IsAbsent())
+	kv, ok := iterator.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, kv)
 }
 
 func TestManySstSRIter(t *testing.T) {
@@ -86,13 +86,13 @@ func TestManySstSRIter(t *testing.T) {
 	sr := SortedRun{0, []SSTableHandle{*sstHandle, *sstHandle2}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
-	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
-	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
-	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
+	iter.AssertNext(t, iterator, []byte("key1"), []byte("value1"))
+	iter.AssertNext(t, iterator, []byte("key2"), []byte("value2"))
+	iter.AssertNext(t, iterator, []byte("key3"), []byte("value3"))
 
-	kv, err := iterator.Next()
-	assert.NoError(t, err)
-	assert.True(t, kv.IsAbsent())
+	kv, ok := iterator.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, kv)
 }
 
 func TestSRIterFromKey(t *testing.T) {
@@ -121,11 +121,11 @@ func TestSRIterFromKey(t *testing.T) {
 		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
-			iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+			iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
-		next, err := kvIter.Next()
-		assert.NoError(t, err)
-		assert.False(t, next.IsPresent())
+		next, ok := kvIter.Next()
+		assert.False(t, ok)
+		assert.Equal(t, common.KV{}, next)
 	}
 }
 
@@ -148,11 +148,11 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
-		iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+		iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	next, err := kvIter.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	next, ok := kvIter.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, next)
 }
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
@@ -170,7 +170,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	assert.NoError(t, err)
-	next, err := kvIter.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	next, ok := kvIter.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, next)
 }

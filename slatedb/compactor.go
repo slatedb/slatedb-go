@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"go.uber.org/zap"
 )
@@ -383,14 +383,15 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 
 	var l0MergeIter, srMergeIter iter.KVIterator
 	if len(compaction.sortedRuns) == 0 {
-		l0MergeIter = iter.NewMergeIterator(l0Iters)
+		l0MergeIter = iter.NewMergeSort(l0Iters...)
 		return l0MergeIter, nil
 	} else if len(compaction.sstList) == 0 {
-		srMergeIter = iter.NewMergeIterator(srIters)
+		srMergeIter = iter.NewMergeSort(srIters...)
 		return srMergeIter, nil
 	}
 
-	return iter.NewTwoMergeIterator(l0MergeIter, srMergeIter)
+	it := iter.NewMergeSort(l0MergeIter, srMergeIter)
+	return it, nil
 }
 
 func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*SortedRun, error) {
@@ -403,15 +404,11 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 	currentWriter := e.tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
 	currentSize := 0
 	for {
-		entry, err := allIter.NextEntry()
-		if err != nil {
-			return nil, err
-		}
-		if entry.IsAbsent() {
+		kv, ok := allIter.NextEntry()
+		if !ok {
 			break
 		}
 
-		kv, _ := entry.Get()
 		value := kv.ValueDel.GetValue()
 		err = currentWriter.add(kv.Key, value)
 		if err != nil {

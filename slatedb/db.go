@@ -177,12 +177,11 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 				return nil, err
 			}
 
-			entry, err := iter.NextEntry()
-			if err != nil {
+			kv, ok := iter.NextEntry()
+			if !ok {
 				return nil, err
 			}
 
-			kv, ok := entry.Get()
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.ValueDel)
 			}
@@ -197,12 +196,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 				return nil, err
 			}
 
-			entry, err := iter.NextEntry()
-			if err != nil {
-				return nil, err
-			}
-
-			kv, ok := entry.Get()
+			kv, ok := iter.NextEntry()
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.ValueDel)
 			}
@@ -277,12 +271,8 @@ func (db *DB) replayWAL() error {
 
 		walReplayBuf := make([]common.KVDeletable, 0)
 		for {
-			entry, err := iter.NextEntry()
-			if err != nil {
-				return err
-			}
-			kvDel, _ := entry.Get()
-			if entry.IsAbsent() {
+			kvDel, ok := iter.NextEntry()
+			if !ok {
 				break
 			}
 			walReplayBuf = append(walReplayBuf, kvDel)

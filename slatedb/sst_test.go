@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/iter"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"strconv"
@@ -36,7 +36,7 @@ func nextBlockToIter(builder *EncodedSSTableBuilder) *block.Iterator {
 	var decoded block.Block
 
 	// TODO(thrawn01): Handle this error when we refactor iterators
-	_ = block.Decode(&decoded, blockBytes[:len(blockBytes)-common.SizeOfUint32InBytes])
+	_ = block.Decode(&decoded, blockBytes[:len(blockBytes)-common.SizeOfUint32])
 	return block.NewIterator(&decoded)
 }
 
@@ -67,25 +67,22 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	builder.add([]byte("cccccccc"), mo.Some([]byte("33333333")))
 
 	iterator := nextBlockToIter(builder)
-	iter.AssertIterNextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
-	nextEntry, err := iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
 
 	iterator = nextBlockToIter(builder)
-	iter.AssertIterNextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
-	nextEntry, err = iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
 
 	assert.True(t, builder.nextBlock().IsAbsent())
 	builder.add([]byte("dddddddd"), mo.Some([]byte("44444444")))
 
 	iterator = nextBlockToIter(builder)
-	iter.AssertIterNextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
-	nextEntry, err = iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
 
 	assert.True(t, builder.nextBlock().IsAbsent())
 }
@@ -125,10 +122,9 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 		blk, err := format.readBlockRaw(encodedSST.sstInfo, index, uint64(i), rawSST)
 		assert.NoError(t, err)
 		iterator := block.NewIterator(blk)
-		iter.AssertIterNextEntry(t, iterator, kv.Key, kv.Value)
-		nextEntry, err := iterator.NextEntry()
-		assert.NoError(t, err)
-		assert.True(t, nextEntry.IsAbsent())
+		iter.AssertNextEntry(t, iterator, kv.Key, kv.Value)
+		_, ok := iterator.NextEntry()
+		assert.False(t, ok)
 	}
 }
 
@@ -272,17 +268,15 @@ func TestReadBlocks(t *testing.T) {
 	assert.Equal(t, 2, len(blocks))
 
 	iterator := block.NewIterator(&blocks[0])
-	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
-	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
-	nextEntry, err := iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("aa"), []byte("11"))
+	iter.AssertNextEntry(t, iterator, []byte("bb"), []byte("22"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[1])
-	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	nextEntry, err = iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
 }
 
 func TestReadAllBlocks(t *testing.T) {
@@ -315,23 +309,20 @@ func TestReadAllBlocks(t *testing.T) {
 	assert.Equal(t, 3, len(blocks))
 
 	iterator := block.NewIterator(&blocks[0])
-	iter.AssertIterNextEntry(t, iterator, []byte("aa"), []byte("11"))
-	iter.AssertIterNextEntry(t, iterator, []byte("bb"), []byte("22"))
-	nextEntry, err := iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("aa"), []byte("11"))
+	iter.AssertNextEntry(t, iterator, []byte("bb"), []byte("22"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[1])
-	iter.AssertIterNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	nextEntry, err = iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[2])
-	iter.AssertIterNextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
-	nextEntry, err = iterator.NextEntry()
-	assert.NoError(t, err)
-	assert.True(t, nextEntry.IsAbsent())
+	iter.AssertNextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
 }
 
 // SSTIterator tests
@@ -359,14 +350,13 @@ func TestOneBlockSSTIter(t *testing.T) {
 
 	iterator, err := newSSTIterator(sstHandle, tableStore, 1, 1)
 	assert.NoError(t, err)
-	iter.AssertIterNext(t, iterator, []byte("key1"), []byte("value1"))
-	iter.AssertIterNext(t, iterator, []byte("key2"), []byte("value2"))
-	iter.AssertIterNext(t, iterator, []byte("key3"), []byte("value3"))
-	iter.AssertIterNext(t, iterator, []byte("key4"), []byte("value4"))
+	iter.AssertNext(t, iterator, []byte("key1"), []byte("value1"))
+	iter.AssertNext(t, iterator, []byte("key2"), []byte("value2"))
+	iter.AssertNext(t, iterator, []byte("key3"), []byte("value3"))
+	iter.AssertNext(t, iterator, []byte("key4"), []byte("value4"))
 
-	next, err := iterator.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	_, ok := iterator.Next()
+	assert.False(t, ok)
 }
 
 func TestManyBlockSSTIter(t *testing.T) {
@@ -395,12 +385,13 @@ func TestManyBlockSSTIter(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value%d", i))
-		iter.AssertIterNext(t, iterator, key, value)
+		if !iter.AssertNext(t, iterator, key, value) {
+			t.FailNow()
+		}
 	}
 
-	next, err := iterator.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	_, ok := iterator.Next()
+	assert.False(t, ok)
 }
 
 func TestIterFromKey(t *testing.T) {
@@ -429,11 +420,12 @@ func TestIterFromKey(t *testing.T) {
 		assert.NoError(t, err)
 
 		for j := 0; j < nKeys-i; j++ {
-			iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+			if !iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next()) {
+				t.FailNow()
+			}
 		}
-		next, err := kvIter.Next()
-		assert.NoError(t, err)
-		assert.False(t, next.IsPresent())
+		_, ok := kvIter.Next()
+		assert.False(t, ok)
 	}
 }
 
@@ -457,11 +449,10 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	assert.NoError(t, err)
 
 	for i := 0; i < nKeys; i++ {
-		iter.AssertIterNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+		iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	next, err := kvIter.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	_, ok := kvIter.Next()
+	assert.False(t, ok)
 }
 
 func TestIterFromKeyLargerThanLast(t *testing.T) {
@@ -481,13 +472,12 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	kvIter, err := newSSTIteratorFromKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	assert.NoError(t, err)
 
-	next, err := kvIter.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	_, ok := kvIter.Next()
+	assert.False(t, ok)
 }
 
 func TestShouldGenerateOrderedBytes(t *testing.T) {
-	suffix := make([]byte, common.SizeOfUint32InBytes)
+	suffix := make([]byte, common.SizeOfUint32)
 	binary.BigEndian.PutUint32(suffix, 3735928559)
 	start := []byte{0, 0, 0}
 	gen := common.NewOrderedBytesGenerator(suffix, start, 0, 2)
