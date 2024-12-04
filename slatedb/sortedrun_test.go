@@ -3,7 +3,7 @@ package slatedb
 import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/internal/iter"
+	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -51,9 +51,9 @@ func TestOneSstSRIter(t *testing.T) {
 	sr := SortedRun{0, []SSTableHandle{*sstHandle}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
-	iter.AssertNext(t, iterator, []byte("key1"), []byte("value1"))
-	iter.AssertNext(t, iterator, []byte("key2"), []byte("value2"))
-	iter.AssertNext(t, iterator, []byte("key3"), []byte("value3"))
+	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
+	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
+	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
 	kv, ok := iterator.Next()
 	assert.False(t, ok)
@@ -86,9 +86,9 @@ func TestManySstSRIter(t *testing.T) {
 	sr := SortedRun{0, []SSTableHandle{*sstHandle, *sstHandle2}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
-	iter.AssertNext(t, iterator, []byte("key1"), []byte("value1"))
-	iter.AssertNext(t, iterator, []byte("key2"), []byte("value2"))
-	iter.AssertNext(t, iterator, []byte("key3"), []byte("value3"))
+	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
+	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
+	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
 	kv, ok := iterator.Next()
 	assert.False(t, ok)
@@ -121,7 +121,7 @@ func TestSRIterFromKey(t *testing.T) {
 		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
-			iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+			assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
 		next, ok := kvIter.Next()
 		assert.False(t, ok)
@@ -148,7 +148,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
-		iter.AssertNext(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
 	next, ok := kvIter.Next()
 	assert.False(t, ok)

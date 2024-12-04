@@ -2,8 +2,6 @@ package iter
 
 import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 type KVIterator interface {
@@ -64,33 +62,4 @@ func (k *KV) Add(key []byte, value []byte) *KV {
 
 func (k *KV) Len() int {
 	return len(k.entries)
-}
-
-// AssertNextEntry is a test helper to assert the next call to NextEntry() returns the required value
-func AssertNextEntry(t *testing.T, iter KVIterator, key []byte, value []byte) {
-	t.Helper()
-	entry, ok := iter.NextEntry()
-	assert.True(t, ok)
-	assert.Equal(t, key, entry.Key)
-	if value == nil {
-		assert.True(t, entry.ValueDel.IsTombstone)
-		assert.Equal(t, []byte(nil), entry.ValueDel.Value)
-	} else {
-		assert.False(t, entry.ValueDel.IsTombstone)
-		assert.Equal(t, value, entry.ValueDel.Value)
-	}
-}
-
-// AssertNext is a test helper to assert the next call to Next() returns the required value
-func AssertNext(t *testing.T, iter KVIterator, key []byte, value []byte) bool {
-	t.Helper()
-	kv, _ := iter.Next()
-	//assert.True(t, ok)
-	if !assert.Equal(t, key, kv.Key) {
-		return false
-	}
-	if !assert.Equal(t, value, kv.Value) {
-		return false
-	}
-	return true
 }
