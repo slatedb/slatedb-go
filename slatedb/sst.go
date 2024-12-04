@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"fmt"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
@@ -231,7 +232,7 @@ func (f *SSTableFormat) readBlocks(
 
 func (f *SSTableFormat) decodeBytesToBlock(bytes []byte, compressionCodec CompressionCodec) (*block.Block, error) {
 	// last 4 bytes hold the checksum
-	checksumIndex := len(bytes) - common.SizeOfUint32InBytes
+	checksumIndex := len(bytes) - common.SizeOfUint32
 	blockBytes := bytes[:checksumIndex]
 	storedChecksum := binary.BigEndian.Uint32(bytes[checksumIndex:])
 	if storedChecksum != crc32.ChecksumIEEE(blockBytes) {
@@ -477,7 +478,7 @@ func (b *EncodedSSTableBuilder) finishBlock() (mo.Option[[]byte], error) {
 
 	checksum := crc32.ChecksumIEEE(compressedBlock)
 
-	block := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32InBytes)
+	block := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32)
 	block = append(block, compressedBlock...)
 	block = binary.BigEndian.AppendUint32(block, checksum)
 
@@ -552,12 +553,12 @@ func (info *SSTableInfo) encode(buf *[]byte, sstCodec SsTableInfoCodec) {
 }
 
 func decodeBytesToSSTableInfo(rawInfo []byte, sstCodec SsTableInfoCodec) (*SSTableInfo, error) {
-	if len(rawInfo) <= common.SizeOfUint32InBytes {
+	if len(rawInfo) <= common.SizeOfUint32 {
 		return nil, common.ErrEmptyBlockMeta
 	}
 
 	// last 4 bytes hold the checksum
-	checksumIndex := len(rawInfo) - common.SizeOfUint32InBytes
+	checksumIndex := len(rawInfo) - common.SizeOfUint32
 	data := rawInfo[:checksumIndex]
 	checksum := binary.BigEndian.Uint32(rawInfo[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(data) {
@@ -637,57 +638,49 @@ func newSSTIteratorFromKey(
 	return iter, nil
 }
 
-func (iter *SSTIterator) Next() (mo.Option[common.KV], error) {
+func (iter *SSTIterator) Next() (common.KV, bool) {
 	for {
-		entry, err := iter.NextEntry()
-		if err != nil {
-			return mo.None[common.KV](), err
+		keyVal, ok := iter.NextEntry()
+		if !ok {
+			return common.KV{}, false
 		}
-		keyVal, ok := entry.Get()
-		if ok {
-			if keyVal.ValueDel.IsTombstone {
-				continue
-			}
 
-			return mo.Some(common.KV{
-				Key:   keyVal.Key,
-				Value: keyVal.ValueDel.Value,
-			}), nil
-		} else {
-			return mo.None[common.KV](), nil
+		if keyVal.ValueDel.IsTombstone {
+			continue
 		}
+
+		return common.KV{
+			Key:   keyVal.Key,
+			Value: keyVal.ValueDel.Value,
+		}, true
 	}
 }
 
-func (iter *SSTIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+func (iter *SSTIterator) NextEntry() (common.KVDeletable, bool) {
 	for {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
-				logger.Error("unable to get next entry", zap.Error(err))
-				return mo.None[common.KVDeletable](), err
+				return common.KVDeletable{}, false
 			}
 
 			if nextBlockIter.IsPresent() {
 				iter.currentBlockIter = nextBlockIter
 			} else {
-				return mo.None[common.KVDeletable](), nil
+				return common.KVDeletable{}, false
 			}
 		}
 
 		currentBlockIter, _ := iter.currentBlockIter.Get()
-		kv, err := currentBlockIter.NextEntry()
-		if err != nil {
-			return mo.None[common.KVDeletable](), err
-		}
-
-		if kv.IsPresent() {
-			return kv, nil
-		} else {
+		kv, ok := currentBlockIter.NextEntry()
+		if !ok {
 			// We have exhausted the current block, but not necessarily the entire SST,
 			// so we fall back to the top to check if we have more blocks to read.
 			iter.currentBlockIter = mo.None[*block.Iterator]()
+			continue
 		}
+
+		return kv, true
 	}
 }
 
@@ -730,8 +723,11 @@ func (iter *SSTIterator) spawnFetches() {
 func (iter *SSTIterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 	for {
 		iter.spawnFetches()
+		// TODO(thrawn01): This is a race, we should not expect an empty channel to indicate there are no more
+		//  items to process.
 		if len(iter.fetchTasks) == 0 {
 			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.ssTableIndex().BlockMetaLength(), "")
+			fmt.Printf("Iteration Stopped Due To Empty Task Channel\n")
 			return mo.None[*block.Iterator](), nil
 		}
 

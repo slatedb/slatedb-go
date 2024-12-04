@@ -31,7 +31,7 @@ func (g OrderedBytesGenerator) Clone() OrderedBytesGenerator {
 }
 
 func (g OrderedBytesGenerator) Next() []byte {
-	result := make([]byte, 0, len(g.data)+SizeOfUint32InBytes)
+	result := make([]byte, 0, len(g.data)+SizeOfUint32)
 	result = append(result, g.data...)
 	result = append(result, g.suffix...)
 	g.increment()

@@ -5,8 +5,8 @@ import "github.com/gammazero/deque"
 const (
 	// uint16 and uint32 sizes are constant as per https://go.dev/ref/spec#Size_and_alignment_guarantees
 
-	SizeOfUint16        = 2
-	SizeOfUint32InBytes = 4
+	SizeOfUint16 = 2
+	SizeOfUint32 = 4
 )
 
 type Range struct {

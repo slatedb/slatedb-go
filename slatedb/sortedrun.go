@@ -5,8 +5,6 @@ import (
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
 	"sort"
 )
 
@@ -126,54 +124,43 @@ func newSortedRunIter(
 	}, nil
 }
 
-func (iter *SortedRunIterator) Next() (mo.Option[common.KV], error) {
+func (iter *SortedRunIterator) Next() (common.KV, bool) {
 	for {
-		entry, err := iter.NextEntry()
-		if err != nil {
-			return mo.None[common.KV](), err
+		keyVal, ok := iter.NextEntry()
+		if !ok {
+			return common.KV{}, false
 		}
-		keyVal, ok := entry.Get()
-		if ok {
-			if keyVal.ValueDel.IsTombstone {
-				continue
-			}
+		if keyVal.ValueDel.IsTombstone {
+			continue
+		}
 
-			return mo.Some(common.KV{
-				Key:   keyVal.Key,
-				Value: keyVal.ValueDel.Value,
-			}), nil
-		} else {
-			return mo.None[common.KV](), nil
-		}
+		return common.KV{
+			Key:   keyVal.Key,
+			Value: keyVal.ValueDel.Value,
+		}, true
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+func (iter *SortedRunIterator) NextEntry() (common.KVDeletable, bool) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
-			return mo.None[common.KVDeletable](), nil
+			return common.KVDeletable{}, false
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
-		next, err := kvIter.NextEntry()
-		if err != nil {
-			logger.Error("unable to get next entry", zap.Error(err))
-			return mo.None[common.KVDeletable](), err
-		}
-
-		if next.IsPresent() {
-			kv, _ := next.Get()
-			return mo.Some(kv), nil
+		kv, ok := kvIter.NextEntry()
+		if ok {
+			return kv, true
 		}
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
-			return mo.None[common.KVDeletable](), nil
+			return common.KVDeletable{}, false
 		}
 
 		newKVIter, err := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		if err != nil {
-			return mo.None[common.KVDeletable](), err
+			return common.KVDeletable{}, false
 		}
 
 		iter.currentKVIter = mo.Some(newKVIter)

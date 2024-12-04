@@ -10,6 +10,24 @@ import (
 	"testing"
 )
 
+func TestNewBuilder(t *testing.T) {
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.IsEmpty())
+	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
+	assert.True(t, bb.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.False(t, bb.IsEmpty())
+
+	b, err := bb.Build()
+	assert.NoError(t, err)
+
+	encoded := block.Encode(b)
+	assert.NoError(t, err)
+	var decoded block.Block
+	assert.NoError(t, block.Decode(&decoded, encoded))
+	assert.Equal(t, b.Data, decoded.Data)
+	assert.Equal(t, b.Offsets, decoded.Offsets)
+}
+
 func TestBlock(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
@@ -60,20 +78,19 @@ func TestBlockIterator(t *testing.T) {
 
 	iter := block.NewIterator(b)
 	for i := 0; i < len(kvPairs); i++ {
-		next, err := iter.Next()
-		assert.NoError(t, err)
-		kv, ok := next.Get()
-		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.Key, kv.Key))
-		assert.True(t, bytes.Equal(kv.Value, kv.Value))
+		kvDel, shouldContinue := iter.NextEntry()
+		assert.True(t, shouldContinue)
+		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
+		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
+		assert.False(t, kvDel.ValueDel.IsTombstone)
 	}
 
-	kv, err := iter.Next()
-	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KV](), kv)
+	kvDel, shouldContinue := iter.NextEntry()
+	assert.False(t, shouldContinue)
+	assert.Equal(t, common.KVDeletable{}, kvDel)
 }
 
-func TestIterFromExistingKey(t *testing.T) {
+func TestNewIteratorAtKey(t *testing.T) {
 	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
@@ -91,20 +108,18 @@ func TestIterFromExistingKey(t *testing.T) {
 	iter := block.NewIteratorAtKey(b, []byte("kratos"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
-		next, err := iter.Next()
-		assert.NoError(t, err)
-		kv, ok := next.Get()
-		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.Key, kv.Key))
-		assert.True(t, bytes.Equal(kv.Value, kv.Value))
+		kv, shouldContinue := iter.Next()
+		assert.True(t, shouldContinue)
+		assert.True(t, bytes.Equal(kv.Key, kvPairs[i].Key))
+		assert.True(t, bytes.Equal(kv.Value, kvPairs[i].Value))
 	}
 
-	kv, err := iter.Next()
-	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KV](), kv)
+	kv, shouldContinue := iter.Next()
+	assert.False(t, shouldContinue)
+	assert.Equal(t, common.KV{}, kv)
 }
 
-func TestIterFromNonExistingKey(t *testing.T) {
+func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 	kvPairs := []common.KV{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
@@ -122,17 +137,16 @@ func TestIterFromNonExistingKey(t *testing.T) {
 	iter := block.NewIteratorAtKey(b, []byte("ka"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
-		next, err := iter.Next()
-		assert.NoError(t, err)
-		kv, ok := next.Get()
-		assert.True(t, ok)
-		assert.True(t, bytes.Equal(kv.Key, kv.Key))
-		assert.True(t, bytes.Equal(kv.Value, kv.Value))
+		kvDel, shouldContinue := iter.NextEntry()
+		assert.True(t, shouldContinue)
+		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
+		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
+		assert.False(t, kvDel.ValueDel.IsTombstone)
 	}
 
-	kv, err := iter.Next()
-	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KV](), kv)
+	kvDel, shouldContinue := iter.NextEntry()
+	assert.False(t, shouldContinue)
+	assert.Equal(t, common.KVDeletable{}, kvDel)
 }
 
 func TestIterFromEnd(t *testing.T) {
@@ -152,9 +166,9 @@ func TestIterFromEnd(t *testing.T) {
 
 	iter := block.NewIteratorAtKey(b, []byte("zzz"))
 	// Verify that iterator starts from index 1 which contains key "kratos"
-	kv, err := iter.Next()
-	assert.NoError(t, err)
-	assert.Equal(t, mo.None[common.KV](), kv)
+	kv, ok := iter.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, kv)
 }
 
 // TODO(thrawn01): Add additional tests <-- do this next

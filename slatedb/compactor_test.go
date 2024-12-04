@@ -49,25 +49,21 @@ func TestCompactorCompactsL0(t *testing.T) {
 	iter, err := newSSTIterator(&sst, tableStore, 1, 1)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
-		next, err := iter.Next()
-		assert.NoError(t, err)
-		assert.True(t, next.IsPresent())
-		kv, _ := next.Get()
+		kv, ok := iter.Next()
+		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('a'+i), 16), kv.Key)
 		assert.Equal(t, repeatedChar(rune('b'+i), 48), kv.Value)
 	}
 	for i := 0; i < 4; i++ {
-		next, err := iter.Next()
-		assert.NoError(t, err)
-		assert.True(t, next.IsPresent())
-		kv, _ := next.Get()
+		kv, ok := iter.Next()
+		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('j'+i), 16), kv.Key)
 		assert.Equal(t, repeatedChar(rune('k'+i), 48), kv.Value)
 	}
 
-	next, err := iter.Next()
-	assert.NoError(t, err)
-	assert.False(t, next.IsPresent())
+	next, ok := iter.Next()
+	assert.False(t, ok)
+	assert.Equal(t, common.KV{}, next)
 }
 
 func TestShouldWriteManifestSafely(t *testing.T) {
