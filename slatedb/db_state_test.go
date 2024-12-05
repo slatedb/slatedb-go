@@ -3,18 +3,20 @@ package slatedb
 import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func addL0sToDBState(dbState *DBState, n uint32) {
-	sstInfo := &SSTableInfo{
-		firstKey:         mo.None[[]byte](),
-		indexOffset:      0,
-		indexLen:         0,
-		filterOffset:     0,
-		filterLen:        0,
-		compressionCodec: CompressionNone,
+	sstInfo := &sstable.SSTableInfo{
+		FirstKey:         mo.None[[]byte](),
+		IndexOffset:      0,
+		IndexLen:         0,
+		FilterOffset:     0,
+		FilterLen:        0,
+		CompressionCodec: compress.CodecNone,
 	}
 
 	for i := 0; i < int(n); i++ {

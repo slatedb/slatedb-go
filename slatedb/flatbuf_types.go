@@ -6,6 +6,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	flatbuf "github.com/slatedb/slatedb-go/gen"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
@@ -64,13 +66,13 @@ func (f FlatBufferSSTableIndexCodec) decode(data []byte) *flatbuf.SsTableIndexT 
 // encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
 type FlatBufferSSTableInfoCodec struct{}
 
-func (f FlatBufferSSTableInfoCodec) encode(info *SSTableInfo) []byte {
+func (f FlatBufferSSTableInfoCodec) Encode(info *sstable.SSTableInfo) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	dbFBBuilder := newDBFlatBufferBuilder(builder)
 	return dbFBBuilder.createSSTInfo(info)
 }
 
-func (f FlatBufferSSTableInfoCodec) decode(data []byte) *SSTableInfo {
+func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *sstable.SSTableInfo {
 	info := flatbuf.GetRootAsSsTableInfo(data, 0)
 	return sstInfoFromFlatBuf(info)
 }
@@ -142,19 +144,19 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.Compac
 	return sstList
 }
 
-func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT) *SSTableInfo {
+func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT) *sstable.SSTableInfo {
 	firstKey := mo.None[[]byte]()
 	keyBytes := info.FirstKey
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
-	return &SSTableInfo{
-		firstKey:         firstKey,
-		indexOffset:      info.IndexOffset,
-		indexLen:         info.IndexLen,
-		filterOffset:     info.FilterOffset,
-		filterLen:        info.FilterLen,
-		compressionCodec: compressionCodecFromFlatBuf(info.CompressionFormat),
+	return &sstable.SSTableInfo{
+		FirstKey:         firstKey,
+		IndexOffset:      info.IndexOffset,
+		IndexLen:         info.IndexLen,
+		FilterOffset:     info.FilterOffset,
+		FilterLen:        info.FilterLen,
+		CompressionCodec: compress.CodecFromFlatBuf(info.CompressionFormat),
 	}
 }
 
@@ -213,7 +215,7 @@ func (fb *DBFlatBufferBuilder) createSSTIndex(index flatbuf.SsTableIndexT) []byt
 	return fb.builder.FinishedBytes()
 }
 
-func (fb *DBFlatBufferBuilder) createSSTInfo(info *SSTableInfo) []byte {
+func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.SSTableInfo) []byte {
 	fbSSTInfo := sstInfoToFlatBuf(info)
 	offset := fbSSTInfo.Pack(fb.builder)
 	fb.builder.Finish(offset)
@@ -228,7 +230,7 @@ func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []SSTableHandle) []*flat
 	return compactedSSTs
 }
 
-func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *SSTableInfo) *flatbuf.CompactedSsTableT {
+func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *sstable.SSTableInfo) *flatbuf.CompactedSsTableT {
 	common.AssertTrue(sstID.typ == Compacted, "cannot pass WAL SST handle to create compacted sst")
 	id, err := ulid.Parse(sstID.value)
 	if err != nil {
@@ -261,69 +263,35 @@ func (fb *DBFlatBufferBuilder) sortedRunsToFlatBuf(sortedRuns []SortedRun) []*fl
 	return sortedRunFBs
 }
 
-func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *SSTableInfo {
+func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *sstable.SSTableInfo {
 	firstKey := mo.None[[]byte]()
 	keyBytes := info.FirstKeyBytes()
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
 
-	return &SSTableInfo{
-		firstKey:         firstKey,
-		indexOffset:      info.IndexOffset(),
-		indexLen:         info.IndexLen(),
-		filterOffset:     info.FilterOffset(),
-		filterLen:        info.FilterLen(),
-		compressionCodec: compressionCodecFromFlatBuf(info.CompressionFormat()),
+	return &sstable.SSTableInfo{
+		FirstKey:         firstKey,
+		IndexOffset:      info.IndexOffset(),
+		IndexLen:         info.IndexLen(),
+		FilterOffset:     info.FilterOffset(),
+		FilterLen:        info.FilterLen(),
+		CompressionCodec: compress.CodecFromFlatBuf(info.CompressionFormat()),
 	}
 }
 
-func sstInfoToFlatBuf(info *SSTableInfo) *flatbuf.SsTableInfoT {
+func sstInfoToFlatBuf(info *sstable.SSTableInfo) *flatbuf.SsTableInfoT {
 	var firstKey []byte
-	if info.firstKey.IsPresent() {
-		firstKey, _ = info.firstKey.Get()
+	if info.FirstKey.IsPresent() {
+		firstKey, _ = info.FirstKey.Get()
 	}
 
 	return &flatbuf.SsTableInfoT{
 		FirstKey:          firstKey,
-		IndexOffset:       info.indexOffset,
-		IndexLen:          info.indexLen,
-		FilterOffset:      info.filterOffset,
-		FilterLen:         info.filterLen,
-		CompressionFormat: compressionCodecToFlatBuf(info.compressionCodec),
-	}
-}
-
-func compressionCodecFromFlatBuf(compressionFormat flatbuf.CompressionFormat) CompressionCodec {
-	switch compressionFormat {
-	case flatbuf.CompressionFormatNone:
-		return CompressionNone
-	case flatbuf.CompressionFormatSnappy:
-		return CompressionSnappy
-	case flatbuf.CompressionFormatZlib:
-		return CompressionZlib
-	case flatbuf.CompressionFormatLz4:
-		return CompressionLz4
-	case flatbuf.CompressionFormatZstd:
-		return CompressionZstd
-	default:
-		panic("invalid CompressionFormat")
-	}
-}
-
-func compressionCodecToFlatBuf(codec CompressionCodec) flatbuf.CompressionFormat {
-	switch codec {
-	case CompressionNone:
-		return flatbuf.CompressionFormatNone
-	case CompressionSnappy:
-		return flatbuf.CompressionFormatSnappy
-	case CompressionZlib:
-		return flatbuf.CompressionFormatZlib
-	case CompressionLz4:
-		return flatbuf.CompressionFormatLz4
-	case CompressionZstd:
-		return flatbuf.CompressionFormatZstd
-	default:
-		panic("invalid CompressionCodec")
+		IndexOffset:       info.IndexOffset,
+		IndexLen:          info.IndexLen,
+		FilterOffset:      info.FilterOffset,
+		FilterLen:         info.FilterLen,
+		CompressionFormat: compress.CodecToFlatBuf(info.CompressionCodec),
 	}
 }

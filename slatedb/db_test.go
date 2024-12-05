@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"strconv"
 	"strings"
 	"testing"
@@ -508,7 +509,7 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
-		CompressionCodec:     CompressionNone,
+		CompressionCodec:     compress.CodecNone,
 	}
 }
 

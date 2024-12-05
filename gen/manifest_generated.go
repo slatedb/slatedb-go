@@ -7,6 +7,7 @@ import (
 	"strconv"
 )
 
+// TODO(thrawn01): consider renaming to CompressionCodec
 type CompressionFormat int8
 
 const (

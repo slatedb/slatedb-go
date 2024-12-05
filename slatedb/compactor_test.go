@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"math"
 	"slices"
 	"testing"
@@ -141,7 +142,7 @@ func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 		MinFilterKeys:        0,
 		L0SSTSizeBytes:       128,
 		CompactorOptions:     compactorOptions,
-		CompressionCodec:     CompressionNone,
+		CompressionCodec:     compress.CodecNone,
 	}
 }
 

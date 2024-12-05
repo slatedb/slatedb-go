@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -146,7 +147,7 @@ func TestSSTable(t *testing.T) {
 	sstHandle, err := tableStore.writeSST(newSSTableIDWal(0), encodedSST)
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
-	firstKey, ok := sstHandle.info.firstKey.Get()
+	firstKey, ok := sstHandle.info.FirstKey.Get()
 	assert.True(t, ok)
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 
@@ -159,7 +160,7 @@ func TestSSTable(t *testing.T) {
 	index, err := tableStore.readIndex(sstHandleFromStore)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, index.ssTableIndex().BlockMetaLength())
-	firstKey, ok = sstInfoFromStore.firstKey.Get()
+	firstKey, ok = sstInfoFromStore.FirstKey.Get()
 	assert.True(t, ok)
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 	firstKey = index.ssTableIndex().UnPack().BlockMeta[0].FirstKey
@@ -185,7 +186,7 @@ func TestSSTableNoFilter(t *testing.T) {
 	sstHandle, err := tableStore.openSST(newSSTableIDWal(0))
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.info)
-	assert.Equal(t, uint64(0), sstHandle.info.filterLen)
+	assert.Equal(t, uint64(0), sstHandle.info.FilterLen)
 }
 
 func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
@@ -209,7 +210,7 @@ func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
 }
 
 func TestSSTableWithCompression(t *testing.T) {
-	codecs := []CompressionCodec{CompressionSnappy, CompressionZlib, CompressionLz4, CompressionZstd}
+	codecs := []compress.Codec{compress.CodecSnappy, compress.CodecZlib, compress.CodecLz4, compress.CodecZstd}
 	for _, compression := range codecs {
 		bucket := objstore.NewInMemBucket()
 		format := defaultSSTableFormat()
@@ -233,7 +234,7 @@ func TestSSTableWithCompression(t *testing.T) {
 
 		assert.Equal(t, encodedInfo, sstHandle.info)
 		assert.Equal(t, 1, index.ssTableIndex().BlockMetaLength())
-		firstKey, ok := sstHandle.info.firstKey.Get()
+		firstKey, ok := sstHandle.info.FirstKey.Get()
 		assert.True(t, ok)
 		assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 	}
