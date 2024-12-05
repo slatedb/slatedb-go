@@ -105,13 +105,13 @@ func (db *DB) flushImmTable(id SSTableID, iter *table.KVTableIterator) (*SSTable
 		if !kv.ValueDel.IsTombstone {
 			val = mo.Some(kv.ValueDel.Value)
 		}
-		err = sstBuilder.add(kv.Key, val)
+		err = sstBuilder.Add(kv.Key, val)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	encodedSST, err := sstBuilder.build()
+	encodedSST, err := sstBuilder.Build()
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"io"
 	"path"
 	"slices"
@@ -80,16 +81,16 @@ func (ts *TableStore) tableWriter(sstID SSTableID) *EncodedSSTableWriter {
 	}
 }
 
-func (ts *TableStore) tableBuilder() *EncodedSSTableBuilder {
+func (ts *TableStore) tableBuilder() *sstable.EncodedSSTableBuilder {
 	return ts.sstFormat.tableBuilder()
 }
 
-func (ts *TableStore) writeSST(id SSTableID, encodedSST *EncodedSSTable) (*SSTableHandle, error) {
+func (ts *TableStore) writeSST(id SSTableID, encodedSST *sstable.EncodedSSTable) (*SSTableHandle, error) {
 	sstPath := ts.sstPath(id)
 
 	blocksData := make([]byte, 0)
-	for i := 0; i < encodedSST.unconsumedBlocks.Len(); i++ {
-		blocksData = append(blocksData, encodedSST.unconsumedBlocks.At(i)...)
+	for i := 0; i < encodedSST.Blocks.Len(); i++ {
+		blocksData = append(blocksData, encodedSST.Blocks.At(i)...)
 	}
 
 	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
@@ -98,8 +99,8 @@ func (ts *TableStore) writeSST(id SSTableID, encodedSST *EncodedSSTable) (*SSTab
 		return nil, common.ErrObjectStore
 	}
 
-	ts.cacheFilter(id, encodedSST.filter)
-	return newSSTableHandle(id, encodedSST.sstInfo), nil
+	ts.cacheFilter(id, encodedSST.Bloom)
+	return newSSTableHandle(id, encodedSST.Info), nil
 }
 
 func (ts *TableStore) openSST(id SSTableID) (*SSTableHandle, error) {
@@ -126,7 +127,7 @@ func (ts *TableStore) readBlocks(sstHandle *SSTableHandle, blocksRange common.Ra
 func (ts *TableStore) readBlocksUsingIndex(
 	sstHandle *SSTableHandle,
 	blocksRange common.Range,
-	index *SSTableIndexData,
+	index *sstable.SSTableIndexData,
 ) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	return ts.sstFormat.readBlocks(sstHandle.info, index, blocksRange, obj)
@@ -156,7 +157,7 @@ func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[bloom.Filt
 	return filtr, nil
 }
 
-func (ts *TableStore) readIndex(sstHandle *SSTableHandle) (*SSTableIndexData, error) {
+func (ts *TableStore) readIndex(sstHandle *SSTableHandle) (*sstable.SSTableIndexData, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	index, err := ts.sstFormat.readIndex(sstHandle.info, obj)
 	if err != nil {
@@ -209,7 +210,7 @@ func (ts *TableStore) clone() *TableStore {
 
 type EncodedSSTableWriter struct {
 	sstID      SSTableID
-	builder    *EncodedSSTableBuilder
+	builder    *sstable.EncodedSSTableBuilder
 	tableStore *TableStore
 
 	// TODO: we are using an unbounded slice of byte as buffer.
@@ -220,14 +221,14 @@ type EncodedSSTableWriter struct {
 }
 
 func (w *EncodedSSTableWriter) add(key []byte, value mo.Option[[]byte]) error {
-	err := w.builder.add(key, value)
+	err := w.builder.Add(key, value)
 	if err != nil {
-		logger.Error("unable to add key value", zap.Error(err))
+		logger.Error("unable to Add key value", zap.Error(err))
 		return err
 	}
 
 	for {
-		block, ok := w.builder.nextBlock().Get()
+		block, ok := w.builder.NextBlock().Get()
 		if !ok {
 			break
 		}
@@ -239,7 +240,7 @@ func (w *EncodedSSTableWriter) add(key []byte, value mo.Option[[]byte]) error {
 }
 
 func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
-	encodedSST, err := w.builder.build()
+	encodedSST, err := w.builder.Build()
 	if err != nil {
 		logger.Error("unable to close SS Table", zap.Error(err))
 		return nil, err
@@ -247,10 +248,10 @@ func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
 
 	blocksData := w.buffer
 	for {
-		if encodedSST.unconsumedBlocks.Len() == 0 {
+		if encodedSST.Blocks.Len() == 0 {
 			break
 		}
-		blocksData = append(blocksData, encodedSST.unconsumedBlocks.PopFront()...)
+		blocksData = append(blocksData, encodedSST.Blocks.PopFront()...)
 	}
 
 	sstPath := w.tableStore.sstPath(w.sstID)
@@ -259,8 +260,8 @@ func (w *EncodedSSTableWriter) close() (*SSTableHandle, error) {
 		return nil, common.ErrObjectStore
 	}
 
-	w.tableStore.cacheFilter(w.sstID, encodedSST.filter)
-	return newSSTableHandle(w.sstID, encodedSST.sstInfo), nil
+	w.tableStore.cacheFilter(w.sstID, encodedSST.Bloom)
+	return newSSTableHandle(w.sstID, encodedSST.Info), nil
 }
 
 // ------------------------------------------------

@@ -15,67 +15,13 @@ import (
 // SSTableIndexData
 // ------------------------------------------------
 
-type SSTableIndexData struct {
-	data []byte
-}
-
-func newSSTableIndexData(data []byte) *SSTableIndexData {
-	return &SSTableIndexData{data: data}
-}
-
-func (info *SSTableIndexData) ssTableIndex() *flatbuf.SsTableIndex {
-	return flatbuf.GetRootAsSsTableIndex(info.data, 0)
-}
-
-func (info *SSTableIndexData) size() int {
-	return len(info.data)
-}
-
-func (info *SSTableIndexData) clone() *SSTableIndexData {
-	data := make([]byte, len(info.data))
-	copy(data, info.data)
-	return &SSTableIndexData{
-		data: data,
-	}
-}
-
 // ------------------------------------------------
 // FlatBufferSSTableIndexCodec
 // ------------------------------------------------
 
-// FlatBufferSSTableIndexCodec defines how we
-// encode SsTableIndex to byte slice and decode byte slice back to SSTableIndex
-type FlatBufferSSTableIndexCodec struct{}
-
-func (f FlatBufferSSTableIndexCodec) Encode(index flatbuf.SsTableIndexT) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	dbFBBuilder := newDBFlatBufferBuilder(builder)
-	return dbFBBuilder.createSSTIndex(index)
-}
-
-func (f FlatBufferSSTableIndexCodec) Decode(data []byte) *flatbuf.SsTableIndexT {
-	indexData := newSSTableIndexData(data)
-	return indexData.ssTableIndex().UnPack()
-}
-
 // ------------------------------------------------
 // FlatBufferSSTableInfoCodec
 // ------------------------------------------------
-
-// FlatBufferSSTableInfoCodec implements SsTableInfoCodec and defines how we
-// encode sstable.Info to byte slice and decode byte slice back to sstable.Info
-type FlatBufferSSTableInfoCodec struct{}
-
-func (f FlatBufferSSTableInfoCodec) Encode(info *sstable.Info) []byte {
-	builder := flatbuffers.NewBuilder(0)
-	dbFBBuilder := newDBFlatBufferBuilder(builder)
-	return dbFBBuilder.createSSTInfo(info)
-}
-
-func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *sstable.Info {
-	info := flatbuf.GetRootAsSsTableInfo(data, 0)
-	return sstInfoFromFlatBuf(info)
-}
 
 // ------------------------------------------------
 // FlatBufferManifestCodec
@@ -87,7 +33,7 @@ type FlatBufferManifestCodec struct{}
 
 func (f FlatBufferManifestCodec) encode(manifest *Manifest) []byte {
 	builder := flatbuffers.NewBuilder(0)
-	dbFlatBufBuilder := newDBFlatBufferBuilder(builder)
+	dbFlatBufBuilder := NewDBFlatBufferBuilder(builder)
 	return dbFlatBufBuilder.createManifest(manifest)
 }
 
@@ -179,7 +125,7 @@ type DBFlatBufferBuilder struct {
 	builder *flatbuffers.Builder
 }
 
-func newDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
+func NewDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 	return DBFlatBufferBuilder{builder}
 }
 
@@ -216,7 +162,7 @@ func (fb *DBFlatBufferBuilder) createSSTIndex(index flatbuf.SsTableIndexT) []byt
 }
 
 func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.Info) []byte {
-	fbSSTInfo := sstInfoToFlatBuf(info)
+	fbSSTInfo := sstable.SstInfoToFlatBuf(info)
 	offset := fbSSTInfo.Pack(fb.builder)
 	fb.builder.Finish(offset)
 	return fb.builder.FinishedBytes()
@@ -239,7 +185,7 @@ func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *sstable.In
 
 	return &flatbuf.CompactedSsTableT{
 		Id:   fb.compactedSSTID(id),
-		Info: sstInfoToFlatBuf(sstInfo),
+		Info: sstable.SstInfoToFlatBuf(sstInfo),
 	}
 }
 
@@ -261,37 +207,4 @@ func (fb *DBFlatBufferBuilder) sortedRunsToFlatBuf(sortedRuns []SortedRun) []*fl
 		})
 	}
 	return sortedRunFBs
-}
-
-func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *sstable.Info {
-	firstKey := mo.None[[]byte]()
-	keyBytes := info.FirstKeyBytes()
-	if keyBytes != nil {
-		firstKey = mo.Some(keyBytes)
-	}
-
-	return &sstable.Info{
-		FirstKey:         firstKey,
-		IndexOffset:      info.IndexOffset(),
-		IndexLen:         info.IndexLen(),
-		FilterOffset:     info.FilterOffset(),
-		FilterLen:        info.FilterLen(),
-		CompressionCodec: compress.CodecFromFlatBuf(info.CompressionFormat()),
-	}
-}
-
-func sstInfoToFlatBuf(info *sstable.Info) *flatbuf.SsTableInfoT {
-	var firstKey []byte
-	if info.FirstKey.IsPresent() {
-		firstKey, _ = info.FirstKey.Get()
-	}
-
-	return &flatbuf.SsTableInfoT{
-		FirstKey:          firstKey,
-		IndexOffset:       info.IndexOffset,
-		IndexLen:          info.IndexLen,
-		FilterOffset:      info.FilterOffset,
-		FilterLen:         info.FilterLen,
-		CompressionFormat: compress.CodecToFlatBuf(info.CompressionCodec),
-	}
 }
