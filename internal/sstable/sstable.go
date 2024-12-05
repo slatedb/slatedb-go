@@ -7,11 +7,10 @@ import (
 	"hash/crc32"
 )
 
-// SSTableInfo contains meta information on the SSTable when it is serialized.
+// Info contains meta information on the SSTable when it is serialized.
 // This is used when we read SSTable as a slice of bytes from object storage and we want to parse the slice of bytes
 // Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
-// TODO(thrawn01): Rename to sstable.Info
-type SSTableInfo struct {
+type Info struct {
 	// contains the FirstKey of the SSTable
 	FirstKey mo.Option[[]byte]
 
@@ -33,13 +32,13 @@ type SSTableInfo struct {
 }
 
 // TODO: Make this a package level function
-func (info *SSTableInfo) Encode(buf *[]byte, sstCodec SsTableInfoCodec) {
+func (info *Info) Encode(buf *[]byte, sstCodec SsTableInfoCodec) {
 	data := sstCodec.Encode(info)
 	*buf = append(*buf, data...)
 	*buf = binary.BigEndian.AppendUint32(*buf, crc32.ChecksumIEEE(data))
 }
 
-func (info *SSTableInfo) Clone() *SSTableInfo {
+func (info *Info) Clone() *Info {
 	firstKey := mo.None[[]byte]()
 	if info.FirstKey.IsPresent() {
 		key, _ := info.FirstKey.Get()
@@ -47,7 +46,7 @@ func (info *SSTableInfo) Clone() *SSTableInfo {
 		copy(k, key)
 		firstKey = mo.Some(k)
 	}
-	return &SSTableInfo{
+	return &Info{
 		FirstKey:         firstKey,
 		IndexOffset:      info.IndexOffset,
 		IndexLen:         info.IndexLen,
@@ -58,9 +57,9 @@ func (info *SSTableInfo) Clone() *SSTableInfo {
 }
 
 // SsTableInfoCodec - implementation of this interface defines how we
-// encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
+// encode sstable.Info to byte slice and decode byte slice back to sstable.Info
 // Currently we use FlatBuffers for encoding and decoding.
 type SsTableInfoCodec interface {
-	Encode(info *SSTableInfo) []byte
-	Decode(data []byte) *SSTableInfo
+	Encode(info *Info) []byte
+	Decode(data []byte) *Info
 }

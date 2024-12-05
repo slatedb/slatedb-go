@@ -47,13 +47,13 @@ func (info *SSTableIndexData) clone() *SSTableIndexData {
 // encode SsTableIndex to byte slice and decode byte slice back to SSTableIndex
 type FlatBufferSSTableIndexCodec struct{}
 
-func (f FlatBufferSSTableIndexCodec) encode(index flatbuf.SsTableIndexT) []byte {
+func (f FlatBufferSSTableIndexCodec) Encode(index flatbuf.SsTableIndexT) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	dbFBBuilder := newDBFlatBufferBuilder(builder)
 	return dbFBBuilder.createSSTIndex(index)
 }
 
-func (f FlatBufferSSTableIndexCodec) decode(data []byte) *flatbuf.SsTableIndexT {
+func (f FlatBufferSSTableIndexCodec) Decode(data []byte) *flatbuf.SsTableIndexT {
 	indexData := newSSTableIndexData(data)
 	return indexData.ssTableIndex().UnPack()
 }
@@ -63,16 +63,16 @@ func (f FlatBufferSSTableIndexCodec) decode(data []byte) *flatbuf.SsTableIndexT 
 // ------------------------------------------------
 
 // FlatBufferSSTableInfoCodec implements SsTableInfoCodec and defines how we
-// encode SSTableInfo to byte slice and decode byte slice back to SSTableInfo
+// encode sstable.Info to byte slice and decode byte slice back to sstable.Info
 type FlatBufferSSTableInfoCodec struct{}
 
-func (f FlatBufferSSTableInfoCodec) Encode(info *sstable.SSTableInfo) []byte {
+func (f FlatBufferSSTableInfoCodec) Encode(info *sstable.Info) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	dbFBBuilder := newDBFlatBufferBuilder(builder)
 	return dbFBBuilder.createSSTInfo(info)
 }
 
-func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *sstable.SSTableInfo {
+func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *sstable.Info {
 	info := flatbuf.GetRootAsSsTableInfo(data, 0)
 	return sstInfoFromFlatBuf(info)
 }
@@ -144,13 +144,13 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.Compac
 	return sstList
 }
 
-func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT) *sstable.SSTableInfo {
+func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT) *sstable.Info {
 	firstKey := mo.None[[]byte]()
 	keyBytes := info.FirstKey
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
-	return &sstable.SSTableInfo{
+	return &sstable.Info{
 		FirstKey:         firstKey,
 		IndexOffset:      info.IndexOffset,
 		IndexLen:         info.IndexLen,
@@ -215,7 +215,7 @@ func (fb *DBFlatBufferBuilder) createSSTIndex(index flatbuf.SsTableIndexT) []byt
 	return fb.builder.FinishedBytes()
 }
 
-func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.SSTableInfo) []byte {
+func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.Info) []byte {
 	fbSSTInfo := sstInfoToFlatBuf(info)
 	offset := fbSSTInfo.Pack(fb.builder)
 	fb.builder.Finish(offset)
@@ -230,7 +230,7 @@ func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []SSTableHandle) []*flat
 	return compactedSSTs
 }
 
-func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *sstable.SSTableInfo) *flatbuf.CompactedSsTableT {
+func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *sstable.Info) *flatbuf.CompactedSsTableT {
 	common.AssertTrue(sstID.typ == Compacted, "cannot pass WAL SST handle to create compacted sst")
 	id, err := ulid.Parse(sstID.value)
 	if err != nil {
@@ -263,14 +263,14 @@ func (fb *DBFlatBufferBuilder) sortedRunsToFlatBuf(sortedRuns []SortedRun) []*fl
 	return sortedRunFBs
 }
 
-func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *sstable.SSTableInfo {
+func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *sstable.Info {
 	firstKey := mo.None[[]byte]()
 	keyBytes := info.FirstKeyBytes()
 	if keyBytes != nil {
 		firstKey = mo.Some(keyBytes)
 	}
 
-	return &sstable.SSTableInfo{
+	return &sstable.Info{
 		FirstKey:         firstKey,
 		IndexOffset:      info.IndexOffset(),
 		IndexLen:         info.IndexLen(),
@@ -280,7 +280,7 @@ func sstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *sstable.SSTableInfo {
 	}
 }
 
-func sstInfoToFlatBuf(info *sstable.SSTableInfo) *flatbuf.SsTableInfoT {
+func sstInfoToFlatBuf(info *sstable.Info) *flatbuf.SsTableInfoT {
 	var firstKey []byte
 	if info.FirstKey.IsPresent() {
 		firstKey, _ = info.FirstKey.Get()

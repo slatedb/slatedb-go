@@ -57,7 +57,7 @@ func defaultSSTableFormat() *SSTableFormat {
 	}
 }
 
-func (f *SSTableFormat) readInfo(obj common.ReadOnlyBlob) (*sstable.SSTableInfo, error) {
+func (f *SSTableFormat) readInfo(obj common.ReadOnlyBlob) (*sstable.Info, error) {
 	size, err := obj.Len()
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (f *SSTableFormat) readInfo(obj common.ReadOnlyBlob) (*sstable.SSTableInfo,
 	return decodeBytesToSSTableInfo(metadataBytes, f.sstCodec)
 }
 
-func (f *SSTableFormat) readFilter(sstInfo *sstable.SSTableInfo, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
+func (f *SSTableFormat) readFilter(sstInfo *sstable.Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
 	if sstInfo.FilterLen < 1 {
 		return mo.None[bloom.Filter](), nil
 	}
@@ -105,7 +105,7 @@ func (f *SSTableFormat) readFilter(sstInfo *sstable.SSTableInfo, obj common.Read
 	return mo.Some(bloom.Decode(filterData)), nil
 }
 
-func (f *SSTableFormat) readIndex(info *sstable.SSTableInfo, obj common.ReadOnlyBlob) (*SSTableIndexData, error) {
+func (f *SSTableFormat) readIndex(info *sstable.Info, obj common.ReadOnlyBlob) (*SSTableIndexData, error) {
 	indexBytes, err := obj.ReadRange(common.Range{
 		Start: info.IndexOffset,
 		End:   info.IndexOffset + info.IndexLen,
@@ -122,7 +122,7 @@ func (f *SSTableFormat) readIndex(info *sstable.SSTableInfo, obj common.ReadOnly
 	return newSSTableIndexData(data), nil
 }
 
-func (f *SSTableFormat) readIndexRaw(info *sstable.SSTableInfo, sstBytes []byte) (*SSTableIndexData, error) {
+func (f *SSTableFormat) readIndexRaw(info *sstable.Info, sstBytes []byte) (*SSTableIndexData, error) {
 	indexBytes := sstBytes[info.IndexOffset : info.IndexOffset+info.IndexLen]
 
 	data, err := compress.Decode(indexBytes, info.CompressionCodec)
@@ -135,7 +135,7 @@ func (f *SSTableFormat) readIndexRaw(info *sstable.SSTableInfo, sstBytes []byte)
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the
 // blocks within rng
-func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *sstable.SSTableInfo, index *flatbuf.SsTableIndex) common.Range {
+func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *sstable.Info, index *flatbuf.SsTableIndex) common.Range {
 	blockMetaList := index.UnPack().BlockMeta
 	startOffset := blockMetaList[rng.Start].Offset
 
@@ -150,7 +150,7 @@ func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *sstable.SSTable
 // readBlocks reads the complete data required into a byte slice (dataBytes)
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
 func (f *SSTableFormat) readBlocks(
-	sstInfo *sstable.SSTableInfo,
+	sstInfo *sstable.Info,
 	indexData *SSTableIndexData,
 	blockRange common.Range,
 	obj common.ReadOnlyBlob,
@@ -222,7 +222,7 @@ func (f *SSTableFormat) decodeBytesToBlock(bytes []byte, compressionCodec compre
 }
 
 func (f *SSTableFormat) readBlock(
-	info *sstable.SSTableInfo,
+	info *sstable.Info,
 	indexData *SSTableIndexData,
 	blockIndex uint64,
 	obj common.ReadOnlyBlob,
@@ -236,7 +236,7 @@ func (f *SSTableFormat) readBlock(
 }
 
 func (f *SSTableFormat) readBlockRaw(
-	info *sstable.SSTableInfo,
+	info *sstable.Info,
 	indexData *SSTableIndexData,
 	blockIndex uint64,
 	sstBytes []byte,
@@ -267,7 +267,7 @@ func (f *SSTableFormat) clone() *SSTableFormat {
 // EncodedSSTable
 // TODO(thrawn01): Rename this to sstable.Encoded or sstable.Table
 type EncodedSSTable struct {
-	sstInfo *sstable.SSTableInfo
+	sstInfo *sstable.Info
 	filter  mo.Option[bloom.Filter]
 
 	// unconsumedBlocks contains a list of blocks that have not yet been written to object storage.
@@ -444,7 +444,7 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 	buf = append(buf, compressedIndexBlock...)
 
 	metaOffset := b.currentLen + uint64(len(buf))
-	sstInfo := &sstable.SSTableInfo{
+	sstInfo := &sstable.Info{
 		FirstKey:         b.sstFirstKey,
 		IndexOffset:      indexOffset,
 		IndexLen:         uint64(len(compressedIndexBlock)),
@@ -465,11 +465,7 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 	}, nil
 }
 
-// ------------------------------------------------
-// SSTableInfo
-// ------------------------------------------------
-
-func decodeBytesToSSTableInfo(rawInfo []byte, sstCodec sstable.SsTableInfoCodec) (*sstable.SSTableInfo, error) {
+func decodeBytesToSSTableInfo(rawInfo []byte, sstCodec sstable.SsTableInfoCodec) (*sstable.Info, error) {
 	if len(rawInfo) <= common.SizeOfUint32 {
 		return nil, common.ErrEmptyBlockMeta
 	}

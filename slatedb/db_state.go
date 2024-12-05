@@ -350,10 +350,10 @@ func (s *SSTableID) clone() SSTableID {
 // SSTableHandle represents the SSTable
 type SSTableHandle struct {
 	id   SSTableID
-	info *sstable.SSTableInfo
+	info *sstable.Info
 }
 
-func newSSTableHandle(id SSTableID, info *sstable.SSTableInfo) *SSTableHandle {
+func newSSTableHandle(id SSTableID, info *sstable.Info) *SSTableHandle {
 	return &SSTableHandle{id, info}
 }
 
