@@ -7,29 +7,27 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 )
 
-type SSTableIndexData struct {
-	data []byte
+type Index struct {
+	Data []byte
 }
 
-func NewSSTableIndexData(data []byte) *SSTableIndexData {
-	return &SSTableIndexData{data: data}
+func (info *Index) SsTableIndex() *flatbuf.SsTableIndex {
+	return flatbuf.GetRootAsSsTableIndex(info.Data, 0)
 }
 
-func (info *SSTableIndexData) SsTableIndex() *flatbuf.SsTableIndex {
-	return flatbuf.GetRootAsSsTableIndex(info.data, 0)
+func (info *Index) Size() int {
+	return len(info.Data)
 }
 
-func (info *SSTableIndexData) Size() int {
-	return len(info.data)
-}
-
-func (info *SSTableIndexData) Clone() *SSTableIndexData {
-	data := make([]byte, len(info.data))
-	copy(data, info.data)
-	return &SSTableIndexData{
-		data: data,
+func (info *Index) Clone() *Index {
+	data := make([]byte, len(info.Data))
+	copy(data, info.Data)
+	return &Index{
+		Data: data,
 	}
 }
+
+// TODO(thrawn01): I think these should be private or removed
 
 // FlatBufferSSTableIndexCodec defines how we
 // encode SsTableIndex to byte slice and decode byte slice back to SSTableIndex
@@ -43,7 +41,7 @@ func (f FlatBufferSSTableIndexCodec) Encode(index flatbuf.SsTableIndexT) []byte 
 }
 
 func (f FlatBufferSSTableIndexCodec) Decode(data []byte) *flatbuf.SsTableIndexT {
-	indexData := NewSSTableIndexData(data)
+	indexData := Index{Data: data}
 	return indexData.SsTableIndex().UnPack()
 }
 

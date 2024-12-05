@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,7 +59,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	storedManifest, _ := stored.Get()
 	sstFormat := defaultSSTableFormat()
 	sstFormat.minFilterKeys = 10
-	tableStore := newTableStore(bucket, sstFormat, dbPath)
+	tableStore := NewTableStore(bucket, sstFormat, dbPath)
 
 	lastCompacted := uint64(0)
 	for i := 0; i < 3; i++ {
@@ -83,7 +84,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
 		sst := l0[2-i]
-		iter, err := newSSTIterator(&sst, tableStore, 1, 1)
+		iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
 		assert.NoError(t, err)
 
 		kv, ok := iter.Next()

@@ -12,18 +12,6 @@ import (
 )
 
 // ------------------------------------------------
-// SSTableIndexData
-// ------------------------------------------------
-
-// ------------------------------------------------
-// FlatBufferSSTableIndexCodec
-// ------------------------------------------------
-
-// ------------------------------------------------
-// FlatBufferSSTableInfoCodec
-// ------------------------------------------------
-
-// ------------------------------------------------
 // FlatBufferManifestCodec
 // ------------------------------------------------
 
@@ -78,13 +66,13 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTId(sstID *flatbuf.CompactedSstId
 	return ulidID
 }
 
-func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.CompactedSsTableT) []SSTableHandle {
-	sstList := make([]SSTableHandle, 0)
+func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.CompactedSsTableT) []sstable.Handle {
+	sstList := make([]sstable.Handle, 0)
 	for _, sst := range fbSSTList {
 		id := f.parseFlatBufSSTId(sst.Id)
-		sstList = append(sstList, SSTableHandle{
-			id:   newSSTableIDCompacted(id),
-			info: f.parseFlatBufSSTInfo(sst.Info),
+		sstList = append(sstList, sstable.Handle{
+			Id:   sstable.NewIDCompacted(id),
+			Info: f.parseFlatBufSSTInfo(sst.Info),
 		})
 	}
 	return sstList
@@ -168,17 +156,17 @@ func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.Info) []byte {
 	return fb.builder.FinishedBytes()
 }
 
-func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []SSTableHandle) []*flatbuf.CompactedSsTableT {
+func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []sstable.Handle) []*flatbuf.CompactedSsTableT {
 	compactedSSTs := make([]*flatbuf.CompactedSsTableT, 0)
 	for _, sst := range sstList {
-		compactedSSTs = append(compactedSSTs, fb.compactedSST(sst.id, sst.info))
+		compactedSSTs = append(compactedSSTs, fb.compactedSST(sst.Id, sst.Info))
 	}
 	return compactedSSTs
 }
 
-func (fb *DBFlatBufferBuilder) compactedSST(sstID SSTableID, sstInfo *sstable.Info) *flatbuf.CompactedSsTableT {
-	common.AssertTrue(sstID.typ == Compacted, "cannot pass WAL SST handle to create compacted sst")
-	id, err := ulid.Parse(sstID.value)
+func (fb *DBFlatBufferBuilder) compactedSST(sstID sstable.ID, sstInfo *sstable.Info) *flatbuf.CompactedSsTableT {
+	common.AssertTrue(sstID.Type == sstable.Compacted, "cannot pass WAL SST handle to create compacted sst")
+	id, err := ulid.Parse(sstID.Value)
 	if err != nil {
 		return nil
 	}

@@ -25,7 +25,7 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 		if immMemtable.IsAbsent() {
 			break
 		}
-		sst := newSSTableHandle(newSSTableIDCompacted(ulid.Make()), sstInfo)
+		sst := sstable.NewHandle(sstable.NewIDCompacted(ulid.Make()), sstInfo)
 		dbState.moveImmMemtableToL0(immMemtable.MustGet(), sst)
 	}
 }
@@ -39,9 +39,9 @@ func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
 	size := len(compactorState.l0)
 	lastCompacted := compactorState.l0[size-1]
 	compactorState.l0 = compactorState.l0[:size-1]
-	assert.Equal(t, Compacted, lastCompacted.id.typ)
+	assert.Equal(t, sstable.Compacted, lastCompacted.Id.Type)
 
-	id, err := ulid.Parse(lastCompacted.id.value)
+	id, err := ulid.Parse(lastCompacted.Id.Value)
 	assert.NoError(t, err)
 	compactorState.l0LastCompacted = mo.Some(id)
 

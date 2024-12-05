@@ -1,11 +1,8 @@
 package slatedb
 
 import (
-	"bytes"
-	"fmt"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/table"
-	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -24,7 +21,7 @@ import (
 // CoreDBState is the DB state that gets read/written to Manifest stored on object store
 type CoreDBState struct {
 	l0LastCompacted mo.Option[ulid.ULID]
-	l0              []SSTableHandle
+	l0              []sstable.Handle
 	compacted       []SortedRun
 
 	// nextWalSstID is used as the ID of new ImmutableWAL created during WAL flush process
@@ -40,7 +37,7 @@ type CoreDBState struct {
 func newCoreDBState() *CoreDBState {
 	coreState := &CoreDBState{
 		l0LastCompacted: mo.None[ulid.ULID](),
-		l0:              make([]SSTableHandle, 0),
+		l0:              make([]sstable.Handle, 0),
 		compacted:       []SortedRun{},
 	}
 	coreState.nextWalSstID.Store(1)
@@ -49,9 +46,9 @@ func newCoreDBState() *CoreDBState {
 }
 
 func (c *CoreDBState) clone() *CoreDBState {
-	l0 := make([]SSTableHandle, 0, len(c.l0))
+	l0 := make([]sstable.Handle, 0, len(c.l0))
 	for _, sst := range c.l0 {
-		l0 = append(l0, *sst.clone())
+		l0 = append(l0, *sst.Clone())
 	}
 	compacted := make([]SortedRun, 0, len(c.compacted))
 	for _, sr := range c.compacted {
@@ -127,7 +124,7 @@ func (s *DBState) L0LastCompacted() mo.Option[ulid.ULID] {
 	return s.core.l0LastCompacted
 }
 
-func (s *DBState) L0() []SSTableHandle {
+func (s *DBState) L0() []sstable.Handle {
 	s.RLock()
 	defer s.RUnlock()
 	return s.core.l0
@@ -241,14 +238,14 @@ func (s *DBState) oldestImmMemtable() mo.Option[*table.ImmutableMemtable] {
 	return mo.Some(s.immMemtables.Back())
 }
 
-func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstHandle *SSTableHandle) {
+func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstHandle *sstable.Handle) {
 	s.Lock()
 	defer s.Unlock()
 
 	popped := s.immMemtables.PopBack()
 	common.AssertTrue(popped.LastWalID() == immMemtable.LastWalID(), "")
 
-	s.core.l0 = append([]SSTableHandle{*sstHandle}, s.core.l0...)
+	s.core.l0 = append([]sstable.Handle{*sstHandle}, s.core.l0...)
 	s.core.lastCompactedWalSSTID.Store(immMemtable.LastWalID())
 }
 
@@ -262,12 +259,12 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 
 	// copy over L0 up to l0LastCompacted
 	l0LastCompacted := compactorState.l0LastCompacted
-	newL0 := make([]SSTableHandle, 0)
+	newL0 := make([]sstable.Handle, 0)
 	for i := 0; i < len(s.core.l0); i++ {
 		sst := s.core.l0[i]
 		if l0LastCompacted.IsPresent() {
 			lastCompacted, _ := l0LastCompacted.Get()
-			if sst.id.typ == Compacted && sst.id.value == lastCompacted.String() {
+			if sst.Id.Type == sstable.Compacted && sst.Id.Value == lastCompacted.String() {
 				break
 			}
 		}
@@ -277,97 +274,4 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 	s.core.l0LastCompacted = l0LastCompacted
 	s.core.l0 = newL0
 	s.core.compacted = compactorState.compacted
-}
-
-// ------------------------------------------------
-// SSTableID
-// ------------------------------------------------
-
-type SSTableIDType int
-
-const (
-	WAL SSTableIDType = iota + 1
-	Compacted
-)
-
-type SSTableID struct {
-	typ   SSTableIDType
-	value string
-}
-
-func newSSTableIDWal(id uint64) SSTableID {
-	return SSTableID{typ: WAL, value: fmt.Sprintf("%020d", id)}
-}
-
-func newSSTableIDCompacted(id ulid.ULID) SSTableID {
-	return SSTableID{typ: Compacted, value: id.String()}
-}
-
-func (s *SSTableID) walID() mo.Option[uint64] {
-	if s.typ != WAL {
-		return mo.None[uint64]()
-	}
-
-	val, err := strconv.Atoi(s.value)
-	if err != nil {
-		logger.Error("unable to parse table id", zap.Error(err))
-		return mo.None[uint64]()
-	}
-
-	return mo.Some(uint64(val))
-}
-
-func (s *SSTableID) compactedID() mo.Option[ulid.ULID] {
-	if s.typ != Compacted {
-		return mo.None[ulid.ULID]()
-	}
-
-	val, err := ulid.Parse(s.value)
-	if err != nil {
-		logger.Error("unable to parse table id", zap.Error(err))
-		return mo.None[ulid.ULID]()
-	}
-
-	return mo.Some(val)
-}
-
-func (s *SSTableID) clone() SSTableID {
-	var sstID SSTableID
-	if s.typ == WAL {
-		id, _ := s.walID().Get()
-		sstID = newSSTableIDWal(id)
-	} else if s.typ == Compacted {
-		id, _ := s.compactedID().Get()
-		sstID = newSSTableIDCompacted(id)
-	}
-	return sstID
-}
-
-// ------------------------------------------------
-// SSTableHandle
-// ------------------------------------------------
-
-// SSTableHandle represents the SSTable
-type SSTableHandle struct {
-	id   SSTableID
-	info *sstable.Info
-}
-
-func newSSTableHandle(id SSTableID, info *sstable.Info) *SSTableHandle {
-	return &SSTableHandle{id, info}
-}
-
-func (h *SSTableHandle) rangeCoversKey(key []byte) bool {
-	if h.info.FirstKey.IsAbsent() {
-		return false
-	}
-	firstKey, _ := h.info.FirstKey.Get()
-	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
-}
-
-func (h *SSTableHandle) clone() *SSTableHandle {
-	return &SSTableHandle{
-		id:   h.id.clone(),
-		info: h.info.Clone(),
-	}
 }

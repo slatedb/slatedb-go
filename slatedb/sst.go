@@ -1,9 +1,9 @@
 package slatedb
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
+	"github.com/samber/mo"
+	flatbuf "github.com/slatedb/slatedb-go/gen"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
@@ -12,11 +12,6 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"go.uber.org/zap"
 	"hash/crc32"
-	"math"
-	"sync"
-
-	"github.com/samber/mo"
-	flatbuf "github.com/slatedb/slatedb-go/gen"
 )
 
 // ------------------------------------------------
@@ -104,7 +99,7 @@ func (f *SSTableFormat) readFilter(sstInfo *sstable.Info, obj common.ReadOnlyBlo
 	return mo.Some(bloom.Decode(filterData)), nil
 }
 
-func (f *SSTableFormat) readIndex(info *sstable.Info, obj common.ReadOnlyBlob) (*sstable.SSTableIndexData, error) {
+func (f *SSTableFormat) readIndex(info *sstable.Info, obj common.ReadOnlyBlob) (*sstable.Index, error) {
 	indexBytes, err := obj.ReadRange(common.Range{
 		Start: info.IndexOffset,
 		End:   info.IndexOffset + info.IndexLen,
@@ -118,10 +113,10 @@ func (f *SSTableFormat) readIndex(info *sstable.Info, obj common.ReadOnlyBlob) (
 		return nil, err
 	}
 
-	return sstable.NewSSTableIndexData(data), nil
+	return &sstable.Index{Data: data}, nil
 }
 
-func (f *SSTableFormat) readIndexRaw(info *sstable.Info, sstBytes []byte) (*sstable.SSTableIndexData, error) {
+func (f *SSTableFormat) readIndexRaw(info *sstable.Info, sstBytes []byte) (*sstable.Index, error) {
 	indexBytes := sstBytes[info.IndexOffset : info.IndexOffset+info.IndexLen]
 
 	data, err := compress.Decode(indexBytes, info.CompressionCodec)
@@ -129,7 +124,7 @@ func (f *SSTableFormat) readIndexRaw(info *sstable.Info, sstBytes []byte) (*ssta
 		return nil, err
 	}
 
-	return sstable.NewSSTableIndexData(data), nil
+	return &sstable.Index{Data: data}, nil
 }
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the
@@ -150,7 +145,7 @@ func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *sstable.Info, i
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
 func (f *SSTableFormat) readBlocks(
 	sstInfo *sstable.Info,
-	indexData *sstable.SSTableIndexData,
+	indexData *sstable.Index,
 	blockRange common.Range,
 	obj common.ReadOnlyBlob,
 ) ([]block.Block, error) {
@@ -222,7 +217,7 @@ func (f *SSTableFormat) decodeBytesToBlock(bytes []byte, compressionCodec compre
 
 func (f *SSTableFormat) readBlock(
 	info *sstable.Info,
-	indexData *sstable.SSTableIndexData,
+	indexData *sstable.Index,
 	blockIndex uint64,
 	obj common.ReadOnlyBlob,
 ) (*block.Block, error) {
@@ -236,7 +231,7 @@ func (f *SSTableFormat) readBlock(
 
 func (f *SSTableFormat) readBlockRaw(
 	info *sstable.Info,
-	indexData *sstable.SSTableIndexData,
+	indexData *sstable.Index,
 	blockIndex uint64,
 	sstBytes []byte,
 ) (*block.Block, error) {
@@ -245,8 +240,8 @@ func (f *SSTableFormat) readBlockRaw(
 	return f.decodeBytesToBlock(sstBytes[blockRange.Start:blockRange.End], info.CompressionCodec)
 }
 
-func (f *SSTableFormat) tableBuilder() *sstable.EncodedSSTableBuilder {
-	return sstable.NewEncodedSSTableBuilder(
+func (f *SSTableFormat) tableBuilder() *sstable.Builder {
+	return sstable.NewBuilder(
 		f.blockSize,
 		f.minFilterKeys,
 		f.sstCodec,
@@ -264,222 +259,10 @@ func (f *SSTableFormat) clone() *SSTableFormat {
 }
 
 // TODO(thrawn01): Not used?
-//func (b *EncodedSSTableBuilder) estimatedSize() uint64 {
+//func (b *Builder) estimatedSize() uint64 {
 //	return b.currentLen
 //}
 
 // ------------------------------------------------
-// SSTIterator
+// Iterator
 // ------------------------------------------------
-
-// SSTIterator helps in iterating through KeyValue pairs present in the SSTable.
-// Since each SSTable is a list of Blocks, this iterator internally uses block.Iterator to iterate through each Block
-type SSTIterator struct {
-	table               *SSTableHandle
-	indexData           *sstable.SSTableIndexData
-	tableStore          *TableStore
-	currentBlockIter    mo.Option[*block.Iterator]
-	fromKey             mo.Option[[]byte]
-	nextBlockIdxToFetch uint64
-	fetchTasks          chan chan mo.Option[[]block.Block]
-	maxFetchTasks       uint64
-	numBlocksToFetch    uint64
-}
-
-func newSSTIterator(
-	table *SSTableHandle,
-	tableStore *TableStore,
-	maxFetchTasks uint64,
-	numBlocksToFetch uint64,
-) (*SSTIterator, error) {
-	indexData, err := tableStore.readIndex(table)
-	if err != nil {
-		return nil, err
-	}
-
-	return &SSTIterator{
-		table:               table,
-		indexData:           indexData,
-		tableStore:          tableStore,
-		currentBlockIter:    mo.None[*block.Iterator](),
-		fromKey:             mo.None[[]byte](),
-		nextBlockIdxToFetch: 0,
-		fetchTasks:          make(chan chan mo.Option[[]block.Block], maxFetchTasks),
-		maxFetchTasks:       maxFetchTasks,
-		numBlocksToFetch:    numBlocksToFetch,
-	}, nil
-}
-
-func newSSTIteratorFromKey(
-	table *SSTableHandle,
-	fromKey []byte,
-	tableStore *TableStore,
-	maxFetchTasks uint64,
-	numBlocksToFetch uint64,
-) (*SSTIterator, error) {
-	indexData, err := tableStore.readIndex(table)
-	if err != nil {
-		return nil, err
-	}
-
-	iter := &SSTIterator{
-		table:            table,
-		indexData:        indexData,
-		tableStore:       tableStore,
-		currentBlockIter: mo.None[*block.Iterator](),
-		fromKey:          mo.Some(fromKey),
-		fetchTasks:       make(chan chan mo.Option[[]block.Block], maxFetchTasks),
-		maxFetchTasks:    maxFetchTasks,
-		numBlocksToFetch: numBlocksToFetch,
-	}
-	iter.nextBlockIdxToFetch = iter.firstBlockWithDataIncludingOrAfterKey(indexData, fromKey)
-	return iter, nil
-}
-
-func (iter *SSTIterator) Next() (common.KV, bool) {
-	for {
-		keyVal, ok := iter.NextEntry()
-		if !ok {
-			return common.KV{}, false
-		}
-
-		if keyVal.ValueDel.IsTombstone {
-			continue
-		}
-
-		return common.KV{
-			Key:   keyVal.Key,
-			Value: keyVal.ValueDel.Value,
-		}, true
-	}
-}
-
-func (iter *SSTIterator) NextEntry() (common.KVDeletable, bool) {
-	for {
-		if iter.currentBlockIter.IsAbsent() {
-			nextBlockIter, err := iter.nextBlockIter()
-			if err != nil {
-				return common.KVDeletable{}, false
-			}
-
-			if nextBlockIter.IsPresent() {
-				iter.currentBlockIter = nextBlockIter
-			} else {
-				return common.KVDeletable{}, false
-			}
-		}
-
-		currentBlockIter, _ := iter.currentBlockIter.Get()
-		kv, ok := currentBlockIter.NextEntry()
-		if !ok {
-			// We have exhausted the current block, but not necessarily the entire SST,
-			// so we fall back to the top to check if we have more blocks to read.
-			iter.currentBlockIter = mo.None[*block.Iterator]()
-			continue
-		}
-
-		return kv, true
-	}
-}
-
-// spawnFetches - Each SST has multiple blocks, this method will create goroutines to fetch blocks within a range
-// Range{blocksStart, blocksEnd} for a given SST from object storage
-func (iter *SSTIterator) spawnFetches() {
-
-	numBlocks := iter.indexData.SsTableIndex().BlockMetaLength()
-	table := iter.table.clone()
-	tableStore := iter.tableStore.clone()
-	index := iter.indexData.Clone()
-	var wg sync.WaitGroup
-
-	for len(iter.fetchTasks) < int(iter.maxFetchTasks) && int(iter.nextBlockIdxToFetch) < numBlocks {
-		numBlocksToFetch := math.Min(
-			float64(iter.numBlocksToFetch),
-			float64(numBlocks-int(iter.nextBlockIdxToFetch)),
-		)
-		blocksStart := iter.nextBlockIdxToFetch
-		blocksEnd := iter.nextBlockIdxToFetch + uint64(numBlocksToFetch)
-
-		blocksCh := make(chan mo.Option[[]block.Block], 1)
-		iter.fetchTasks <- blocksCh
-
-		blocksRange := common.Range{Start: blocksStart, End: blocksEnd}
-
-		wg.Add(1)
-		go func() {
-			blocks, err := tableStore.readBlocksUsingIndex(table, blocksRange, index)
-			if err != nil {
-				blocksCh <- mo.None[[]block.Block]()
-			} else {
-				blocksCh <- mo.Some(blocks)
-			}
-			wg.Done()
-		}()
-		wg.Wait()
-
-		iter.nextBlockIdxToFetch = blocksEnd
-	}
-}
-
-func (iter *SSTIterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
-	for {
-		iter.spawnFetches()
-		// TODO(thrawn01): This is a race, we should not expect an empty channel to indicate there are no more
-		//  items to process.
-		if len(iter.fetchTasks) == 0 {
-			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.SsTableIndex().BlockMetaLength(), "")
-			fmt.Printf("Iteration Stopped Due To Empty Task Channel\n")
-			return mo.None[*block.Iterator](), nil
-		}
-
-		blocksCh := <-iter.fetchTasks
-		blocks := <-blocksCh
-		if blocks.IsPresent() {
-			blks, _ := blocks.Get()
-			if len(blks) == 0 {
-				continue
-			}
-
-			b := &blks[0]
-			fromKey, _ := iter.fromKey.Get()
-			if iter.fromKey.IsPresent() {
-				return mo.Some(block.NewIteratorAtKey(b, fromKey)), nil
-			} else {
-				return mo.Some(block.NewIterator(b)), nil
-			}
-		} else {
-			logger.Error("unable to read block")
-			return mo.None[*block.Iterator](), common.ErrReadBlocks
-		}
-	}
-}
-
-func (iter *SSTIterator) firstBlockWithDataIncludingOrAfterKey(indexData *sstable.SSTableIndexData, key []byte) uint64 {
-	sstIndex := indexData.SsTableIndex()
-	low := 0
-	high := sstIndex.BlockMetaLength() - 1
-	// if the key is less than all the blocks' first key, scan the whole sst
-	foundBlockID := 0
-
-loop:
-	for low <= high {
-		mid := low + (high-low)/2
-		midBlockFirstKey := sstIndex.UnPack().BlockMeta[mid].FirstKey
-		cmp := bytes.Compare(midBlockFirstKey, key)
-		switch cmp {
-		case -1:
-			low = mid + 1
-			foundBlockID = mid
-		case 1:
-			if mid > 0 {
-				high = mid - 1
-			} else {
-				break loop
-			}
-		case 0:
-			return uint64(mid)
-		}
-	}
-
-	return uint64(foundBlockID)
-}

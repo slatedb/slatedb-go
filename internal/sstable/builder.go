@@ -13,35 +13,83 @@ import (
 	"hash/crc32"
 )
 
-// EncodedSSTable is the in memory representation of an SSTable
-// TODO(thrawn01): Rename this to sstable.Encoded or sstable.Table
-type EncodedSSTable struct {
+// Table is the in memory representation of an SSTable
+type Table struct {
 	Info *Info
 
 	Bloom mo.Option[bloom.Filter]
 
-	// Blocks is a list of blocks contained in the EncodedSSTable
+	// Blocks is a list of blocks contained in the Table
 	Blocks *deque.Deque[[]byte]
 }
 
-// EncodedSSTableBuilder - we use an EncodedSSTableBuilder to build an EncodedSSTable before writing
-// the EncodedSSTable to object storage.
-// The builder provides helper methods to encode the SSTable to byte slice using flatbuffers and also to compress
-// the data using the given compress.Codec
-// TODO(thrawn01): Rename this to sstable.Builder
-type EncodedSSTableBuilder struct {
+// Builder builds the SSTable in the format outlined
+// in the diagram below.
+//
+// +-----------------------------------------------+
+// |               SSTable                         |
+// +-----------------------------------------------+
+// |  +-----------------------------------------+  |
+// |  |  List of Blocks                         |  |
+// |  |  +-----------------------------------+  |  |
+// |  |  |  block.Block                      |  |  |
+// |  |  |  +-------------------------------+|  |  |
+// |  |  |  |  List of types.KeyValue pairs  |  |  |
+// |  |  |  |  +---------------------------+ |  |  |
+// |  |  |  |  |  Key Length (2 bytes)     | |  |  |
+// |  |  |  |  |  Key                      | |  |  |
+// |  |  |  |  |  Value Length (4 bytes)   | |  |  |
+// |  |  |  |  |  Value                    | |  |  |
+// |  |  |  |  +---------------------------+ |  |  |
+// |  |  |  |  ...                           |  |  |
+// |  |  |  +-------------------------------+|  |  |
+// |  |  |  |  Offsets for each Key          |  |  |
+// |  |  |  |  (n * 2 bytes)                 |  |  |
+// |  |  |  +-------------------------------+|  |  |
+// |  |  |  |  Number of Offsets (2 bytes)   |  |  |
+// |  |  |  +-------------------------------+|  |  |
+// |  |  |  |  Checksum (4 bytes)            |  |  |
+// |  |  +-----------------------------------+  |  |
+// |  |  ...                                    |  |
+// |  +-----------------------------------------+  |
+// |                                               |
+// |  +-----------------------------------------+  |
+// |  |  bloom.Filter (if MinFilterKeys met)    |  |
+// |  +-----------------------------------------+  |
+// |                                               |
+// |  +-----------------------------------------+  |
+// |  |  sstable.Index                          |  |
+// |  |  (List of Block Offsets)                |  |
+// |  |  - Block Offset (End of Block)          |  |
+// |  |  - FirstKey of this Block               |  |
+// |  |  ...                                    |  |
+// |  +-----------------------------------------+  |
+// |                                               |
+// |  +-----------------------------------------+  |
+// |  |  sstable.Info                           |  |
+// |  |  - Offset of BloomFilter                |  |
+// |  |  - Length of BloomFilter                |  |
+// |  |  - Offset of sstable.Index              |  |
+// |  |  - Length of sstable.Index              |  |
+// |  +-----------------------------------------+  |
+// |                                               |
+// |  +-----------------------------------------+  |
+// |  |  Offset of sstable.Info (4 bytes)       |  |
+// |  +-----------------------------------------+  |
+// +-----------------------------------------------+
+type Builder struct {
 	blockBuilder  *block.Builder
 	filterBuilder *bloom.Builder
 
 	// The metadata for each block held by the SSTableIndex
 	blockMetaList []*flatbuf.BlockMetaT
 
-	// holds the firstKey of the current block that is being built.
-	// when the current block reaches BlockSize, a new Block is created and firstKey will then hold the first key
-	// of the new block
+	// FirstKey is the first key of the current block that is being built.
+	// When the current block reaches BlockSize, a new Block is created and
+	// firstKey will then hold the first key of the new block
 	firstKey mo.Option[[]byte]
 
-	// holds the first key of the SSTable
+	// sstFirstKey is the first key of the first block in the SSTable
 	sstFirstKey mo.Option[[]byte]
 
 	// The encoded/serialized blocks that get added to the SSTable
@@ -53,7 +101,8 @@ type EncodedSSTableBuilder struct {
 	currentLen uint64
 
 	// if numKeys >= minFilterKeys then we add a BloomFilter
-	// else we don't add BloomFilter since reading smaller set of keys is likely faster without BloomFilter
+	// else we don't add BloomFilter since reading smaller set of keys
+	// is likely faster without BloomFilter
 	minFilterKeys uint32
 	numKeys       uint32
 
@@ -61,34 +110,50 @@ type EncodedSSTableBuilder struct {
 	compressionCodec compress.Codec
 }
 
-// Create a builder based on target block size.
-func NewEncodedSSTableBuilder(
+// Config specifies how SSTable is Encoded and Decoded
+type Config struct {
+	// BlockSize is the size of each block in the SSTable
+	BlockSize int
+
+	// MinFilterKeys is the minimum number of keys that must exist in the SSTable
+	// before a bloom filter is created. Reads on SSTables with a small number
+	// of items is faster than looking up in a bloom filter.
+	MinFilterKeys int
+
+	FilterBitsPerKey int
+
+	// The codec used to compress new SSTables. The compression codec used in
+	// existing SSTables already written disk is encoded into the SSTableInfo and
+	// will be used when decompressing the blocks in that SSTable.
+	Compression compress.Codec
+}
+
+// NewBuilder create a builder
+func NewBuilder(
+// TODO(thrawn01): use Config
 	blockSize uint64,
 	minFilterKeys uint32,
 	sstCodec SsTableInfoCodec,
 	filterBitsPerKey uint32,
 	compressionCodec compress.Codec,
-) *EncodedSSTableBuilder {
-	return &EncodedSSTableBuilder{
-		blockBuilder:  block.NewBuilder(blockSize),
-		filterBuilder: bloom.NewBuilder(filterBitsPerKey),
-
-		firstKey:      mo.None[[]byte](),
-		sstFirstKey:   mo.None[[]byte](),
-		blockMetaList: []*flatbuf.BlockMetaT{},
-
-		blocks:        deque.New[[]byte](0),
-		blockSize:     blockSize,
-		currentLen:    0,
-		minFilterKeys: minFilterKeys,
-		numKeys:       0,
-
-		sstCodec:         sstCodec,
+) *Builder {
+	return &Builder{
+		filterBuilder:    bloom.NewBuilder(filterBitsPerKey),
+		blockBuilder:     block.NewBuilder(blockSize),
+		blocks:           deque.New[[]byte](0),
+		blockMetaList:    []*flatbuf.BlockMetaT{},
 		compressionCodec: compressionCodec,
+		firstKey:         mo.None[[]byte](),
+		sstFirstKey:      mo.None[[]byte](),
+		minFilterKeys:    minFilterKeys,
+		blockSize:        blockSize,
+		sstCodec:         sstCodec,
+		currentLen:       0,
+		numKeys:          0,
 	}
 }
 
-func (b *EncodedSSTableBuilder) Add(key []byte, value mo.Option[[]byte]) error {
+func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 	b.numKeys += 1
 
 	if !b.blockBuilder.Add(key, value) {
@@ -97,14 +162,14 @@ func (b *EncodedSSTableBuilder) Add(key []byte, value mo.Option[[]byte]) error {
 		if err != nil {
 			return err
 		}
-		block, ok := blockBytes.Get()
+		buf, ok := blockBytes.Get()
 		if ok {
-			b.currentLen += uint64(len(block))
-			b.blocks.PushBack(block)
+			b.currentLen += uint64(len(buf))
+			b.blocks.PushBack(buf)
 		}
 
 		addSuccess := b.blockBuilder.Add(key, value)
-		common.AssertTrue(addSuccess, "block.Builder Add failed")
+		common.AssertTrue(addSuccess, "block.Builder.Add() failed")
 		b.firstKey = mo.Some(key)
 	} else if b.sstFirstKey.IsAbsent() {
 		b.sstFirstKey = mo.Some(key)
@@ -115,15 +180,14 @@ func (b *EncodedSSTableBuilder) Add(key []byte, value mo.Option[[]byte]) error {
 	return nil
 }
 
-func (b *EncodedSSTableBuilder) NextBlock() mo.Option[[]byte] {
+func (b *Builder) NextBlock() mo.Option[[]byte] {
 	if b.blocks.Len() == 0 {
 		return mo.None[[]byte]()
 	}
-	block := b.blocks.PopFront()
-	return mo.Some(block)
+	return mo.Some(b.blocks.PopFront())
 }
 
-func (b *EncodedSSTableBuilder) finishBlock() (mo.Option[[]byte], error) {
+func (b *Builder) finishBlock() (mo.Option[[]byte], error) {
 	if b.blockBuilder.IsEmpty() {
 		return mo.None[[]byte](), nil
 	}
@@ -147,14 +211,14 @@ func (b *EncodedSSTableBuilder) finishBlock() (mo.Option[[]byte], error) {
 
 	checksum := crc32.ChecksumIEEE(compressedBlock)
 
-	block := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32)
-	block = append(block, compressedBlock...)
-	block = binary.BigEndian.AppendUint32(block, checksum)
+	buf := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32)
+	buf = append(buf, compressedBlock...)
+	buf = binary.BigEndian.AppendUint32(buf, checksum)
 
-	return mo.Some(block), nil
+	return mo.Some(buf), nil
 }
 
-func (b *EncodedSSTableBuilder) Build() (*EncodedSSTable, error) {
+func (b *Builder) Build() (*Table, error) {
 	blkBytes, err := b.finishBlock()
 	if err != nil {
 		return nil, err
@@ -203,14 +267,15 @@ func (b *EncodedSSTableBuilder) Build() (*EncodedSSTable, error) {
 	buf = binary.BigEndian.AppendUint32(buf, uint32(metaOffset))
 	b.blocks.PushBack(buf)
 
-	return &EncodedSSTable{
+	return &Table{
 		Info:   sstInfo,
 		Bloom:  maybeFilter,
 		Blocks: b.blocks,
 	}, nil
 }
 
-// TODO(thrawn01): Rename this to sstable.Decode ?
+// TODO(thrawn01): Rename this to sstable.decode which is only used by SSTableFormat
+//  which should be renamed to sstable.Decoder
 func DecodeBytesToSSTableInfo(rawInfo []byte, sstCodec SsTableInfoCodec) (*Info, error) {
 	if len(rawInfo) <= common.SizeOfUint32 {
 		return nil, common.ErrEmptyBlockMeta

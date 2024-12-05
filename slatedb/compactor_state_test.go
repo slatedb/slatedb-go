@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -32,7 +33,7 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 	}
 	state.finishCompaction(sr.clone())
 
-	compactedID, _ := beforeCompaction.l0[0].id.compactedID().Get()
+	compactedID, _ := beforeCompaction.l0[0].Id.CompactedID().Get()
 	l0LastCompacted, _ := state.dbState.l0LastCompacted.Get()
 	assert.Equal(t, compactedID, l0LastCompacted)
 	assert.Equal(t, 0, len(state.dbState.l0))
@@ -40,7 +41,7 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 	assert.Equal(t, sr.id, state.dbState.compacted[0].id)
 	compactedSR := state.dbState.compacted[0]
 	for i := 0; i < len(sr.sstList); i++ {
-		assert.Equal(t, sr.sstList[i].id, compactedSR.sstList[i].id)
+		assert.Equal(t, sr.sstList[i].Id, compactedSR.sstList[i].Id)
 	}
 }
 
@@ -76,21 +77,21 @@ func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 
 	assert.True(t, state.dbState.l0LastCompacted.IsAbsent())
 	for i := 0; i < len(writerDBState.l0); i++ {
-		assert.Equal(t, writerDBState.l0[i].id.compactedID(), state.dbState.l0[i].id.compactedID())
+		assert.Equal(t, writerDBState.l0[i].Id.CompactedID(), state.dbState.l0[i].Id.CompactedID())
 	}
 }
 
 func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	bucket, sm, state := buildTestState()
 	originalL0s := state.dbState.clone().l0
-	compactedID, ok := originalL0s[len(originalL0s)-1].id.compactedID().Get()
+	compactedID, ok := originalL0s[len(originalL0s)-1].Id.CompactedID().Get()
 	assert.True(t, ok)
 	compaction := newCompaction([]SourceID{newSourceIDSST(compactedID)}, 0)
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
 	state.finishCompaction(&SortedRun{
 		id:      0,
-		sstList: []SSTableHandle{originalL0s[len(originalL0s)-1]},
+		sstList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
 	})
 
 	option := DefaultDBOptions()
@@ -109,10 +110,10 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	// last sst was removed during compaction
 	expectedMergedL0s := originalL0s[:len(originalL0s)-1]
 	// new sst got added during db.Put() call above
-	expectedMergedL0s = append([]SSTableHandle{writerDBState.l0[0]}, expectedMergedL0s...)
+	expectedMergedL0s = append([]sstable.Handle{writerDBState.l0[0]}, expectedMergedL0s...)
 	for i := 0; i < len(expectedMergedL0s); i++ {
-		expected, _ := expectedMergedL0s[i].id.compactedID().Get()
-		actual, _ := dbState.l0[i].id.compactedID().Get()
+		expected, _ := expectedMergedL0s[i].Id.CompactedID().Get()
+		actual, _ := dbState.l0[i].Id.CompactedID().Get()
 		assert.Equal(t, expected, actual)
 	}
 	for i := 0; i < len(dbStateBeforeMerge.compacted); i++ {
@@ -120,7 +121,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 		srAfter := dbState.compacted[i]
 		assert.Equal(t, srBefore.id, srAfter.id)
 		for j := 0; j < len(srBefore.sstList); j++ {
-			assert.Equal(t, srBefore.sstList[j].id, srAfter.sstList[j].id)
+			assert.Equal(t, srBefore.sstList[j].Id, srAfter.sstList[j].Id)
 		}
 	}
 	assert.Equal(t, writerDBState.lastCompactedWalSSTID.Load(), dbState.lastCompactedWalSSTID.Load())
@@ -133,7 +134,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 
 	sourceIDs := make([]SourceID, 0)
 	for _, sst := range originalL0s {
-		id, ok := sst.id.compactedID().Get()
+		id, ok := sst.Id.CompactedID().Get()
 		assert.True(t, ok)
 		sourceIDs = append(sourceIDs, newSourceIDSST(id))
 	}
@@ -159,8 +160,8 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 
 	dbState := state.dbState
 	assert.Equal(t, 1, len(dbState.l0))
-	expectedID, _ := writerDBState.l0[0].id.compactedID().Get()
-	actualID, _ := dbState.l0[0].id.compactedID().Get()
+	expectedID, _ := writerDBState.l0[0].Id.CompactedID().Get()
+	actualID, _ := dbState.l0[0].Id.CompactedID().Get()
 	assert.Equal(t, expectedID, actualID)
 }
 
@@ -177,10 +178,10 @@ func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *CoreDBSt
 	panic("no manifest found with l0 len")
 }
 
-func buildL0Compaction(sstList []SSTableHandle, destination uint32) Compaction {
+func buildL0Compaction(sstList []sstable.Handle, destination uint32) Compaction {
 	sources := make([]SourceID, 0)
 	for _, sst := range sstList {
-		id, ok := sst.id.compactedID().Get()
+		id, ok := sst.Id.CompactedID().Get()
 		common.AssertTrue(ok, "expected compacted SST ID")
 		sources = append(sources, newSourceIDSST(id))
 	}

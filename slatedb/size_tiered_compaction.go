@@ -11,7 +11,7 @@ func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorS
 	if len(dbState.l0) >= 4 {
 		sources := make([]SourceID, 0)
 		for _, sst := range dbState.l0 {
-			id, ok := sst.id.compactedID().Get()
+			id, ok := sst.Id.CompactedID().Get()
 			common.AssertTrue(ok, "Expected valid compacted ID")
 			sources = append(sources, newSourceIDSST(id))
 		}

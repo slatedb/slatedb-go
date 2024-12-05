@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"maps"
 	"math"
 	"slices"
@@ -149,11 +150,11 @@ func (c *CompactorState) oneOfTheSourceSRMatchesDestination(compaction Compactio
 func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 	// the writer may have added more l0 SSTs. Add these to our l0 list.
 	lastCompactedL0 := c.dbState.l0LastCompacted
-	mergedL0s := make([]SSTableHandle, 0)
+	mergedL0s := make([]sstable.Handle, 0)
 
 	for _, writerL0SST := range writerState.l0 {
-		common.AssertTrue(writerL0SST.id.typ == Compacted, "unexpected SSTableID type")
-		writerL0ID, _ := writerL0SST.id.compactedID().Get()
+		common.AssertTrue(writerL0SST.Id.Type == sstable.Compacted, "unexpected sstable.ID type")
+		writerL0ID, _ := writerL0SST.Id.CompactedID().Get()
 		// we stop appending to our l0 list if we encounter sstID equal to lastCompactedID
 		lastCompactedL0ID, _ := lastCompactedL0.Get()
 		if lastCompactedL0.IsPresent() && writerL0ID == lastCompactedL0ID {
@@ -192,10 +193,10 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	compactionSRs[compaction.destination] = true
 
 	dbState := c.dbState.clone()
-	newL0 := make([]SSTableHandle, 0)
+	newL0 := make([]sstable.Handle, 0)
 	for _, sst := range dbState.l0 {
-		common.AssertTrue(sst.id.compactedID().IsPresent(), "Expected compactedID not present")
-		l0ID, _ := sst.id.compactedID().Get()
+		common.AssertTrue(sst.Id.CompactedID().IsPresent(), "Expected compactedID not present")
+		l0ID, _ := sst.Id.CompactedID().Get()
 		_, ok := compactionL0s[l0ID]
 		if !ok {
 			newL0 = append(newL0, sst)
