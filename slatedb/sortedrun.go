@@ -20,9 +20,8 @@ type SortedRun struct {
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	index := sort.Search(len(s.sstList), func(i int) bool {
-		firstKey, ok := s.sstList[i].Info.FirstKey.Get()
-		common.AssertTrue(ok, "sst must have first key")
-		return bytes.Compare(firstKey, key) > 0
+		common.AssertTrue(len(s.sstList[i].Info.FirstKey) != 0, "sst must have first key")
+		return bytes.Compare(s.sstList[i].Info.FirstKey, key) > 0
 	})
 	if index > 0 {
 		return mo.Some(index - 1)

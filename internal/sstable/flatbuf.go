@@ -1,8 +1,8 @@
 package sstable
 
 import (
+	"bytes"
 	"github.com/google/flatbuffers/go"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/gen"
 	"github.com/slatedb/slatedb-go/internal/compress"
 )
@@ -63,14 +63,8 @@ func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *Info {
 }
 
 func SstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *Info {
-	firstKey := mo.None[[]byte]()
-	keyBytes := info.FirstKeyBytes()
-	if keyBytes != nil {
-		firstKey = mo.Some(keyBytes)
-	}
-
 	return &Info{
-		FirstKey:         firstKey,
+		FirstKey:         bytes.Clone(info.FirstKeyBytes()),
 		IndexOffset:      info.IndexOffset(),
 		IndexLen:         info.IndexLen(),
 		FilterOffset:     info.FilterOffset(),
@@ -80,17 +74,47 @@ func SstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *Info {
 }
 
 func SstInfoToFlatBuf(info *Info) *flatbuf.SsTableInfoT {
-	var firstKey []byte
-	if info.FirstKey.IsPresent() {
-		firstKey, _ = info.FirstKey.Get()
-	}
 
 	return &flatbuf.SsTableInfoT{
-		FirstKey:          firstKey,
+		FirstKey:          bytes.Clone(info.FirstKey),
 		IndexOffset:       info.IndexOffset,
 		IndexLen:          info.IndexLen,
 		FilterOffset:      info.FilterOffset,
 		FilterLen:         info.FilterLen,
 		CompressionFormat: compress.CodecToFlatBuf(info.CompressionCodec),
 	}
+}
+
+// TODO(thrawn01): Use these instead of the FlatBufferBuilders above
+// encodeInfo encodes the provided Info into
+// flatbuf.SsTableInfo flat buffer format.
+func encodeInfo(info *Info) []byte {
+
+	builder := flatbuffers.NewBuilder(0)
+	firstKey := builder.CreateByteVector(info.FirstKey)
+
+	flatbuf.SsTableInfoStart(builder)
+	flatbuf.SsTableInfoAddFirstKey(builder, firstKey)
+	flatbuf.SsTableInfoAddIndexOffset(builder, info.IndexOffset)
+	flatbuf.SsTableInfoAddIndexLen(builder, info.IndexLen)
+	flatbuf.SsTableInfoAddFilterOffset(builder, info.FilterOffset)
+	flatbuf.SsTableInfoAddFilterLen(builder, info.FilterLen)
+	flatbuf.SsTableInfoAddCompressionFormat(builder, flatbuf.CompressionFormat(info.CompressionCodec))
+	infoOffset := flatbuf.SsTableInfoEnd(builder)
+
+	builder.Finish(infoOffset)
+	return builder.FinishedBytes()
+}
+
+func decodeInfo(b []byte) *Info {
+	fbInfo := flatbuf.GetRootAsSsTableInfo(b, 0)
+	info := &Info{
+		FirstKey:         bytes.Clone(fbInfo.FirstKeyBytes()),
+		IndexOffset:      fbInfo.IndexOffset(),
+		IndexLen:         fbInfo.IndexLen(),
+		FilterOffset:     fbInfo.FilterOffset(),
+		FilterLen:        fbInfo.FilterLen(),
+		CompressionCodec: compress.Codec(fbInfo.CompressionFormat()),
+	}
+	return info
 }

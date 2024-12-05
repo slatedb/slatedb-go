@@ -148,8 +148,8 @@ func TestSSTable(t *testing.T) {
 	sstHandle, err := tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
 	assert.NoError(t, err)
 	assert.Equal(t, encodedInfo, sstHandle.Info)
-	firstKey, ok := sstHandle.Info.FirstKey.Get()
-	assert.True(t, ok)
+	firstKey := sstHandle.Info.FirstKey
+	assert.NotNil(t, firstKey)
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 
 	// construct sst info from the raw bytes and validate that it matches the original info.
@@ -161,8 +161,8 @@ func TestSSTable(t *testing.T) {
 	index, err := tableStore.ReadIndex(sstHandleFromStore)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
-	firstKey, ok = sstInfoFromStore.FirstKey.Get()
-	assert.True(t, ok)
+	firstKey = sstInfoFromStore.FirstKey
+	assert.NotNil(t, firstKey)
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 	firstKey = index.SsTableIndex().UnPack().BlockMeta[0].FirstKey
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
@@ -235,8 +235,8 @@ func TestSSTableWithCompression(t *testing.T) {
 
 		assert.Equal(t, encodedInfo, sstHandle.Info)
 		assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
-		firstKey, ok := sstHandle.Info.FirstKey.Get()
-		assert.True(t, ok)
+		firstKey := sstHandle.Info.FirstKey
+		assert.NotNil(t, firstKey)
 		assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 	}
 }

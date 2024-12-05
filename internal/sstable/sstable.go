@@ -1,8 +1,8 @@
 package sstable
 
 import (
+	"bytes"
 	"encoding/binary"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"hash/crc32"
 )
@@ -12,7 +12,7 @@ import (
 // Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
 type Info struct {
 	// contains the FirstKey of the SSTable
-	FirstKey mo.Option[[]byte]
+	FirstKey []byte
 
 	// the offset at which SSTableIndex starts when SSTable is serialized.
 	// SSTableIndex holds the meta info about each block. SSTableIndex is defined in schemas/sst.fbs
@@ -39,15 +39,8 @@ func (info *Info) Encode(buf *[]byte, sstCodec SsTableInfoCodec) {
 }
 
 func (info *Info) Clone() *Info {
-	firstKey := mo.None[[]byte]()
-	if info.FirstKey.IsPresent() {
-		key, _ := info.FirstKey.Get()
-		k := make([]byte, len(key))
-		copy(k, key)
-		firstKey = mo.Some(k)
-	}
 	return &Info{
-		FirstKey:         firstKey,
+		FirstKey:         bytes.Clone(info.FirstKey),
 		IndexOffset:      info.IndexOffset,
 		IndexLen:         info.IndexLen,
 		FilterOffset:     info.FilterOffset,

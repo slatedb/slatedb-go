@@ -82,11 +82,10 @@ func NewHandle(id ID, info *Info) *Handle {
 }
 
 func (h *Handle) RangeCoversKey(key []byte) bool {
-	if h.Info.FirstKey.IsAbsent() {
+	if len(h.Info.FirstKey) == 0 {
 		return false
 	}
-	firstKey, _ := h.Info.FirstKey.Get()
-	return firstKey != nil && bytes.Compare(key, firstKey) >= 0
+	return bytes.Compare(key, h.Info.FirstKey) >= 0
 }
 
 func (h *Handle) Clone() *Handle {

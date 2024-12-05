@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/gammazero/deque"
 	"github.com/samber/mo"
@@ -253,8 +254,10 @@ func (b *Builder) Build() (*Table, error) {
 	buf = append(buf, compressedIndexBlock...)
 
 	metaOffset := b.currentLen + uint64(len(buf))
+	firstKey, _ := b.firstKey.Get()
+
 	sstInfo := &Info{
-		FirstKey:         b.sstFirstKey,
+		FirstKey:         bytes.Clone(firstKey),
 		IndexOffset:      indexOffset,
 		IndexLen:         uint64(len(compressedIndexBlock)),
 		FilterOffset:     filterOffset,

@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"bytes"
 	"encoding/binary"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/oklog/ulid/v2"
@@ -79,13 +80,8 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTList(fbSSTList []*flatbuf.Compac
 }
 
 func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT) *sstable.Info {
-	firstKey := mo.None[[]byte]()
-	keyBytes := info.FirstKey
-	if keyBytes != nil {
-		firstKey = mo.Some(keyBytes)
-	}
 	return &sstable.Info{
-		FirstKey:         firstKey,
+		FirstKey:         bytes.Clone(info.FirstKey),
 		IndexOffset:      info.IndexOffset,
 		IndexLen:         info.IndexLen,
 		FilterOffset:     info.FilterOffset,

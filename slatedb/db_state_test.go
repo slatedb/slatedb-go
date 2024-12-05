@@ -11,7 +11,6 @@ import (
 
 func addL0sToDBState(dbState *DBState, n uint32) {
 	sstInfo := &sstable.Info{
-		FirstKey:         mo.None[[]byte](),
 		IndexOffset:      0,
 		IndexLen:         0,
 		FilterOffset:     0,

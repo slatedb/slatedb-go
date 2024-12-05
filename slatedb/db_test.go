@@ -339,6 +339,8 @@ func TestSnapshotState(t *testing.T) {
 	assert.Equal(t, value2, val2)
 }
 
+// TODO(thrawn01): This test flapped once, need to investigate, likely due to race condition
+//  in Iterator.nextBlockIter()
 func TestShouldReadFromCompactedDB(t *testing.T) {
 	options := testDBOptionsCompactor(
 		0,
@@ -352,7 +354,8 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 	doTestDeleteAndWaitForCompaction(t, options)
 }
 
-// TODO(thrawn01): Disabled flapping test, likely due to the race condition found in sst.go:726
+// TODO(thrawn01): Disabled flapping test, likely due to the race condition
+//  in Iterator.nextBlockIter()
 //func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 //	options := testDBOptionsCompactor(
 //		math.MaxUint32,
