@@ -5,18 +5,18 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"fmt"
+	"github.com/gammazero/deque"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/logger"
+	"go.uber.org/zap"
 	"hash/crc32"
 	"io"
 	"math"
-
-	"github.com/gammazero/deque"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/filter"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/samber/mo"
@@ -83,27 +83,27 @@ func (f *SSTableFormat) readInfo(obj common.ReadOnlyBlob) (*SSTableInfo, error) 
 	return decodeBytesToSSTableInfo(metadataBytes, f.sstCodec)
 }
 
-func (f *SSTableFormat) readFilter(sstInfo *SSTableInfo, obj common.ReadOnlyBlob) (mo.Option[filter.BloomFilter], error) {
+func (f *SSTableFormat) readFilter(sstInfo *SSTableInfo, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
 	if sstInfo.filterLen < 1 {
-		return mo.None[filter.BloomFilter](), nil
+		return mo.None[bloom.Filter](), nil
 	}
 
 	filterOffsetRange := common.Range{
 		Start: sstInfo.filterOffset,
 		End:   sstInfo.filterOffset + sstInfo.filterLen,
 	}
+
 	filterBytes, err := obj.ReadRange(filterOffsetRange)
 	if err != nil {
 		logger.Error("unable to read filter", zap.Error(err))
-		return mo.None[filter.BloomFilter](), err
+		return mo.None[bloom.Filter](), err
 	}
 
 	filterData, err := f.decompress(filterBytes, sstInfo.compressionCodec)
 	if err != nil {
-		return mo.Option[filter.BloomFilter]{}, err
+		return mo.Option[bloom.Filter]{}, err
 	}
-	filtr := filter.DecodeBytesToBloomFilter(filterData)
-	return mo.Some(*filtr), nil
+	return mo.Some(bloom.Decode(filterData)), nil
 }
 
 func (f *SSTableFormat) readIndex(info *SSTableInfo, obj common.ReadOnlyBlob) (*SSTableIndexData, error) {
@@ -305,7 +305,7 @@ func (f *SSTableFormat) clone() *SSTableFormat {
 
 type EncodedSSTable struct {
 	sstInfo *SSTableInfo
-	filter  mo.Option[filter.BloomFilter]
+	filter  mo.Option[bloom.Filter]
 
 	// unconsumedBlocks contains a list of blocks that have not yet been written to object storage.
 	// It is initialized to the complete list of blocks in the SSTable
@@ -318,7 +318,7 @@ type EncodedSSTable struct {
 // the data using the given CompressionCodec
 type EncodedSSTableBuilder struct {
 	blockBuilder  *block.Builder
-	filterBuilder *filter.BloomFilterBuilder
+	filterBuilder *bloom.Builder
 
 	// The metadata for each block held by the SSTableIndex
 	blockMetaList []*flatbuf.BlockMetaT
@@ -358,7 +358,7 @@ func newEncodedSSTableBuilder(
 ) *EncodedSSTableBuilder {
 	return &EncodedSSTableBuilder{
 		blockBuilder:  block.NewBuilder(blockSize),
-		filterBuilder: filter.NewBloomFilterBuilder(filterBitsPerKey),
+		filterBuilder: bloom.NewBuilder(filterBitsPerKey),
 
 		firstKey:      mo.None[[]byte](),
 		sstFirstKey:   mo.None[[]byte](),
@@ -438,7 +438,7 @@ func (b *EncodedSSTableBuilder) add(key []byte, value mo.Option[[]byte]) error {
 		b.firstKey = mo.Some(key)
 	}
 
-	b.filterBuilder.AddKey(key)
+	b.filterBuilder.Add(key)
 	return nil
 }
 
@@ -495,19 +495,18 @@ func (b *EncodedSSTableBuilder) build() (*EncodedSSTable, error) {
 		buf = []byte{}
 	}
 
-	maybeFilter := mo.None[filter.BloomFilter]()
+	maybeFilter := mo.None[bloom.Filter]()
 	filterLen := 0
 	filterOffset := b.currentLen + uint64(len(buf))
 	if b.numKeys >= b.minFilterKeys {
-		filtr := b.filterBuilder.Build()
-		encodedFilter := filtr.EncodeToBytes()
-		compressedFilter, err := b.compress(encodedFilter, b.compressionCodec)
+		filter := b.filterBuilder.Build()
+		compressedFilter, err := b.compress(bloom.Encode(filter), b.compressionCodec)
 		if err != nil {
 			return nil, err
 		}
 		filterLen = len(compressedFilter)
 		buf = append(buf, compressedFilter...)
-		maybeFilter = mo.Some(*filtr)
+		maybeFilter = mo.Some(filter)
 	}
 
 	// write the index block
@@ -692,6 +691,7 @@ func (iter *SSTIterator) spawnFetches() {
 	table := iter.table.clone()
 	tableStore := iter.tableStore.clone()
 	index := iter.indexData.clone()
+	var wg sync.WaitGroup
 
 	for len(iter.fetchTasks) < int(iter.maxFetchTasks) && int(iter.nextBlockIdxToFetch) < numBlocks {
 		numBlocksToFetch := math.Min(
@@ -706,7 +706,7 @@ func (iter *SSTIterator) spawnFetches() {
 
 		blocksRange := common.Range{Start: blocksStart, End: blocksEnd}
 
-		// TODO: ensure goroutine does not leak.
+		wg.Add(1)
 		go func() {
 			blocks, err := tableStore.readBlocksUsingIndex(table, blocksRange, index)
 			if err != nil {
@@ -714,7 +714,9 @@ func (iter *SSTIterator) spawnFetches() {
 			} else {
 				blocksCh <- mo.Some(blocks)
 			}
+			wg.Done()
 		}()
+		wg.Wait()
 
 		iter.nextBlockIdxToFetch = blocksEnd
 	}

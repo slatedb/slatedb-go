@@ -3,7 +3,6 @@ package slatedb
 import (
 	"bytes"
 	"context"
-	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"io"
 	"path"
 	"slices"
@@ -13,8 +12,9 @@ import (
 
 	"github.com/maypok86/otter"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/filter"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/zap"
@@ -32,11 +32,11 @@ type TableStore struct {
 	rootPath      string
 	walPath       string
 	compactedPath string
-	filterCache   otter.Cache[SSTableID, mo.Option[filter.BloomFilter]]
+	filterCache   otter.Cache[SSTableID, mo.Option[bloom.Filter]]
 }
 
 func newTableStore(bucket objstore.Bucket, format *SSTableFormat, rootPath string) *TableStore {
-	cache, err := otter.MustBuilder[SSTableID, mo.Option[filter.BloomFilter]](1000).Build()
+	cache, err := otter.MustBuilder[SSTableID, mo.Option[bloom.Filter]](1000).Build()
 	common.AssertTrue(err == nil, "")
 	return &TableStore{
 		bucket:        bucket,
@@ -132,13 +132,13 @@ func (ts *TableStore) readBlocksUsingIndex(
 	return ts.sstFormat.readBlocks(sstHandle.info, index, blocksRange, obj)
 }
 
-func (ts *TableStore) cacheFilter(sstID SSTableID, filter mo.Option[filter.BloomFilter]) {
+func (ts *TableStore) cacheFilter(sstID SSTableID, filter mo.Option[bloom.Filter]) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	ts.filterCache.Set(sstID, filter)
 }
 
-func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[filter.BloomFilter], error) {
+func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[bloom.Filter], error) {
 	ts.mu.RLock()
 	val, ok := ts.filterCache.Get(sstHandle.id)
 	ts.mu.RUnlock()
@@ -149,7 +149,7 @@ func (ts *TableStore) readFilter(sstHandle *SSTableHandle) (mo.Option[filter.Blo
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.id)}
 	filtr, err := ts.sstFormat.readFilter(sstHandle.info, obj)
 	if err != nil {
-		return mo.None[filter.BloomFilter](), err
+		return mo.None[bloom.Filter](), err
 	}
 
 	ts.cacheFilter(sstHandle.id, filtr)
@@ -181,7 +181,7 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		logger.Warn("inavlid id", zap.Error(err))
+		logger.Warn("invalid id", zap.Error(err))
 		return 0, common.ErrInvalidDBState
 	}
 
@@ -189,7 +189,7 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 }
 
 func (ts *TableStore) clone() *TableStore {
-	cache, err := otter.MustBuilder[SSTableID, mo.Option[filter.BloomFilter]](1000).Build()
+	cache, err := otter.MustBuilder[SSTableID, mo.Option[bloom.Filter]](1000).Build()
 	common.AssertTrue(err == nil, "")
 	return &TableStore{
 		mu:            sync.RWMutex{},

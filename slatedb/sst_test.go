@@ -7,6 +7,7 @@ import (
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -203,7 +204,7 @@ func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
 		filter, _ := encodedSST.filter.Get()
 		// filters are encoded as a 2 byte number of probes followed by the filter
 		// Since we have added 8 keys, the filter will have (8 * filterBitsPerKey) bits or filterBitsPerKey bytes
-		assert.Equal(t, 2+int(filterBitsPerKey), len(filter.EncodeToBytes()))
+		assert.Equal(t, 2+int(filterBitsPerKey), len(bloom.Encode(filter)))
 	}
 }
 
