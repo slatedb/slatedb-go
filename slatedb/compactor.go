@@ -411,7 +411,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		}
 
 		value := kv.ValueDel.GetValue()
-		err = currentWriter.add(kv.Key, value)
+		err = currentWriter.Add(kv.Key, value)
 		if err != nil {
 			return nil, err
 		}
@@ -426,7 +426,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 			currentSize = 0
 			finishedWriter := currentWriter
 			currentWriter = e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
-			sst, err := finishedWriter.close()
+			sst, err := finishedWriter.Close()
 			if err != nil {
 				return nil, err
 			}
@@ -434,7 +434,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		}
 	}
 	if currentSize > 0 {
-		sst, err := currentWriter.close()
+		sst, err := currentWriter.Close()
 		if err != nil {
 			return nil, err
 		}

@@ -1,54 +1,37 @@
 package sstable
 
 import (
-	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-//func TestBuilderOffsets(t *testing.T) {
-//	builder := NewBuilder(20, 10, &FlatBufferSSTableInfoCodec{}, 10, compress.CodecNone)
-//
-//	// First block
-//	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-//	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
-//
-//	// Second block
-//	assert.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
-//	assert.NoError(t, builder.Add([]byte("key4"), mo.Some([]byte("value4"))))
-//
-//	// Build the SSTable
-//	table, err := builder.Build()
-//	assert.NoError(t, err)
-//
-//	spew.Dump(table.Info)
-//	spew.Dump(table.Bloom)
-//}
-
-func TestPrettyPrint(t *testing.T) {
+func TestEncode(t *testing.T) {
 	builder := NewBuilder(20, 10, &FlatBufferSSTableInfoCodec{}, 10, compress.CodecNone)
 
-	// First block
+	// Add some key-value pairs
 	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
 	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
-
-	// Second block
 	assert.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
-	assert.NoError(t, builder.Add([]byte("key4"), mo.Some([]byte("value4"))))
 
+	// Build the SSTable
 	table, err := builder.Build()
 	assert.NoError(t, err)
 
-	prettyOutput := PrettyPrint(table)
-	fmt.Println(prettyOutput)
-	//t.Logf("Pretty-printed SSTable:\n%s", prettyOutput)
+	// EncodeTable the table
+	encoded := EncodeTable(table)
 
-	// Add some basic assertions
-	assert.Contains(t, prettyOutput, "SSTable Info:")
-	assert.Contains(t, prettyOutput, "Blocks:")
-	//assert.Contains(t, prettyOutput, "key1")
-	//assert.Contains(t, prettyOutput, "key2")
-	//assert.Contains(t, prettyOutput, "key3")
+	// Check that the encoded data is not empty
+	assert.NotEmpty(t, encoded)
+
+	// Check that the encoded data length matches the sum of all block lengths
+	expectedLength := 0
+	for i := 0; i < table.Blocks.Len(); i++ {
+		expectedLength += len(table.Blocks.At(i))
+	}
+	assert.Equal(t, expectedLength, len(encoded))
+
+	// You might want to add more specific checks here, depending on the
+	// expected structure of your encoded SSTable
 }

@@ -23,10 +23,10 @@ func buildSRWithSSTs(
 	for i := uint64(0); i < n; i++ {
 		writer := tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 		for j := uint64(0); j < keysPerSST; j++ {
-			writer.add(keyGen.Next(), mo.Some(valGen.Next()))
+			writer.Add(keyGen.Next(), mo.Some(valGen.Next()))
 		}
 
-		sst, _ := writer.close()
+		sst, _ := writer.Close()
 		sstList = append(sstList, *sst)
 	}
 
@@ -35,8 +35,8 @@ func buildSRWithSSTs(
 
 func TestOneSstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
 	builder := tableStore.TableBuilder()
@@ -63,8 +63,8 @@ func TestOneSstSRIter(t *testing.T) {
 
 func TestManySstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
 	builder := tableStore.TableBuilder()
@@ -98,8 +98,8 @@ func TestManySstSRIter(t *testing.T) {
 
 func TestSRIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -132,8 +132,8 @@ func TestSRIterFromKey(t *testing.T) {
 
 func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
@@ -158,8 +158,8 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")

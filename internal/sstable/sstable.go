@@ -31,7 +31,9 @@ type Info struct {
 	CompressionCodec compress.Codec
 }
 
-// TODO: Make this a package level function
+// TODO: Make this a package level function? The provided buf might not have enough
+//  capacity to hold the encoded form, as such this method requires golang to
+//  preforms a bounds check.
 func (info *Info) Encode(buf *[]byte, sstCodec SsTableInfoCodec) {
 	data := sstCodec.Encode(info)
 	*buf = append(*buf, data...)

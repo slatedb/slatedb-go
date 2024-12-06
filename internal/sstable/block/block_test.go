@@ -2,7 +2,6 @@ package block_test
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -172,8 +171,6 @@ func TestIterFromEnd(t *testing.T) {
 	assert.Equal(t, common.KV{}, kv)
 }
 
-// TODO(thrawn01): Add additional tests <-- do this next
-
 func TestNewBuilderWithOffsets(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
@@ -192,10 +189,10 @@ func TestNewBuilderWithOffsets(t *testing.T) {
 	b, err := bb.Build()
 	assert.NoError(t, err)
 
-	t.Log("Block Offsets:")
-	for i, offset := range b.Offsets {
-		t.Logf("Entry %d: Offset %d", i, offset)
-	}
+	//t.Log("Block Offsets:")
+	//for i, offset := range b.Offsets {
+	//	t.Logf("Entry %d: Offset %d", i, offset)
+	//}
 
 	// Verify the number of entries
 	assert.Equal(t, len(kvPairs), len(b.Offsets))
@@ -230,7 +227,7 @@ func TestPrettyPrint(t *testing.T) {
 	assert.True(t, bb.Add([]byte("data-intensive"), mo.Some([]byte("applications"))))
 	assert.True(t, bb.Add([]byte("deleted"), mo.Some([]byte(""))))
 
-	b, err := bb.Build()
+	_, err := bb.Build()
 	assert.NoError(t, err)
-	fmt.Println(block.PrettyPrint(b))
+	//t.Log(block.PrettyPrint(b))
 }
