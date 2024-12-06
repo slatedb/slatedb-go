@@ -2,6 +2,7 @@ package block_test
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -172,3 +173,64 @@ func TestIterFromEnd(t *testing.T) {
 }
 
 // TODO(thrawn01): Add additional tests <-- do this next
+
+func TestNewBuilderWithOffsets(t *testing.T) {
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.IsEmpty())
+
+	kvPairs := []common.KV{
+		{Key: []byte("key1"), Value: []byte("value1")},
+		{Key: []byte("key2"), Value: []byte("value2")},
+		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},
+		{Key: []byte("k4"), Value: []byte("v4")},
+	}
+
+	for _, kv := range kvPairs {
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+	}
+
+	b, err := bb.Build()
+	assert.NoError(t, err)
+
+	t.Log("Block Offsets:")
+	for i, offset := range b.Offsets {
+		t.Logf("Entry %d: Offset %d", i, offset)
+	}
+
+	// Verify the number of entries
+	assert.Equal(t, len(kvPairs), len(b.Offsets))
+
+	// Verify that offsets are in ascending order
+	for i := 1; i < len(b.Offsets); i++ {
+		assert.True(t, b.Offsets[i] > b.Offsets[i-1], "Offsets should be in ascending order")
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	testCases := []struct {
+		input    []byte
+		maxLen   int
+		expected string
+	}{
+		{[]byte("short"), 10, "short"},
+		{[]byte("longer string"), 10, "longer ..."},
+		{[]byte("exactly10"), 10, "exactly10"},
+		{[]byte("11characters"), 10, "11chara..."},
+	}
+
+	for _, tc := range testCases {
+		result := block.Truncate(tc.input, tc.maxLen)
+		assert.Equal(t, tc.expected, result)
+	}
+}
+
+func TestPrettyPrint(t *testing.T) {
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.Add([]byte("database"), mo.Some([]byte("internals"))))
+	assert.True(t, bb.Add([]byte("data-intensive"), mo.Some([]byte("applications"))))
+	assert.True(t, bb.Add([]byte("deleted"), mo.Some([]byte(""))))
+
+	b, err := bb.Build()
+	assert.NoError(t, err)
+	fmt.Println(block.PrettyPrint(b))
+}

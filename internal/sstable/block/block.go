@@ -1,8 +1,10 @@
 package block
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -86,7 +88,27 @@ type Builder struct {
 	blockSize uint64
 }
 
-// NewBuilder builds a block of key values in the following format
+// NewBuilder builds a block of key values in the following
+// Block.Data format along with the Block.Offsets which
+// point to the beginning of each key/value.
+//
+// ## Example output from block.PrettyPrint()
+//
+// Offset: 0
+//   uint16(8) - 2 bytes
+//   []byte("database") - 8 bytes
+//   uint32(9) - 4 bytes
+//   []byte("internals") - 9 bytes
+// Offset: 23
+//   uint16(14) - 2 bytes
+//   []byte("data-intensive") - 14 bytes
+//   uint32(12) - 4 bytes
+//   []byte("applications") - 12 bytes
+// Offset: 55
+//   uint16(7) - 2 bytes
+//   []byte("deleted") - 7 bytes
+//   uint32(4294967295) - 4 bytes
+//
 //
 // +-----------------------------------------------+
 // |               KeyValue                        |
@@ -175,4 +197,42 @@ func (b *Builder) Build() (*Block, error) {
 		Data:    b.data,
 		Offsets: b.offsets,
 	}, nil
+}
+
+func PrettyPrint(block *Block) string {
+	buf := new(bytes.Buffer)
+	it := NewIterator(block)
+	for _, offset := range block.Offsets {
+		kv, ok := it.NextEntry()
+		if !ok {
+			_, _ = fmt.Fprintf(buf, "WARN: there are more offsets than blocks")
+		}
+		_, _ = fmt.Fprintf(buf, "Offset: %d\n", offset)
+		_, _ = fmt.Fprintf(buf, "  uint16(%d) - 2 bytes\n", len(kv.Key))
+		_, _ = fmt.Fprintf(buf, "  []byte(\"%s\") - %d bytes\n", Truncate(kv.Key, 30), len(kv.Key))
+		if kv.ValueDel.IsTombstone {
+			_, _ = fmt.Fprintf(buf, "  uint32(%d) - 4 bytes\n", Tombstone)
+		} else {
+			v := kv.ValueDel.Value
+			_, _ = fmt.Fprintf(buf, "  uint32(%d) - 4 bytes\n", len(v))
+			_, _ = fmt.Fprintf(buf, "  []byte(\"%s\") - %d bytes\n", Truncate(v, 30), len(v))
+		}
+	}
+	if _, ok := it.NextEntry(); ok {
+		_, _ = fmt.Fprintf(buf, "WARN: there are more blocks than offsets")
+	}
+	return buf.String()
+}
+
+// Truncate takes a given byte slice and truncates it to the provided
+// length appending "..." to the end if the slice was truncated and returning
+// the result as a string.
+func Truncate(data []byte, maxLength int) string {
+	if len(data) <= maxLength {
+		return string(data)
+	}
+	maxLength -= 3
+	truncated := make([]byte, maxLength)
+	copy(truncated, data[:maxLength])
+	return fmt.Sprintf("%s...", truncated)
 }

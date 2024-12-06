@@ -3,6 +3,7 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/gammazero/deque"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/gen"
@@ -229,6 +230,7 @@ func (b *Builder) Build() (*Table, error) {
 		buf = []byte{}
 	}
 
+	// Write the filter if the total number of keys equals of exceeds minFilterKeys
 	maybeFilter := mo.None[bloom.Filter]()
 	filterLen := 0
 	filterOffset := b.currentLen + uint64(len(buf))
@@ -243,7 +245,7 @@ func (b *Builder) Build() (*Table, error) {
 		maybeFilter = mo.Some(filter)
 	}
 
-	// write the index block
+	// Write the index block
 	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
 	indexBlock := FlatBufferSSTableIndexCodec{}.Encode(sstIndex)
 	compressedIndexBlock, err := compress.Encode(indexBlock, b.compressionCodec)
@@ -275,6 +277,48 @@ func (b *Builder) Build() (*Table, error) {
 		Bloom:  maybeFilter,
 		Blocks: b.blocks,
 	}, nil
+}
+
+// PrettyPrint returns a string representation of the SSTable in a human-readable format
+func PrettyPrint(table *Table) string {
+	var buf bytes.Buffer
+
+	// Print SSTable Info
+	_, _ = fmt.Fprintf(&buf, "SSTable Info:\n")
+	_, _ = fmt.Fprintf(&buf, "  First Key: %s\n", string(table.Info.FirstKey))
+	_, _ = fmt.Fprintf(&buf, "  Index Offset: %d\n", table.Info.IndexOffset)
+	_, _ = fmt.Fprintf(&buf, "  Index Length: %d\n", table.Info.IndexLen)
+	_, _ = fmt.Fprintf(&buf, "  Filter Offset: %d\n", table.Info.FilterOffset)
+	_, _ = fmt.Fprintf(&buf, "  Filter Length: %d\n", table.Info.FilterLen)
+	_, _ = fmt.Fprintf(&buf, "  Compression Codec: %s\n", table.Info.CompressionCodec)
+
+	// Print Bloom Filter info if present
+	if filter, ok := table.Bloom.Get(); ok {
+		_, _ = fmt.Fprintf(&buf, "\nBloom Filter:\n")
+		_, _ = fmt.Fprintf(&buf, "  Number of Probes: %d\n", filter.NumProbes)
+		_, _ = fmt.Fprintf(&buf, "  Data Length: %d\n", len(filter.Data))
+	} else {
+		_, _ = fmt.Fprintf(&buf, "\nNo Bloom Filter\n")
+	}
+
+	// Print Blocks
+	_, _ = fmt.Fprintf(&buf, "\nBlocks:\n")
+	for i := 0; i < table.Blocks.Len(); i++ {
+		blockData := table.Blocks.At(i)
+		_, _ = fmt.Fprintf(&buf, "  Block %d:\n", i)
+		_, _ = fmt.Fprintf(&buf, "    Length: %d bytes\n", len(blockData))
+
+		// Decode and print the block
+		//var decodedBlock block.Block
+		//if err := block.Decode(&decodedBlock, blockData); err == nil {
+		//	_, _ = fmt.Fprintf(&buf, "%s", block.PrettyPrint(&decodedBlock))
+		//} else {
+		//	_, _ = fmt.Fprintf(&buf, "  Error decoding block: %v\n", err)
+		//}
+		//_, _ = fmt.Fprintf(&buf, "\n")
+	}
+
+	return buf.String()
 }
 
 // TODO(thrawn01): Rename this to sstable.decode which is only used by SSTableFormat
