@@ -4,6 +4,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -18,14 +19,14 @@ func buildSRWithSSTs(
 	valGen common.OrderedBytesGenerator,
 ) SortedRun {
 
-	sstList := make([]SSTableHandle, 0, n)
+	sstList := make([]sstable.Handle, 0, n)
 	for i := uint64(0); i < n; i++ {
-		writer := tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
+		writer := tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 		for j := uint64(0); j < keysPerSST; j++ {
-			writer.add(keyGen.Next(), mo.Some(valGen.Next()))
+			writer.Add(keyGen.Next(), mo.Some(valGen.Next()))
 		}
 
-		sst, _ := writer.close()
+		sst, _ := writer.Close()
 		sstList = append(sstList, *sst)
 	}
 
@@ -34,21 +35,21 @@ func buildSRWithSSTs(
 
 func TestOneSstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
-	tableStore := newTableStore(bucket, format, "")
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
 
-	builder := tableStore.tableBuilder()
-	builder.add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.add([]byte("key2"), mo.Some([]byte("value2")))
-	builder.add([]byte("key3"), mo.Some([]byte("value3")))
+	builder := tableStore.TableBuilder()
+	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
 
-	encodedSST, err := builder.build()
+	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	sstHandle, err := tableStore.writeSST(newSSTableIDCompacted(ulid.Make()), encodedSST)
+	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	assert.NoError(t, err)
 
-	sr := SortedRun{0, []SSTableHandle{*sstHandle}}
+	sr := SortedRun{0, []sstable.Handle{*sstHandle}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
@@ -62,28 +63,28 @@ func TestOneSstSRIter(t *testing.T) {
 
 func TestManySstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
-	tableStore := newTableStore(bucket, format, "")
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
 
-	builder := tableStore.tableBuilder()
-	builder.add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.add([]byte("key2"), mo.Some([]byte("value2")))
+	builder := tableStore.TableBuilder()
+	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
 
-	encodedSST, err := builder.build()
+	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	sstHandle, err := tableStore.writeSST(newSSTableIDCompacted(ulid.Make()), encodedSST)
-	assert.NoError(t, err)
-
-	builder = tableStore.tableBuilder()
-	builder.add([]byte("key3"), mo.Some([]byte("value3")))
-
-	encodedSST, err = builder.build()
-	assert.NoError(t, err)
-	sstHandle2, err := tableStore.writeSST(newSSTableIDCompacted(ulid.Make()), encodedSST)
+	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	assert.NoError(t, err)
 
-	sr := SortedRun{0, []SSTableHandle{*sstHandle, *sstHandle2}}
+	builder = tableStore.TableBuilder()
+	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+
+	encodedSST, err = builder.Build()
+	assert.NoError(t, err)
+	sstHandle2, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
+	assert.NoError(t, err)
+
+	sr := SortedRun{0, []sstable.Handle{*sstHandle, *sstHandle2}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
@@ -97,9 +98,9 @@ func TestManySstSRIter(t *testing.T) {
 
 func TestSRIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
-	tableStore := newTableStore(bucket, format, "")
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
@@ -131,9 +132,9 @@ func TestSRIterFromKey(t *testing.T) {
 
 func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
-	tableStore := newTableStore(bucket, format, "")
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
@@ -157,9 +158,9 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.minFilterKeys = 3
-	tableStore := newTableStore(bucket, format, "")
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))

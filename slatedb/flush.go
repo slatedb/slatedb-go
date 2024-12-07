@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"errors"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 	"sync"
 	"time"
@@ -71,8 +72,8 @@ func (db *DB) flushImmWALs() error {
 	return nil
 }
 
-func (db *DB) flushImmWAL(immWAL *table.ImmutableWAL) (*SSTableHandle, error) {
-	walID := newSSTableIDWal(immWAL.ID())
+func (db *DB) flushImmWAL(immWAL *table.ImmutableWAL) (*sstable.Handle, error) {
+	walID := sstable.NewIDWal(immWAL.ID())
 	return db.flushImmTable(walID, immWAL.Iter())
 }
 
@@ -93,8 +94,8 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 	memtable.SetLastWalID(immWal.ID())
 }
 
-func (db *DB) flushImmTable(id SSTableID, iter *table.KVTableIterator) (*SSTableHandle, error) {
-	sstBuilder := db.tableStore.tableBuilder()
+func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstable.Handle, error) {
+	sstBuilder := db.tableStore.TableBuilder()
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil || entry.IsAbsent() {
@@ -105,18 +106,18 @@ func (db *DB) flushImmTable(id SSTableID, iter *table.KVTableIterator) (*SSTable
 		if !kv.ValueDel.IsTombstone {
 			val = mo.Some(kv.ValueDel.Value)
 		}
-		err = sstBuilder.add(kv.Key, val)
+		err = sstBuilder.Add(kv.Key, val)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	encodedSST, err := sstBuilder.build()
+	encodedSST, err := sstBuilder.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	sst, err := db.tableStore.writeSST(id, encodedSST)
+	sst, err := db.tableStore.WriteSST(id, encodedSST)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +224,7 @@ func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 			break
 		}
 
-		id := newSSTableIDCompacted(ulid.Make())
+		id := sstable.NewIDCompacted(ulid.Make())
 		sstHandle, err := m.db.flushImmTable(id, immMemtable.MustGet().Iter())
 		if err != nil {
 			return err

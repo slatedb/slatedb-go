@@ -1,15 +1,8 @@
 package slatedb
 
-import "time"
-
-type CompressionCodec int8
-
-const (
-	CompressionNone CompressionCodec = iota
-	CompressionSnappy
-	CompressionZlib
-	CompressionLz4
-	CompressionZstd
+import (
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"time"
 )
 
 // DBOptions Configuration options for the database. These options are set on client startup.
@@ -74,7 +67,7 @@ type DBOptions struct {
 
 	// Configuration options for the compactor.
 	CompactorOptions *CompactorOptions
-	CompressionCodec CompressionCodec
+	CompressionCodec compress.Codec
 }
 
 func DefaultDBOptions() DBOptions {
@@ -84,7 +77,7 @@ func DefaultDBOptions() DBOptions {
 		MinFilterKeys:        1000,
 		L0SSTSizeBytes:       64 * 1024 * 1024,
 		CompactorOptions:     DefaultCompactorOptions(),
-		CompressionCodec:     CompressionNone,
+		CompressionCodec:     compress.CodecNone,
 	}
 }
 

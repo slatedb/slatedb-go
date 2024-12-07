@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"errors"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -224,15 +225,15 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	o.logCompactionState()
 	dbState := o.state.dbState
 
-	sstsByID := make(map[ulid.ULID]SSTableHandle)
+	sstsByID := make(map[ulid.ULID]sstable.Handle)
 	for _, sst := range dbState.l0 {
-		id, ok := sst.id.compactedID().Get()
+		id, ok := sst.Id.CompactedID().Get()
 		common.AssertTrue(ok, "expected valid compacted ID")
 		sstsByID[id] = sst
 	}
 	for _, sr := range dbState.compacted {
 		for _, sst := range sr.sstList {
-			id, ok := sst.id.compactedID().Get()
+			id, ok := sst.Id.CompactedID().Get()
 			common.AssertTrue(ok, "expected valid compacted ID")
 			sstsByID[id] = sst
 		}
@@ -243,7 +244,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 		srsByID[sr.id] = sr
 	}
 
-	ssts := make([]SSTableHandle, 0)
+	ssts := make([]sstable.Handle, 0)
 	for _, sID := range compaction.sources {
 		sstID, ok := sID.sstID().Get()
 		if ok {
@@ -321,7 +322,7 @@ func (o *CompactorOrchestrator) logCompactionState() {
 
 type CompactionJob struct {
 	destination uint32
-	sstList     []SSTableHandle
+	sstList     []sstable.Handle
 	sortedRuns  []SortedRun
 }
 
@@ -358,25 +359,25 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 
 	l0Iters := make([]iter.KVIterator, 0)
 	for _, sst := range compaction.sstList {
-		sstIter, err := newSSTIterator(&sst, e.tableStore.clone(), 4, 256)
+		sstIter, err := sstable.NewIterator(&sst, e.tableStore.Clone(), 4, 256)
 		if err != nil {
 			return nil, err
 		}
 
-		sstIter.spawnFetches()
+		sstIter.SpawnFetches()
 		l0Iters = append(l0Iters, sstIter)
 	}
 
 	srIters := make([]iter.KVIterator, 0)
 	for _, sr := range compaction.sortedRuns {
-		srIter, err := newSortedRunIterator(sr, e.tableStore.clone(), 16, 256)
+		srIter, err := newSortedRunIterator(sr, e.tableStore.Clone(), 16, 256)
 		if err != nil {
 			return nil, err
 		}
 
 		if srIter.currentKVIter.IsPresent() {
 			sstIter, _ := srIter.currentKVIter.Get()
-			sstIter.spawnFetches()
+			sstIter.SpawnFetches()
 		}
 		srIters = append(srIters, srIter)
 	}
@@ -400,8 +401,8 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		return nil, err
 	}
 
-	outputSSTs := make([]SSTableHandle, 0)
-	currentWriter := e.tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
+	outputSSTs := make([]sstable.Handle, 0)
+	currentWriter := e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 	currentSize := 0
 	for {
 		kv, ok := allIter.NextEntry()
@@ -410,7 +411,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		}
 
 		value := kv.ValueDel.GetValue()
-		err = currentWriter.add(kv.Key, value)
+		err = currentWriter.Add(kv.Key, value)
 		if err != nil {
 			return nil, err
 		}
@@ -424,8 +425,8 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		if uint64(currentSize) > e.options.MaxSSTSize {
 			currentSize = 0
 			finishedWriter := currentWriter
-			currentWriter = e.tableStore.tableWriter(newSSTableIDCompacted(ulid.Make()))
-			sst, err := finishedWriter.close()
+			currentWriter = e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
+			sst, err := finishedWriter.Close()
 			if err != nil {
 				return nil, err
 			}
@@ -433,7 +434,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		}
 	}
 	if currentSize > 0 {
-		sst, err := currentWriter.close()
+		sst, err := currentWriter.Close()
 		if err != nil {
 			return nil, err
 		}

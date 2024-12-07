@@ -2,6 +2,8 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,9 +57,9 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.True(t, stored.IsPresent())
 
 	storedManifest, _ := stored.Get()
-	sstFormat := defaultSSTableFormat()
-	sstFormat.minFilterKeys = 10
-	tableStore := newTableStore(bucket, sstFormat, dbPath)
+	sstFormat := sstable.DefaultSSTableFormat()
+	sstFormat.MinFilterKeys = 10
+	tableStore := NewTableStore(bucket, sstFormat, dbPath)
 
 	lastCompacted := uint64(0)
 	for i := 0; i < 3; i++ {
@@ -82,7 +84,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
 		sst := l0[2-i]
-		iter, err := newSSTIterator(&sst, tableStore, 1, 1)
+		iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
 		assert.NoError(t, err)
 
 		kv, ok := iter.Next()
@@ -337,6 +339,8 @@ func TestSnapshotState(t *testing.T) {
 	assert.Equal(t, value2, val2)
 }
 
+// TODO(thrawn01): This test flapped once, need to investigate, likely due to race condition
+//  in Iterator.nextBlockIter()
 func TestShouldReadFromCompactedDB(t *testing.T) {
 	options := testDBOptionsCompactor(
 		0,
@@ -350,7 +354,8 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 	doTestDeleteAndWaitForCompaction(t, options)
 }
 
-// TODO(thrawn01): Disabled flapping test, likely due to the race condition found in sst.go:726
+// TODO(thrawn01): Disabled flapping test, likely due to the race condition
+//  in Iterator.nextBlockIter()
 //func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 //	options := testDBOptionsCompactor(
 //		math.MaxUint32,
@@ -508,7 +513,7 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        minFilterKeys,
 		L0SSTSizeBytes:       l0SSTSizeBytes,
-		CompressionCodec:     CompressionNone,
+		CompressionCodec:     compress.CodecNone,
 	}
 }
 

@@ -1,6 +1,8 @@
 package slatedb
 
 import (
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"math"
 	"slices"
 	"testing"
@@ -46,7 +48,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 	assert.Equal(t, 1, len(compactedSSTList))
 
 	sst := compactedSSTList[0]
-	iter, err := newSSTIterator(&sst, tableStore, 1, 1)
+	iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
 		kv, ok := iter.Next()
@@ -83,7 +85,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 	l0IDsToCompact := make([]SourceID, 0)
 	for _, sst := range orchestrator.state.dbState.l0 {
-		id, ok := sst.id.compactedID().Get()
+		id, ok := sst.Id.CompactedID().Get()
 		assert.True(t, ok)
 		l0IDsToCompact = append(l0IDsToCompact, newSourceIDSST(id))
 	}
@@ -109,11 +111,11 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	assert.Equal(t, 1, len(dbState.l0))
 	assert.Equal(t, 1, len(dbState.compacted))
 
-	l0ID, ok := dbState.l0[0].id.compactedID().Get()
+	l0ID, ok := dbState.l0[0].Id.CompactedID().Get()
 	assert.True(t, ok)
 	compactedSSTIDs := make([]ulid.ULID, 0)
 	for _, sst := range dbState.compacted[0].sstList {
-		id, ok := sst.id.compactedID().Get()
+		id, ok := sst.Id.CompactedID().Get()
 		assert.True(t, ok)
 		compactedSSTIDs = append(compactedSSTIDs, id)
 	}
@@ -125,12 +127,12 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(testPath, bucket, options)
 	common.AssertTrue(err == nil, "Failed to open test database")
-	sstFormat := defaultSSTableFormat()
-	sstFormat.blockSize = 32
-	sstFormat.minFilterKeys = 10
-	sstFormat.compressionCodec = options.CompressionCodec
+	sstFormat := sstable.DefaultSSTableFormat()
+	sstFormat.BlockSize = 32
+	sstFormat.MinFilterKeys = 10
+	sstFormat.CompressionCodec = options.CompressionCodec
 	manifestStore := newManifestStore(testPath, bucket)
-	tableStore := newTableStore(bucket, sstFormat, testPath)
+	tableStore := NewTableStore(bucket, sstFormat, testPath)
 	return bucket, manifestStore, tableStore, db
 }
 
@@ -141,7 +143,7 @@ func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 		MinFilterKeys:        0,
 		L0SSTSizeBytes:       128,
 		CompactorOptions:     compactorOptions,
-		CompressionCodec:     CompressionNone,
+		CompressionCodec:     compress.CodecNone,
 	}
 }
 

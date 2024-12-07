@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"errors"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"math"
 	"sync"
 
@@ -43,12 +44,12 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
 	logger.Init()
 	logger.Info("Application started")
-	sstFormat := defaultSSTableFormat()
-	sstFormat.blockSize = BlockSize
-	sstFormat.minFilterKeys = options.MinFilterKeys
-	sstFormat.compressionCodec = options.CompressionCodec
+	sstFormat := sstable.DefaultSSTableFormat()
+	sstFormat.BlockSize = BlockSize
+	sstFormat.MinFilterKeys = options.MinFilterKeys
+	sstFormat.CompressionCodec = options.CompressionCodec
 
-	tableStore := newTableStore(bucket, sstFormat, path)
+	tableStore := NewTableStore(bucket, sstFormat, path)
 	manifestStore := newManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
 
@@ -172,7 +173,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in SSTs in L0
 	for _, sst := range snapshot.core.l0 {
 		if db.sstMayIncludeKey(sst, key) {
-			iter, err := newSSTIteratorFromKey(&sst, key, db.tableStore.clone(), 1, 1)
+			iter, err := sstable.NewIteratorAtKey(&sst, key, db.tableStore.Clone(), 1, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -191,7 +192,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.core.compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.clone(), 1, 1)
+			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.Clone(), 1, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -219,11 +220,11 @@ func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	}
 }
 
-func (db *DB) sstMayIncludeKey(sst SSTableHandle, key []byte) bool {
-	if !sst.rangeCoversKey(key) {
+func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
+	if !sst.RangeCoversKey(key) {
 		return false
 	}
-	filter, err := db.tableStore.readFilter(&sst)
+	filter, err := db.tableStore.ReadFilter(&sst)
 	if err == nil && filter.IsPresent() {
 		bFilter, _ := filter.Get()
 		return bFilter.HasKey(key)
@@ -237,7 +238,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 		return false
 	}
 	sst, _ := sstOption.Get()
-	filter, err := db.tableStore.readFilter(&sst)
+	filter, err := db.tableStore.ReadFilter(&sst)
 	if err == nil && filter.IsPresent() {
 		bFilter, _ := filter.Get()
 		return bFilter.HasKey(key)
@@ -257,14 +258,14 @@ func (db *DB) replayWAL() error {
 	lastSSTID := walIDLastCompacted
 	for _, sstID := range walSSTList {
 		lastSSTID = sstID
-		sst, err := db.tableStore.openSST(newSSTableIDWal(sstID))
+		sst, err := db.tableStore.OpenSST(sstable.NewIDWal(sstID))
 		if err != nil {
 			return err
 		}
-		common.AssertTrue(sst.id.walID().IsPresent(), "Invalid WAL ID")
+		common.AssertTrue(sst.Id.WalID().IsPresent(), "Invalid WAL ID")
 
 		// iterate through kv pairs in sst and populate walReplayBuf
-		iter, err := newSSTIterator(sst, db.tableStore.clone(), 1, 1)
+		iter, err := sstable.NewIterator(sst, db.tableStore.Clone(), 1, 1)
 		if err != nil {
 			return err
 		}

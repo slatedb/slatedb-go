@@ -3,18 +3,19 @@ package slatedb
 import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func addL0sToDBState(dbState *DBState, n uint32) {
-	sstInfo := &SSTableInfo{
-		firstKey:         mo.None[[]byte](),
-		indexOffset:      0,
-		indexLen:         0,
-		filterOffset:     0,
-		filterLen:        0,
-		compressionCodec: CompressionNone,
+	sstInfo := &sstable.Info{
+		IndexOffset:      0,
+		IndexLen:         0,
+		FilterOffset:     0,
+		FilterLen:        0,
+		CompressionCodec: compress.CodecNone,
 	}
 
 	for i := 0; i < int(n); i++ {
@@ -23,7 +24,7 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 		if immMemtable.IsAbsent() {
 			break
 		}
-		sst := newSSTableHandle(newSSTableIDCompacted(ulid.Make()), sstInfo)
+		sst := sstable.NewHandle(sstable.NewIDCompacted(ulid.Make()), sstInfo)
 		dbState.moveImmMemtableToL0(immMemtable.MustGet(), sst)
 	}
 }
@@ -37,9 +38,9 @@ func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
 	size := len(compactorState.l0)
 	lastCompacted := compactorState.l0[size-1]
 	compactorState.l0 = compactorState.l0[:size-1]
-	assert.Equal(t, Compacted, lastCompacted.id.typ)
+	assert.Equal(t, sstable.Compacted, lastCompacted.Id.Type)
 
-	id, err := ulid.Parse(lastCompacted.id.value)
+	id, err := ulid.Parse(lastCompacted.Id.Value)
 	assert.NoError(t, err)
 	compactorState.l0LastCompacted = mo.Some(id)
 

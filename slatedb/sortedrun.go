@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -14,14 +15,13 @@ import (
 
 type SortedRun struct {
 	id      uint32
-	sstList []SSTableHandle
+	sstList []sstable.Handle
 }
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	index := sort.Search(len(s.sstList), func(i int) bool {
-		firstKey, ok := s.sstList[i].info.firstKey.Get()
-		common.AssertTrue(ok, "sst must have first key")
-		return bytes.Compare(firstKey, key) > 0
+		common.AssertTrue(len(s.sstList[i].Info.FirstKey) != 0, "sst must have first key")
+		return bytes.Compare(s.sstList[i].Info.FirstKey, key) > 0
 	})
 	if index > 0 {
 		return mo.Some(index - 1)
@@ -29,18 +29,18 @@ func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	return mo.None[int]()
 }
 
-func (s *SortedRun) sstWithKey(key []byte) mo.Option[SSTableHandle] {
+func (s *SortedRun) sstWithKey(key []byte) mo.Option[sstable.Handle] {
 	index, ok := s.indexOfSSTWithKey(key).Get()
 	if ok {
 		return mo.Some(s.sstList[index])
 	}
-	return mo.None[SSTableHandle]()
+	return mo.None[sstable.Handle]()
 }
 
 func (s *SortedRun) clone() *SortedRun {
-	sstList := make([]SSTableHandle, 0, len(s.sstList))
+	sstList := make([]sstable.Handle, 0, len(s.sstList))
 	for _, sst := range s.sstList {
-		sstList = append(sstList, *sst.clone())
+		sstList = append(sstList, *sst.Clone())
 	}
 	return &SortedRun{
 		id:      s.id,
@@ -53,7 +53,7 @@ func (s *SortedRun) clone() *SortedRun {
 // ------------------------------------------------
 
 type SortedRunIterator struct {
-	currentKVIter     mo.Option[*SSTIterator]
+	currentKVIter     mo.Option[*sstable.Iterator]
 	sstListIter       *SSTListIterator
 	tableStore        *TableStore
 	numBlocksToFetch  uint64
@@ -86,7 +86,7 @@ func newSortedRunIteratorFromKey(
 }
 
 func newSortedRunIter(
-	sstList []SSTableHandle,
+	sstList []sstable.Handle,
 	tableStore *TableStore,
 	maxFetchTasks uint64,
 	numBlocksToFetch uint64,
@@ -94,19 +94,19 @@ func newSortedRunIter(
 ) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
-	currentKVIter := mo.None[*SSTIterator]()
+	currentKVIter := mo.None[*sstable.Iterator]()
 	sst, ok := sstListIter.Next()
 	if ok {
-		var iter *SSTIterator
+		var iter *sstable.Iterator
 		var err error
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter, err = newSSTIteratorFromKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = sstable.NewIteratorAtKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			iter, err = newSSTIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = sstable.NewIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
 			if err != nil {
 				return nil, err
 			}
@@ -158,7 +158,7 @@ func (iter *SortedRunIterator) NextEntry() (common.KVDeletable, bool) {
 			return common.KVDeletable{}, false
 		}
 
-		newKVIter, err := newSSTIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
+		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		if err != nil {
 			return common.KVDeletable{}, false
 		}
@@ -172,17 +172,17 @@ func (iter *SortedRunIterator) NextEntry() (common.KVDeletable, bool) {
 // ------------------------------------------------
 
 type SSTListIterator struct {
-	sstList []SSTableHandle
+	sstList []sstable.Handle
 	current int
 }
 
-func newSSTListIterator(sstList []SSTableHandle) *SSTListIterator {
+func newSSTListIterator(sstList []sstable.Handle) *SSTListIterator {
 	return &SSTListIterator{sstList, 0}
 }
 
-func (iter *SSTListIterator) Next() (SSTableHandle, bool) {
+func (iter *SSTListIterator) Next() (sstable.Handle, bool) {
 	if iter.current >= len(iter.sstList) {
-		return SSTableHandle{}, false
+		return sstable.Handle{}, false
 	}
 	sst := iter.sstList[iter.current]
 	iter.current++

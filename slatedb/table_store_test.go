@@ -1,31 +1,541 @@
 package slatedb
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
+	"strconv"
 	"testing"
 )
 
-func TestSSTWriter(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
-	format := defaultSSTableFormat()
-	format.blockSize = 32
-	format.filterBitsPerKey = 1
-	tableStore := newTableStore(bucket, format, "")
-	sstID := newSSTableIDCompacted(ulid.Make())
+type BytesBlob struct {
+	data []byte
+}
 
-	writer := tableStore.tableWriter(sstID)
-	writer.add([]byte("aaaaaaaaaaaaaaaa"), mo.Some([]byte("1111111111111111")))
-	writer.add([]byte("bbbbbbbbbbbbbbbb"), mo.Some([]byte("2222222222222222")))
-	writer.add([]byte("cccccccccccccccc"), mo.None[[]byte]())
-	writer.add([]byte("dddddddddddddddd"), mo.Some([]byte("4444444444444444")))
-	sst, err := writer.close()
+func (b BytesBlob) Len() (int, error) {
+	return len(b.data), nil
+}
+
+func (b BytesBlob) ReadRange(r common.Range) ([]byte, error) {
+	return b.data[r.Start:r.End], nil
+}
+
+func (b BytesBlob) Read() ([]byte, error) {
+	return b.data, nil
+}
+
+func nextBlockToIter(builder *sstable.Builder) *block.Iterator {
+	blockBytes, ok := builder.NextBlock().Get()
+	common.AssertTrue(ok, "Block should not be empty")
+	var decoded block.Block
+
+	// TODO(thrawn01): Handle this error when we refactor iterators
+	_ = block.Decode(&decoded, blockBytes[:len(blockBytes)-common.SizeOfUint32])
+	return block.NewIterator(&decoded)
+}
+
+func buildSSTWithNBlocks(
+	n uint64,
+	tableStore *TableStore,
+	keyGen common.OrderedBytesGenerator,
+	valGen common.OrderedBytesGenerator,
+) (*sstable.Handle, int) {
+	writer := tableStore.TableWriter(sstable.NewIDWal(0))
+	nKeys := 0
+	for writer.blocksWritten < n {
+		writer.Add(keyGen.Next(), mo.Some(valGen.Next()))
+		nKeys += 1
+	}
+	sst, _ := writer.Close()
+	return sst, nKeys
+}
+
+func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 32
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+	builder.Add([]byte("aaaaaaaa"), mo.Some([]byte("11111111")))
+	builder.Add([]byte("bbbbbbbb"), mo.Some([]byte("22222222")))
+	builder.Add([]byte("cccccccc"), mo.Some([]byte("33333333")))
+
+	iterator := nextBlockToIter(builder)
+	assert2.NextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
+
+	iterator = nextBlockToIter(builder)
+	assert2.NextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
+
+	assert.True(t, builder.NextBlock().IsAbsent())
+	builder.Add([]byte("dddddddd"), mo.Some([]byte("44444444")))
+
+	iterator = nextBlockToIter(builder)
+	assert2.NextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
+
+	assert.True(t, builder.NextBlock().IsAbsent())
+}
+
+func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
+	kvList := []common.KV{
+		{Key: []byte("aaaaaaaa"), Value: []byte("11111111")},
+		{Key: []byte("bbbbbbbb"), Value: []byte("22222222")},
+		{Key: []byte("cccccccc"), Value: []byte("33333333")},
+	}
+
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 32
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+	for _, kv := range kvList {
+		builder.Add(kv.Key, mo.Some(kv.Value))
+	}
+
+	firstBlock, ok := builder.NextBlock().Get()
+	assert.True(t, ok)
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	rawSST := firstBlock
+	blockCount := encodedSST.Blocks.Len()
+	assert.Equal(t, 2, blockCount)
+
+	for i := 0; i < blockCount; i++ {
+		rawSST = append(rawSST, encodedSST.Blocks.PopFront()...)
+	}
+
+	index, err := format.ReadIndexRaw(encodedSST.Info, rawSST)
 	assert.NoError(t, err)
 
-	iterator, err := newSSTIterator(sst, tableStore, 1, 1)
+	for i, kv := range kvList {
+		blk, err := format.ReadBlockRaw(encodedSST.Info, index, uint64(i), rawSST)
+		assert.NoError(t, err)
+		iterator := block.NewIterator(blk)
+		assert2.NextEntry(t, iterator, kv.Key, kv.Value)
+		_, ok := iterator.NextEntry()
+		assert.False(t, ok)
+	}
+}
+
+func TestSSTable(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	encodedInfo := encodedSST.Info
+
+	// write sst and validate that the handle returned has the correct content.
+	sstHandle, err := tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	assert.NoError(t, err)
+	assert.Equal(t, encodedInfo, sstHandle.Info)
+	firstKey := sstHandle.Info.FirstKey
+	assert.NotNil(t, firstKey)
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
+
+	// construct sst info from the raw bytes and validate that it matches the original info.
+	sstHandleFromStore, err := tableStore.OpenSST(sstable.NewIDWal(0))
+	assert.NoError(t, err)
+	assert.Equal(t, encodedInfo, sstHandleFromStore.Info)
+
+	sstInfoFromStore := sstHandleFromStore.Info
+	index, err := tableStore.ReadIndex(sstHandleFromStore)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+	firstKey = sstInfoFromStore.FirstKey
+	assert.NotNil(t, firstKey)
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
+	firstKey = index.SsTableIndex().UnPack().BlockMeta[0].FirstKey
+	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
+}
+
+func TestSSTableNoFilter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	encodedInfo := encodedSST.Info
+
+	_, err = tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	assert.NoError(t, err)
+	sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
+	assert.NoError(t, err)
+	assert.Equal(t, encodedInfo, sstHandle.Info)
+	assert.Equal(t, uint64(0), sstHandle.Info.FilterLen)
+}
+
+func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
+	filterBits := []uint32{10, 20}
+	for _, filterBitsPerKey := range filterBits {
+		bucket := objstore.NewInMemBucket()
+		format := sstable.DefaultSSTableFormat()
+		format.FilterBitsPerKey = filterBitsPerKey
+		tableStore := NewTableStore(bucket, format, "")
+		builder := tableStore.TableBuilder()
+		for i := 0; i < 8; i++ {
+			builder.Add([]byte(strconv.Itoa(i)), mo.Some([]byte("value")))
+		}
+		encodedSST, err := builder.Build()
+		assert.NoError(t, err)
+		filter, _ := encodedSST.Bloom.Get()
+		// filters are encoded as a 2 byte number of probes followed by the filter
+		// Since we have added 8 keys, the filter will have (8 * FilterBitsPerKey) bits or FilterBitsPerKey bytes
+		assert.Equal(t, 2+int(filterBitsPerKey), len(bloom.Encode(filter)))
+	}
+}
+
+func TestSSTableWithCompression(t *testing.T) {
+	codecs := []compress.Codec{compress.CodecSnappy, compress.CodecZlib, compress.CodecLz4, compress.CodecZstd}
+	for _, compression := range codecs {
+		bucket := objstore.NewInMemBucket()
+		format := sstable.DefaultSSTableFormat()
+		format.CompressionCodec = compression
+		tableStore := NewTableStore(bucket, format, "")
+		builder := tableStore.TableBuilder()
+
+		builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+		builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+
+		encodedSST, err := builder.Build()
+		assert.NoError(t, err)
+		encodedInfo := encodedSST.Info
+
+		_, err = tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+		assert.NoError(t, err)
+		sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
+		assert.NoError(t, err)
+		index, err := tableStore.ReadIndex(sstHandle)
+		assert.NoError(t, err)
+
+		assert.Equal(t, encodedInfo, sstHandle.Info)
+		assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+		firstKey := sstHandle.Info.FirstKey
+		assert.NotNil(t, firstKey)
+		assert.True(t, bytes.Equal(firstKey, []byte("key1")))
+	}
+}
+
+func TestReadBlocks(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 32
+	format.MinFilterKeys = 1
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	builder.Add([]byte("aa"), mo.Some([]byte("11")))
+	builder.Add([]byte("bb"), mo.Some([]byte("22")))
+	builder.Add([]byte("cccccccccccccccccccc"), mo.Some([]byte("33333333333333333333")))
+	builder.Add([]byte("dddddddddddddddddddd"), mo.Some([]byte("44444444444444444444")))
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	encodedInfo := encodedSST.Info
+
+	data := make([]byte, 0)
+	for i := 0; i < encodedSST.Blocks.Len(); i++ {
+		data = append(data, encodedSST.Blocks.At(i)...)
+	}
+
+	blob := BytesBlob{data}
+	index, err := format.ReadIndexRaw(encodedInfo, data)
+	assert.NoError(t, err)
+	blocks, err := format.ReadBlocks(encodedInfo, index, common.Range{Start: 0, End: 2}, blob)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(blocks))
+
+	iterator := block.NewIterator(&blocks[0])
+	assert2.NextEntry(t, iterator, []byte("aa"), []byte("11"))
+	assert2.NextEntry(t, iterator, []byte("bb"), []byte("22"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
+
+	iterator = block.NewIterator(&blocks[1])
+	assert2.NextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
+}
+
+func TestReadAllBlocks(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 32
+	format.MinFilterKeys = 1
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	builder.Add([]byte("aa"), mo.Some([]byte("11")))
+	builder.Add([]byte("bb"), mo.Some([]byte("22")))
+	builder.Add([]byte("cccccccccccccccccccc"), mo.Some([]byte("33333333333333333333")))
+	builder.Add([]byte("dddddddddddddddddddd"), mo.Some([]byte("44444444444444444444")))
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	encodedInfo := encodedSST.Info
+
+	data := make([]byte, 0)
+	for i := 0; i < encodedSST.Blocks.Len(); i++ {
+		data = append(data, encodedSST.Blocks.At(i)...)
+	}
+
+	blob := BytesBlob{data}
+	index, err := format.ReadIndexRaw(encodedInfo, data)
+	assert.NoError(t, err)
+	blocks, err := format.ReadBlocks(encodedInfo, index, common.Range{Start: 0, End: 3}, blob)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(blocks))
+
+	iterator := block.NewIterator(&blocks[0])
+	assert2.NextEntry(t, iterator, []byte("aa"), []byte("11"))
+	assert2.NextEntry(t, iterator, []byte("bb"), []byte("22"))
+	_, ok := iterator.NextEntry()
+	assert.False(t, ok)
+
+	iterator = block.NewIterator(&blocks[1])
+	assert2.NextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
+
+	iterator = block.NewIterator(&blocks[2])
+	assert2.NextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
+	_, ok = iterator.NextEntry()
+	assert.False(t, ok)
+}
+
+// Iterator tests
+
+func TestOneBlockSSTIter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
+	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.Add([]byte("key4"), mo.Some([]byte("value4")))
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
+	assert.NoError(t, err)
+	index, err := tableStore.ReadIndex(sstHandle)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+
+	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
+	assert.NoError(t, err)
+	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
+	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
+	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
+	assert2.Next(t, iterator, []byte("key4"), []byte("value4"))
+
+	_, ok := iterator.Next()
+	assert.False(t, ok)
+}
+
+func TestManyBlockSSTIter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, format, "")
+	builder := tableStore.TableBuilder()
+
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value%d", i))
+		builder.Add(key, mo.Some(value))
+	}
+
+	encodedSST, err := builder.Build()
+	assert.NoError(t, err)
+	tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
+	assert.NoError(t, err)
+	index, err := tableStore.ReadIndex(sstHandle)
+	assert.Equal(t, 6, index.SsTableIndex().BlockMetaLength())
+
+	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
+	assert.NoError(t, err)
+	for i := 0; i < 1000; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value%d", i))
+		if !assert2.Next(t, iterator, key, value) {
+			t.FailNow()
+		}
+	}
+
+	_, ok := iterator.Next()
+	assert.False(t, ok)
+}
+
+func TestIterFromKey(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 128
+	format.MinFilterKeys = 1
+	tableStore := NewTableStore(bucket, format, "")
+
+	firstKey := []byte("aaaaaaaaaaaaaaaa")
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
+	testCaseKeyGen := keyGen.Clone()
+
+	firstVal := []byte("1111111111111111")
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	testCaseValGen := valGen.Clone()
+
+	sst, nKeys := buildSSTWithNBlocks(3, tableStore, keyGen, valGen)
+
+	for i := 0; i < nKeys; i++ {
+		expectedKeyGen := testCaseKeyGen.Clone()
+		expectedValGen := testCaseValGen.Clone()
+		fromKey := testCaseKeyGen.Next()
+		testCaseValGen.Next()
+		kvIter, err := sstable.NewIteratorAtKey(sst, fromKey, tableStore, 1, 1)
+		assert.NoError(t, err)
+
+		for j := 0; j < nKeys-i; j++ {
+			if !assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next()) {
+				t.FailNow()
+			}
+		}
+		_, ok := kvIter.Next()
+		assert.False(t, ok)
+	}
+}
+
+func TestIterFromKeySmallerThanFirst(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 128
+	format.MinFilterKeys = 1
+	tableStore := NewTableStore(bucket, format, "")
+
+	firstKey := []byte("bbbbbbbbbbbbbbbb")
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('y'))
+	expectedKeyGen := keyGen.Clone()
+
+	firstVal := []byte("2222222222222222")
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+	expectedValGen := valGen.Clone()
+
+	sst, nKeys := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
+	assert.NoError(t, err)
+
+	for i := 0; i < nKeys; i++ {
+		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
+	}
+	_, ok := kvIter.Next()
+	assert.False(t, ok)
+}
+
+func TestIterFromKeyLargerThanLast(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 128
+	format.MinFilterKeys = 1
+	tableStore := NewTableStore(bucket, format, "")
+
+	firstKey := []byte("bbbbbbbbbbbbbbbb")
+	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('y'))
+
+	firstVal := []byte("2222222222222222")
+	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
+
+	sst, _ := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	assert.NoError(t, err)
+
+	_, ok := kvIter.Next()
+	assert.False(t, ok)
+}
+
+func TestShouldGenerateOrderedBytes(t *testing.T) {
+	suffix := make([]byte, common.SizeOfUint32)
+	binary.BigEndian.PutUint32(suffix, 3735928559)
+	start := []byte{0, 0, 0}
+	gen := common.NewOrderedBytesGenerator(suffix, start, 0, 2)
+	expected := [][]byte{
+		{0, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+		{0, 2, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+		{1, 2, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 1, 0xde, 0xad, 0xbe, 0xef},
+		{2, 0, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 1, 0xde, 0xad, 0xbe, 0xef},
+		{2, 1, 2, 0xde, 0xad, 0xbe, 0xef},
+		{2, 2, 0, 0xde, 0xad, 0xbe, 0xef},
+		{2, 2, 1, 0xde, 0xad, 0xbe, 0xef},
+	}
+
+	for _, b := range expected {
+		assert.Equal(t, b, gen.Next())
+	}
+}
+
+func TestSSTWriter(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	format := sstable.DefaultSSTableFormat()
+	format.BlockSize = 32
+	format.FilterBitsPerKey = 1
+	tableStore := NewTableStore(bucket, format, "")
+	sstID := sstable.NewIDCompacted(ulid.Make())
+
+	writer := tableStore.TableWriter(sstID)
+	writer.Add([]byte("aaaaaaaaaaaaaaaa"), mo.Some([]byte("1111111111111111")))
+	writer.Add([]byte("bbbbbbbbbbbbbbbb"), mo.Some([]byte("2222222222222222")))
+	writer.Add([]byte("cccccccccccccccc"), mo.None[[]byte]())
+	writer.Add([]byte("dddddddddddddddd"), mo.Some([]byte("4444444444444444")))
+	sst, err := writer.Close()
+	assert.NoError(t, err)
+
+	iterator, err := sstable.NewIterator(sst, tableStore, 1, 1)
 	assert.NoError(t, err)
 	assert2.NextEntry(t, iterator, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
 	assert2.NextEntry(t, iterator, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
