@@ -35,9 +35,9 @@ func buildSRWithSSTs(
 
 func TestOneSstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := sstable.DefaultSSTableFormat()
-	format.MinFilterKeys = 3
-	tableStore := NewTableStore(bucket, format, "")
+	conf := sstable.DefaultConfig()
+	conf.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, conf, "")
 
 	builder := tableStore.TableBuilder()
 	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
@@ -63,7 +63,7 @@ func TestOneSstSRIter(t *testing.T) {
 
 func TestManySstSRIter(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := sstable.DefaultSSTableFormat()
+	format := sstable.DefaultConfig()
 	format.MinFilterKeys = 3
 	tableStore := NewTableStore(bucket, format, "")
 
@@ -98,9 +98,9 @@ func TestManySstSRIter(t *testing.T) {
 
 func TestSRIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := sstable.DefaultSSTableFormat()
-	format.MinFilterKeys = 3
-	tableStore := NewTableStore(bucket, format, "")
+	conf := sstable.DefaultConfig()
+	conf.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, conf, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
@@ -132,9 +132,9 @@ func TestSRIterFromKey(t *testing.T) {
 
 func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := sstable.DefaultSSTableFormat()
-	format.MinFilterKeys = 3
-	tableStore := NewTableStore(bucket, format, "")
+	conf := sstable.DefaultConfig()
+	conf.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, conf, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))
@@ -158,9 +158,9 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	format := sstable.DefaultSSTableFormat()
-	format.MinFilterKeys = 3
-	tableStore := NewTableStore(bucket, format, "")
+	conf := sstable.DefaultConfig()
+	conf.MinFilterKeys = 3
+	tableStore := NewTableStore(bucket, conf, "")
 
 	firstKey := []byte("aaaaaaaaaaaaaaaa")
 	keyGen := common.NewOrderedBytesGeneratorWithByteRange(firstKey, byte('a'), byte('z'))

@@ -2,9 +2,7 @@ package sstable
 
 import (
 	"bytes"
-	"encoding/binary"
 	"github.com/slatedb/slatedb-go/internal/compress"
-	"hash/crc32"
 )
 
 // Info contains meta information on the SSTable when it is serialized.
@@ -31,15 +29,6 @@ type Info struct {
 	CompressionCodec compress.Codec
 }
 
-// TODO: Make this a package level function? The provided buf might not have enough
-//  capacity to hold the encoded form, as such this method requires golang to
-//  preforms a bounds check.
-func (info *Info) Encode(buf *[]byte, sstCodec SsTableInfoCodec) {
-	data := sstCodec.Encode(info)
-	*buf = append(*buf, data...)
-	*buf = binary.BigEndian.AppendUint32(*buf, crc32.ChecksumIEEE(data))
-}
-
 func (info *Info) Clone() *Info {
 	return &Info{
 		FirstKey:         bytes.Clone(info.FirstKey),
@@ -49,12 +38,4 @@ func (info *Info) Clone() *Info {
 		FilterLen:        info.FilterLen,
 		CompressionCodec: info.CompressionCodec,
 	}
-}
-
-// SsTableInfoCodec - implementation of this interface defines how we
-// encode sstable.Info to byte slice and decode byte slice back to sstable.Info
-// Currently we use FlatBuffers for encoding and decoding.
-type SsTableInfoCodec interface {
-	Encode(info *Info) []byte
-	Decode(data []byte) *Info
 }

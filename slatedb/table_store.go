@@ -29,19 +29,19 @@ import (
 type TableStore struct {
 	mu            sync.RWMutex
 	bucket        objstore.Bucket
-	sstFormat     *sstable.SSTableFormat
+	sstConfig     sstable.Config
 	rootPath      string
 	walPath       string
 	compactedPath string
 	filterCache   otter.Cache[sstable.ID, mo.Option[bloom.Filter]]
 }
 
-func NewTableStore(bucket objstore.Bucket, format *sstable.SSTableFormat, rootPath string) *TableStore {
+func NewTableStore(bucket objstore.Bucket, sstConfig sstable.Config, rootPath string) *TableStore {
 	cache, err := otter.MustBuilder[sstable.ID, mo.Option[bloom.Filter]](1000).Build()
 	common.AssertTrue(err == nil, "")
 	return &TableStore{
 		bucket:        bucket,
-		sstFormat:     format,
+		sstConfig:     sstConfig,
 		rootPath:      rootPath,
 		walPath:       "wal",
 		compactedPath: "compacted",
@@ -74,15 +74,15 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 
 func (ts *TableStore) TableWriter(sstID sstable.ID) *EncodedSSTableWriter {
 	return &EncodedSSTableWriter{
+		builder:       sstable.NewBuilder(ts.sstConfig),
 		sstID:         sstID,
-		builder:       ts.sstFormat.TableBuilder(),
 		tableStore:    ts,
 		blocksWritten: 0,
 	}
 }
 
 func (ts *TableStore) TableBuilder() *sstable.Builder {
-	return ts.sstFormat.TableBuilder()
+	return sstable.NewBuilder(ts.sstConfig)
 }
 
 func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstable.Handle, error) {
@@ -105,7 +105,7 @@ func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstab
 
 func (ts *TableStore) OpenSST(id sstable.ID) (*sstable.Handle, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(id)}
-	sstInfo, err := ts.sstFormat.ReadInfo(obj)
+	sstInfo, err := sstable.ReadInfo(obj)
 	if err != nil {
 		logger.Error("unable to open table", zap.Error(err))
 		return nil, err
@@ -116,11 +116,11 @@ func (ts *TableStore) OpenSST(id sstable.ID) (*sstable.Handle, error) {
 
 func (ts *TableStore) ReadBlocks(sstHandle *sstable.Handle, blocksRange common.Range) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	index, err := ts.sstFormat.ReadIndex(sstHandle.Info, obj)
+	index, err := sstable.ReadIndex(sstHandle.Info, obj)
 	if err != nil {
 		return nil, err
 	}
-	return ts.sstFormat.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
+	return sstable.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
 }
 
 // Reads specified blocks from an SSTable using the provided index.
@@ -130,7 +130,7 @@ func (ts *TableStore) ReadBlocksUsingIndex(
 	index *sstable.Index,
 ) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	return ts.sstFormat.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
+	return sstable.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
 }
 
 func (ts *TableStore) cacheFilter(sstID sstable.ID, filter mo.Option[bloom.Filter]) {
@@ -148,7 +148,7 @@ func (ts *TableStore) ReadFilter(sstHandle *sstable.Handle) (mo.Option[bloom.Fil
 	}
 
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	filtr, err := ts.sstFormat.ReadFilter(sstHandle.Info, obj)
+	filtr, err := sstable.ReadFilter(sstHandle.Info, obj)
 	if err != nil {
 		return mo.None[bloom.Filter](), err
 	}
@@ -159,7 +159,7 @@ func (ts *TableStore) ReadFilter(sstHandle *sstable.Handle) (mo.Option[bloom.Fil
 
 func (ts *TableStore) ReadIndex(sstHandle *sstable.Handle) (*sstable.Index, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	index, err := ts.sstFormat.ReadIndex(sstHandle.Info, obj)
+	index, err := sstable.ReadIndex(sstHandle.Info, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (ts *TableStore) Clone() *TableStore {
 	return &TableStore{
 		mu:            sync.RWMutex{},
 		bucket:        ts.bucket,
-		sstFormat:     ts.sstFormat.Clone(),
+		sstConfig:     ts.sstConfig,
 		rootPath:      ts.rootPath,
 		walPath:       ts.walPath,
 		compactedPath: ts.compactedPath,
@@ -228,11 +228,11 @@ func (w *EncodedSSTableWriter) Add(key []byte, value mo.Option[[]byte]) error {
 	}
 
 	for {
-		block, ok := w.builder.NextBlock().Get()
+		blk, ok := w.builder.NextBlock().Get()
 		if !ok {
 			break
 		}
-		w.buffer = append(w.buffer, block...)
+		w.buffer = append(w.buffer, blk...)
 		w.blocksWritten += 1
 	}
 
