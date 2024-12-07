@@ -74,17 +74,17 @@ func PrettyPrint(table *Table, conf Config) string {
 
 	// TODO: sstable.Table should also include the sstable.Config
 	//  instead of requiring the user to provide the SSTable config
-	decoder := &SSTableFormat{
-		BlockSize:        conf.BlockSize,
-		MinFilterKeys:    conf.MinFilterKeys,
-		FilterBitsPerKey: conf.FilterBitsPerKey,
-		SstCodec:         FlatBufferSSTableInfoCodec{},
-		CompressionCodec: conf.Compression,
-	}
+	//decoder := &Decoder{
+	//	BlockSize:        conf.BlockSize,
+	//	MinFilterKeys:    conf.MinFilterKeys,
+	//	FilterBitsPerKey: conf.FilterBitsPerKey,
+	//	SstCodec:         FlatBufferSSTableInfoCodec{},
+	//	CompressionCodec: conf.Compression,
+	//}
 
 	encoded := EncodeTable(table)
 
-	index, err := decoder.ReadIndexRaw(table.Info, encoded)
+	index, err := ReadIndexRaw(table.Info, encoded)
 	if err != nil {
 		buf.WriteString(fmt.Sprintf("ERROR: while parsing index at [%d:%d] - %s\n",
 			table.Info.IndexOffset, table.Info.IndexLen, err.Error()))
@@ -102,7 +102,7 @@ func PrettyPrint(table *Table, conf Config) string {
 		_, _ = fmt.Fprintf(&buf, "    FirstKey: []byte(\"%s\")\n", meta.FirstKey)
 		_, _ = fmt.Fprintf(&buf, "    KeyValues:\n")
 
-		blk, err := decoder.ReadBlockRaw(table.Info, index, uint64(i), encoded)
+		blk, err := ReadBlockRaw(table.Info, index, uint64(i), encoded)
 		if err != nil {
 			buf.WriteString(fmt.Sprintf("ERROR: while parsing block at offset %d - %s\n",
 				meta.Offset, err.Error()))

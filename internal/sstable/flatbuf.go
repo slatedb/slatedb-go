@@ -43,36 +43,6 @@ func (info *Index) Clone() *Index {
 	}
 }
 
-// FlatBufferSSTableInfoCodec implements SsTableInfoCodec and defines how we
-// encode sstable.Info to byte slice and decode byte slice back to sstable.Info
-// TODO: Remove once we separate Config and Decoder from SSTableFormat
-type FlatBufferSSTableInfoCodec struct{}
-
-func (f FlatBufferSSTableInfoCodec) Encode(info *Info) []byte {
-	fbSSTInfo := SstInfoToFlatBuf(info)
-	builder := flatbuffers.NewBuilder(0)
-	offset := fbSSTInfo.Pack(builder)
-	builder.Finish(offset)
-	return builder.FinishedBytes()
-}
-
-func (f FlatBufferSSTableInfoCodec) Decode(data []byte) *Info {
-	info := flatbuf.GetRootAsSsTableInfo(data, 0)
-	return SstInfoFromFlatBuf(info)
-}
-
-// TODO: Remove
-func SstInfoFromFlatBuf(info *flatbuf.SsTableInfo) *Info {
-	return &Info{
-		FirstKey:         bytes.Clone(info.FirstKeyBytes()),
-		IndexOffset:      info.IndexOffset(),
-		IndexLen:         info.IndexLen(),
-		FilterOffset:     info.FilterOffset(),
-		FilterLen:        info.FilterLen(),
-		CompressionCodec: compress.CodecFromFlatBuf(info.CompressionFormat()),
-	}
-}
-
 func SstInfoToFlatBuf(info *Info) *flatbuf.SsTableInfoT {
 
 	return &flatbuf.SsTableInfoT{

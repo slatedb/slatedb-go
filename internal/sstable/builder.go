@@ -101,19 +101,17 @@ type Builder struct {
 	// The encoded/serialized blocks that get added to the SSTable
 	blocks *deque.Deque[[]byte]
 
-	blockSize uint64
-
 	// currentLen is the total length of all existing blocks
 	currentLen uint64
 
+	// TODO: Remove
 	// if numKeys >= minFilterKeys then we add a BloomFilter
 	// else we don't add BloomFilter since reading smaller set of keys
 	// is likely faster without BloomFilter
-	minFilterKeys uint32
-	numKeys       uint32
+	numKeys uint32
 
-	sstCodec         SsTableInfoCodec
-	compressionCodec compress.Codec
+	// config is the config options used to build the SSTable
+	conf Config
 }
 
 // Config specifies how SSTable is Encoded and Decoded
@@ -135,27 +133,17 @@ type Config struct {
 }
 
 // NewBuilder create a builder
-func NewBuilder(
-// TODO(thrawn01): use Config
-	blockSize uint64,
-	minFilterKeys uint32,
-	sstCodec SsTableInfoCodec,
-	filterBitsPerKey uint32,
-	compressionCodec compress.Codec,
-) *Builder {
+func NewBuilder(conf Config) *Builder {
 	return &Builder{
-		filterBuilder:    bloom.NewBuilder(filterBitsPerKey),
-		blockBuilder:     block.NewBuilder(blockSize),
-		blocks:           deque.New[[]byte](0),
-		blockMetaList:    []*flatbuf.BlockMetaT{},
-		compressionCodec: compressionCodec,
-		firstKey:         mo.None[[]byte](),
-		sstFirstKey:      mo.None[[]byte](),
-		minFilterKeys:    minFilterKeys,
-		blockSize:        blockSize,
-		sstCodec:         sstCodec,
-		currentLen:       0,
-		numKeys:          0,
+		filterBuilder: bloom.NewBuilder(conf.FilterBitsPerKey),
+		blockBuilder:  block.NewBuilder(conf.BlockSize),
+		blocks:        deque.New[[]byte](0),
+		blockMetaList: []*flatbuf.BlockMetaT{},
+		firstKey:      mo.None[[]byte](),
+		sstFirstKey:   mo.None[[]byte](),
+		conf:          conf,
+		currentLen:    0,
+		numKeys:       0,
 	}
 }
 
@@ -199,14 +187,14 @@ func (b *Builder) finishBlock() (mo.Option[[]byte], error) {
 	}
 
 	blockBuilder := b.blockBuilder
-	b.blockBuilder = block.NewBuilder(b.blockSize)
+	b.blockBuilder = block.NewBuilder(b.conf.BlockSize)
 	blk, err := blockBuilder.Build()
 	if err != nil {
 		return mo.None[[]byte](), err
 	}
 
 	encodedBlock := block.Encode(blk)
-	compressedBlock, err := compress.Encode(encodedBlock, b.compressionCodec)
+	compressedBlock, err := compress.Encode(encodedBlock, b.conf.Compression)
 	if err != nil {
 		return mo.None[[]byte](), err
 	}
@@ -238,9 +226,9 @@ func (b *Builder) Build() (*Table, error) {
 	maybeFilter := mo.None[bloom.Filter]()
 	filterLen := 0
 	filterOffset := b.currentLen + uint64(len(buf))
-	if b.numKeys >= b.minFilterKeys {
+	if b.numKeys >= b.conf.MinFilterKeys {
 		filter := b.filterBuilder.Build()
-		compressedFilter, err := compress.Encode(bloom.Encode(filter), b.compressionCodec)
+		compressedFilter, err := compress.Encode(bloom.Encode(filter), b.conf.Compression)
 		if err != nil {
 			return nil, err
 		}
@@ -253,7 +241,7 @@ func (b *Builder) Build() (*Table, error) {
 	// Write the index block
 	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
 	indexBlock := encodeIndex(sstIndex)
-	compressedIndexBlock, err := compress.Encode(indexBlock, b.compressionCodec)
+	compressedIndexBlock, err := compress.Encode(indexBlock, b.conf.Compression)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +258,7 @@ func (b *Builder) Build() (*Table, error) {
 		IndexLen:         uint64(len(compressedIndexBlock)),
 		FilterOffset:     filterOffset,
 		FilterLen:        uint64(filterLen),
-		CompressionCodec: b.compressionCodec,
+		CompressionCodec: b.conf.Compression,
 	}
 	buf = append(buf, EncodeInfo(sstInfo)...)
 

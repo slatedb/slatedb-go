@@ -8,7 +8,12 @@ import (
 )
 
 func TestEncode(t *testing.T) {
-	builder := NewBuilder(20, 10, &FlatBufferSSTableInfoCodec{}, 10, compress.CodecNone)
+	builder := NewBuilder(Config{
+		BlockSize:        20,
+		MinFilterKeys:    10,
+		FilterBitsPerKey: 10,
+		Compression:      compress.CodecNone,
+	})
 
 	// Add some key-value pairs
 	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
