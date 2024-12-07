@@ -3,7 +3,6 @@ package sstable
 import (
 	"encoding/binary"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/gen"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
@@ -68,7 +67,7 @@ func (f *SSTableFormat) ReadInfo(obj common.ReadOnlyBlob) (*Info, error) {
 		return nil, err
 	}
 
-	return DecodeBytesToSSTableInfo(metadataBytes, f.SstCodec)
+	return DecodeInfo(metadataBytes)
 }
 
 func (f *SSTableFormat) ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
@@ -124,8 +123,8 @@ func (f *SSTableFormat) ReadIndexRaw(info *Info, sstBytes []byte) (*Index, error
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the
 // blocks within rng
-func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *Info, index *flatbuf.SsTableIndex) common.Range {
-	blockMetaList := index.UnPack().BlockMeta
+func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *Info, index *Index) common.Range {
+	blockMetaList := index.BlockMeta()
 	startOffset := blockMetaList[rng.Start].Offset
 
 	endOffset := sstInfo.FilterOffset
@@ -140,11 +139,11 @@ func (f *SSTableFormat) getBlockRange(rng common.Range, sstInfo *Info, index *fl
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
 func (f *SSTableFormat) ReadBlocks(
 	sstInfo *Info,
-	indexData *Index,
+	index *Index,
 	blockRange common.Range,
 	obj common.ReadOnlyBlob,
 ) ([]block.Block, error) {
-	index := indexData.SsTableIndex()
+	//index := indexData.SsTableIndex()
 	common.AssertTrue(blockRange.Start <= blockRange.End, "block start index cannot be greater than end index")
 	common.AssertTrue(blockRange.End <= uint64(index.BlockMetaLength()), "block end index out of range")
 
@@ -161,7 +160,7 @@ func (f *SSTableFormat) ReadBlocks(
 
 	startOffset := rng.Start
 	decodedBlocks := make([]block.Block, 0)
-	blockMetaList := index.UnPack().BlockMeta
+	blockMetaList := index.BlockMeta()
 	compressionCodec := sstInfo.CompressionCodec
 
 	for i := blockRange.Start; i < blockRange.End; i++ {
@@ -226,11 +225,10 @@ func (f *SSTableFormat) readBlock(
 
 func (f *SSTableFormat) ReadBlockRaw(
 	info *Info,
-	indexData *Index,
+	index *Index,
 	blockIndex uint64,
 	sstBytes []byte,
 ) (*block.Block, error) {
-	index := indexData.SsTableIndex()
 	blockRange := f.getBlockRange(common.Range{Start: blockIndex, End: blockIndex + 1}, info, index)
 	return f.decodeBytesToBlock(sstBytes[blockRange.Start:blockRange.End], info.CompressionCodec)
 }

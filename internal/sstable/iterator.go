@@ -133,7 +133,7 @@ func (iter *Iterator) NextEntry() (common.KVDeletable, bool) {
 //  made private to this struct
 func (iter *Iterator) SpawnFetches() {
 
-	numBlocks := iter.indexData.SsTableIndex().BlockMetaLength()
+	numBlocks := iter.indexData.BlockMetaLength()
 	table := iter.table.Clone()
 	// TODO(thrawn01): I don't believe we want to clone the store here. this
 	//  this invalidates the cache and the mutex of the store, which likely
@@ -177,7 +177,7 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 		// TODO(thrawn01): This is a race, we should not expect an empty channel to indicate there are no more
 		//  items to process.
 		if len(iter.fetchTasks) == 0 {
-			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.SsTableIndex().BlockMetaLength(), "")
+			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.BlockMetaLength(), "")
 			fmt.Printf("Iteration Stopped Due To Empty Task Channel\n")
 			return mo.None[*block.Iterator](), nil
 		}
@@ -204,17 +204,16 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 	}
 }
 
-func (iter *Iterator) firstBlockWithDataIncludingOrAfterKey(indexData *Index, key []byte) uint64 {
-	sstIndex := indexData.SsTableIndex()
+func (iter *Iterator) firstBlockWithDataIncludingOrAfterKey(index *Index, key []byte) uint64 {
 	low := 0
-	high := sstIndex.BlockMetaLength() - 1
+	high := index.BlockMetaLength() - 1
 	// if the key is less than all the blocks' first key, scan the whole sst
 	foundBlockID := 0
 
 loop:
 	for low <= high {
 		mid := low + (high-low)/2
-		midBlockFirstKey := sstIndex.UnPack().BlockMeta[mid].FirstKey
+		midBlockFirstKey := index.BlockMeta()[mid].FirstKey
 		cmp := bytes.Compare(midBlockFirstKey, key)
 		switch cmp {
 		case -1:

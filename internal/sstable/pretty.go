@@ -91,7 +91,7 @@ func PrettyPrint(table *Table, conf Config) string {
 		return buf.String()
 	}
 
-	blocksMeta := index.SsTableIndex().UnPack().BlockMeta
+	blocksMeta := index.BlockMeta()
 	_, _ = fmt.Fprintf(&buf, "Blocks:\n")
 	_, _ = fmt.Fprintf(&buf, "  First Block Offset: %d\n", blocksMeta[0].Offset)
 	_, _ = fmt.Fprintf(&buf, "  End Offset: %d\n", table.Info.FilterOffset)

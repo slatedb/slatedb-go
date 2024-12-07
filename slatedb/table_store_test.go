@@ -13,6 +13,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"strconv"
 	"testing"
@@ -161,11 +162,11 @@ func TestSSTable(t *testing.T) {
 	sstInfoFromStore := sstHandleFromStore.Info
 	index, err := tableStore.ReadIndex(sstHandleFromStore)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+	assert.Equal(t, 1, index.BlockMetaLength())
 	firstKey = sstInfoFromStore.FirstKey
 	assert.NotNil(t, firstKey)
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
-	firstKey = index.SsTableIndex().UnPack().BlockMeta[0].FirstKey
+	firstKey = index.BlockMeta()[0].FirstKey
 	assert.True(t, bytes.Equal(firstKey, []byte("key1")))
 }
 
@@ -235,7 +236,7 @@ func TestSSTableWithCompression(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, encodedInfo, sstHandle.Info)
-		assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+		assert.Equal(t, 1, index.BlockMetaLength())
 		firstKey := sstHandle.Info.FirstKey
 		assert.NotNil(t, firstKey)
 		assert.True(t, bytes.Equal(firstKey, []byte("key1")))
@@ -350,7 +351,7 @@ func TestOneBlockSSTIter(t *testing.T) {
 	assert.NoError(t, err)
 	index, err := tableStore.ReadIndex(sstHandle)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, index.SsTableIndex().BlockMetaLength())
+	assert.Equal(t, 1, index.BlockMetaLength())
 
 	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
 	assert.NoError(t, err)
@@ -378,11 +379,14 @@ func TestManyBlockSSTIter(t *testing.T) {
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	_, err = tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	require.NoError(t, err)
 	sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
 	assert.NoError(t, err)
 	index, err := tableStore.ReadIndex(sstHandle)
-	assert.Equal(t, 6, index.SsTableIndex().BlockMetaLength())
+	require.NoError(t, err)
+	require.NotNil(t, index)
+	assert.Equal(t, 6, index.BlockMetaLength())
 
 	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
 	assert.NoError(t, err)

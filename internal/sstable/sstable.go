@@ -31,6 +31,14 @@ type Info struct {
 	CompressionCodec compress.Codec
 }
 
+//func EncodeInfo(info *Info) []byte {
+//	fbSSTInfo := SstInfoToFlatBuf(info)
+//	builder := flatbuffers.NewBuilder(0)
+//	offset := fbSSTInfo.Pack(builder)
+//	builder.Finish(offset)
+//	return builder.FinishedBytes()
+//}
+
 // TODO: Make this a package level function? The provided buf might not have enough
 //  capacity to hold the encoded form, as such this method requires golang to
 //  preforms a bounds check.
