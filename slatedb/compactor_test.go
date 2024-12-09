@@ -127,12 +127,12 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(testPath, bucket, options)
 	common.AssertTrue(err == nil, "Failed to open test database")
-	sstFormat := sstable.DefaultSSTableFormat()
-	sstFormat.BlockSize = 32
-	sstFormat.MinFilterKeys = 10
-	sstFormat.CompressionCodec = options.CompressionCodec
+	conf := sstable.DefaultConfig()
+	conf.BlockSize = 32
+	conf.MinFilterKeys = 10
+	conf.Compression = options.CompressionCodec
 	manifestStore := newManifestStore(testPath, bucket)
-	tableStore := NewTableStore(bucket, sstFormat, testPath)
+	tableStore := NewTableStore(bucket, conf, testPath)
 	return bucket, manifestStore, tableStore, db
 }
 

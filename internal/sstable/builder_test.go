@@ -8,7 +8,12 @@ import (
 )
 
 func TestEncode(t *testing.T) {
-	builder := NewBuilder(20, 10, &FlatBufferSSTableInfoCodec{}, 10, compress.CodecNone)
+	builder := NewBuilder(Config{
+		BlockSize:        20,
+		MinFilterKeys:    10,
+		FilterBitsPerKey: 10,
+		Compression:      compress.CodecNone,
+	})
 
 	// Add some key-value pairs
 	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
@@ -32,6 +37,6 @@ func TestEncode(t *testing.T) {
 	}
 	assert.Equal(t, expectedLength, len(encoded))
 
-	// You might want to add more specific checks here, depending on the
-	// expected structure of your encoded SSTable
+	// TODO(thrawn01): Write some decode tests, builder is broken ATM, but tests didn't catch the issue!?!??!?!
+	//  ^^^^ DO THIS NEXT
 }

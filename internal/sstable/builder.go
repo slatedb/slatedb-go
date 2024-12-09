@@ -10,7 +10,6 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"hash/crc32"
 )
 
@@ -77,6 +76,8 @@ type Table struct {
 // |  |  - Length of flatbuf.SsTableIndexT      |  |
 // |  |  - The Compression Codec                |  |
 // |  +-----------------------------------------+  |
+// |  |  Checksum of SsTableInfoT (4 bytes)     |  |
+// |  +-----------------------------------------+  |
 // |                                               |
 // |  +-----------------------------------------+  |
 // |  |  Offset of SsTableInfoT (4 bytes)       |  |
@@ -100,19 +101,16 @@ type Builder struct {
 	// The encoded/serialized blocks that get added to the SSTable
 	blocks *deque.Deque[[]byte]
 
-	blockSize uint64
-
 	// currentLen is the total length of all existing blocks
 	currentLen uint64
 
 	// if numKeys >= minFilterKeys then we add a BloomFilter
 	// else we don't add BloomFilter since reading smaller set of keys
 	// is likely faster without BloomFilter
-	minFilterKeys uint32
-	numKeys       uint32
+	numKeys uint32
 
-	sstCodec         SsTableInfoCodec
-	compressionCodec compress.Codec
+	// config is the config options used to build the SSTable
+	conf Config
 }
 
 // Config specifies how SSTable is Encoded and Decoded
@@ -134,27 +132,17 @@ type Config struct {
 }
 
 // NewBuilder create a builder
-func NewBuilder(
-// TODO(thrawn01): use Config
-	blockSize uint64,
-	minFilterKeys uint32,
-	sstCodec SsTableInfoCodec,
-	filterBitsPerKey uint32,
-	compressionCodec compress.Codec,
-) *Builder {
+func NewBuilder(conf Config) *Builder {
 	return &Builder{
-		filterBuilder:    bloom.NewBuilder(filterBitsPerKey),
-		blockBuilder:     block.NewBuilder(blockSize),
-		blocks:           deque.New[[]byte](0),
-		blockMetaList:    []*flatbuf.BlockMetaT{},
-		compressionCodec: compressionCodec,
-		firstKey:         mo.None[[]byte](),
-		sstFirstKey:      mo.None[[]byte](),
-		minFilterKeys:    minFilterKeys,
-		blockSize:        blockSize,
-		sstCodec:         sstCodec,
-		currentLen:       0,
-		numKeys:          0,
+		filterBuilder: bloom.NewBuilder(conf.FilterBitsPerKey),
+		blockBuilder:  block.NewBuilder(conf.BlockSize),
+		blocks:        deque.New[[]byte](0),
+		blockMetaList: []*flatbuf.BlockMetaT{},
+		firstKey:      mo.None[[]byte](),
+		sstFirstKey:   mo.None[[]byte](),
+		conf:          conf,
+		currentLen:    0,
+		numKeys:       0,
 	}
 }
 
@@ -198,14 +186,13 @@ func (b *Builder) finishBlock() (mo.Option[[]byte], error) {
 	}
 
 	blockBuilder := b.blockBuilder
-	b.blockBuilder = block.NewBuilder(b.blockSize)
+	b.blockBuilder = block.NewBuilder(b.conf.BlockSize)
 	blk, err := blockBuilder.Build()
 	if err != nil {
 		return mo.None[[]byte](), err
 	}
 
-	encodedBlock := block.Encode(blk)
-	compressedBlock, err := compress.Encode(encodedBlock, b.compressionCodec)
+	compressedBlock, err := block.Encode(blk, b.conf.Compression)
 	if err != nil {
 		return mo.None[[]byte](), err
 	}
@@ -237,9 +224,9 @@ func (b *Builder) Build() (*Table, error) {
 	maybeFilter := mo.None[bloom.Filter]()
 	filterLen := 0
 	filterOffset := b.currentLen + uint64(len(buf))
-	if b.numKeys >= b.minFilterKeys {
+	if b.numKeys >= b.conf.MinFilterKeys {
 		filter := b.filterBuilder.Build()
-		compressedFilter, err := compress.Encode(bloom.Encode(filter), b.compressionCodec)
+		compressedFilter, err := compress.Encode(bloom.Encode(filter), b.conf.Compression)
 		if err != nil {
 			return nil, err
 		}
@@ -248,10 +235,11 @@ func (b *Builder) Build() (*Table, error) {
 		maybeFilter = mo.Some(filter)
 	}
 
+	// TODO: Need to move this into a encode/compress function
 	// Write the index block
 	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
-	indexBlock := FlatBufferSSTableIndexCodec{}.Encode(sstIndex)
-	compressedIndexBlock, err := compress.Encode(indexBlock, b.compressionCodec)
+	indexBlock := encodeIndex(sstIndex)
+	compressedIndexBlock, err := compress.Encode(indexBlock, b.conf.Compression)
 	if err != nil {
 		return nil, err
 	}
@@ -261,15 +249,16 @@ func (b *Builder) Build() (*Table, error) {
 	metaOffset := b.currentLen + uint64(len(buf))
 	firstKey, _ := b.sstFirstKey.Get()
 
+	// Append the encoded Info and checksum
 	sstInfo := &Info{
 		FirstKey:         bytes.Clone(firstKey),
 		IndexOffset:      indexOffset,
 		IndexLen:         uint64(len(compressedIndexBlock)),
 		FilterOffset:     filterOffset,
 		FilterLen:        uint64(filterLen),
-		CompressionCodec: b.compressionCodec,
+		CompressionCodec: b.conf.Compression,
 	}
-	sstInfo.Encode(&buf, b.sstCodec)
+	buf = append(buf, EncodeInfo(sstInfo)...)
 
 	// write the metadata offset at the end of the file.
 	buf = binary.BigEndian.AppendUint32(buf, uint32(metaOffset))
@@ -280,34 +269,4 @@ func (b *Builder) Build() (*Table, error) {
 		Bloom:  maybeFilter,
 		Blocks: b.blocks,
 	}, nil
-}
-
-// EncodeTable encodes the provided sstable.Table into the
-// SSTable format as []byte.
-func EncodeTable(table *Table) []byte {
-	var result []byte
-	for i := 0; i < table.Blocks.Len(); i++ {
-		result = append(result, table.Blocks.At(i)...)
-	}
-	return result
-}
-
-// TODO(thrawn01): Rename this to sstable.decode which is only used by SSTableFormat
-//  which should be renamed to sstable.Decoder
-func DecodeBytesToSSTableInfo(rawInfo []byte, sstCodec SsTableInfoCodec) (*Info, error) {
-	if len(rawInfo) <= common.SizeOfUint32 {
-		return nil, common.ErrEmptyBlockMeta
-	}
-
-	// last 4 bytes hold the checksum
-	checksumIndex := len(rawInfo) - common.SizeOfUint32
-	data := rawInfo[:checksumIndex]
-	checksum := binary.BigEndian.Uint32(rawInfo[checksumIndex:])
-	if checksum != crc32.ChecksumIEEE(data) {
-		logger.Error("check sum does not match")
-		return nil, common.ErrChecksumMismatch
-	}
-
-	info := sstCodec.Decode(data)
-	return info, nil
 }
