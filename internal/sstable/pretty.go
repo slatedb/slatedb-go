@@ -72,16 +72,6 @@ func PrettyPrint(table *Table, conf Config) string {
 		_, _ = fmt.Fprintf(&buf, "  No Bloom Filter\n")
 	}
 
-	// TODO: sstable.Table should also include the sstable.Config
-	//  instead of requiring the user to provide the SSTable config
-	//decoder := &Decoder{
-	//	BlockSize:        conf.BlockSize,
-	//	MinFilterKeys:    conf.MinFilterKeys,
-	//	FilterBitsPerKey: conf.FilterBitsPerKey,
-	//	SstCodec:         FlatBufferSSTableInfoCodec{},
-	//	CompressionCodec: conf.Compression,
-	//}
-
 	encoded := EncodeTable(table)
 
 	index, err := ReadIndexRaw(table.Info, encoded)

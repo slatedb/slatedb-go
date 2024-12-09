@@ -3,6 +3,7 @@ package block_test
 import (
 	"bytes"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
@@ -20,15 +21,17 @@ func TestNewBuilder(t *testing.T) {
 	b, err := bb.Build()
 	assert.NoError(t, err)
 
-	encoded := block.Encode(b)
+	encoded, err := block.Encode(b, compress.CodecNone)
 	assert.NoError(t, err)
+
 	var decoded block.Block
-	assert.NoError(t, block.Decode(&decoded, encoded))
+	assert.NoError(t, block.Decode(&decoded, encoded, compress.CodecNone))
+	assert.Equal(t, b.FirstKey, []byte("key1"))
 	assert.Equal(t, b.Data, decoded.Data)
 	assert.Equal(t, b.Offsets, decoded.Offsets)
 }
 
-func TestBlock(t *testing.T) {
+func TestBlockCompression(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
 	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
@@ -38,9 +41,12 @@ func TestBlock(t *testing.T) {
 	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	encoded := block.Encode(b)
+	encoded, err := block.Encode(b, compress.CodecLz4)
+	assert.NoError(t, err)
+
 	var decoded block.Block
-	require.NoError(t, block.Decode(&decoded, encoded))
+	require.NoError(t, block.Decode(&decoded, encoded, compress.CodecLz4))
+	assert.Equal(t, b.FirstKey, []byte("key1"))
 	assert.Equal(t, b.Data, decoded.Data)
 	assert.Equal(t, b.Offsets, decoded.Offsets)
 }
@@ -54,9 +60,11 @@ func TestBlockWithTombstone(t *testing.T) {
 	b, err := bb.Build()
 	assert.Nil(t, err)
 
-	encoded := block.Encode(b)
+	encoded, err := block.Encode(b, compress.CodecNone)
+	assert.NoError(t, err)
+
 	var decoded block.Block
-	require.NoError(t, block.Decode(&decoded, encoded))
+	require.NoError(t, block.Decode(&decoded, encoded, compress.CodecNone))
 	assert.Equal(t, b.Data, decoded.Data)
 	assert.Equal(t, b.Offsets, decoded.Offsets)
 }
@@ -227,7 +235,35 @@ func TestPrettyPrint(t *testing.T) {
 	assert.True(t, bb.Add([]byte("data-intensive"), mo.Some([]byte("applications"))))
 	assert.True(t, bb.Add([]byte("deleted"), mo.Some([]byte(""))))
 
-	_, err := bb.Build()
+	b, err := bb.Build()
 	assert.NoError(t, err)
-	//t.Log(block.PrettyPrint(b))
+	out := block.PrettyPrint(b)
+
+	//t.Log(out)
+	assert.Contains(t, out, "database")
+	assert.Contains(t, out, "internals")
+	assert.Contains(t, out, "data-intensive")
+	assert.Contains(t, out, "applications")
+	assert.Contains(t, out, "deleted")
+}
+
+func TestBlockFirstKey(t *testing.T) {
+	bb := block.NewBuilder(4096)
+	assert.True(t, bb.IsEmpty())
+
+	kvPairs := []common.KV{
+		{Key: []byte("key1"), Value: []byte("value1")},
+		{Key: []byte("key2"), Value: []byte("value2")},
+		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},
+		{Key: []byte("k4"), Value: []byte("v4")},
+	}
+
+	for _, kv := range kvPairs {
+		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+	}
+
+	b, err := bb.Build()
+	require.NoError(t, err)
+
+	assert.Equal(t, []byte("key1"), b.FirstKey)
 }

@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
@@ -9,13 +10,12 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"go.uber.org/zap"
-	"hash/crc32"
 )
 
 func DefaultConfig() Config {
 	return Config{
 		BlockSize:        4096,
-		MinFilterKeys:    0, // TODO(thrawn01): I think this is wrong, check the original code
+		MinFilterKeys:    0,
 		FilterBitsPerKey: 10,
 		Compression:      compress.CodecNone,
 	}
@@ -149,43 +149,17 @@ func ReadBlocks(
 			blockBytes = dataBytes[bytesStart:bytesEnd]
 		}
 
-		decodedBlock, err := decodeBytesToBlock(blockBytes, compressionCodec)
-		if err != nil {
+		var decodedBlock block.Block
+		if err := block.Decode(&decodedBlock, blockBytes, compressionCodec); err != nil {
 			logger.Error("unable to Decode block", zap.Error(err))
 			return nil, err
 		}
-		decodedBlocks = append(decodedBlocks, *decodedBlock)
+		decodedBlocks = append(decodedBlocks, decodedBlock)
 	}
 	return decodedBlocks, nil
 }
 
-// TODO(thrawn01): this belongs in the 'block' package
-func decodeBytesToBlock(bytes []byte, compressionCodec compress.Codec) (*block.Block, error) {
-	// last 4 bytes hold the checksum
-	checksumIndex := len(bytes) - common.SizeOfUint32
-	blockBytes := bytes[:checksumIndex]
-	storedChecksum := binary.BigEndian.Uint32(bytes[checksumIndex:])
-	if storedChecksum != crc32.ChecksumIEEE(blockBytes) {
-		logger.Error("checksum does not match")
-		return nil, common.ErrChecksumMismatch
-	}
-
-	var decodedBlock block.Block
-	if err := block.Decode(&decodedBlock, blockBytes); err != nil {
-		return nil, err
-	}
-
-	decompressedBytes, err := compress.Decode(decodedBlock.Data, compressionCodec)
-	if err != nil {
-		return nil, err
-	}
-
-	return &block.Block{
-		Data:    decompressedBytes,
-		Offsets: decodedBlock.Offsets,
-	}, nil
-}
-
+// TODO(thrawn01): Remove this, it's not used anywhere
 func readBlock(
 	info *Info,
 	indexData *Index,
@@ -207,18 +181,11 @@ func ReadBlockRaw(
 	sstBytes []byte,
 ) (*block.Block, error) {
 	blockRange := getBlockRange(common.Range{Start: blockIndex, End: blockIndex + 1}, info, index)
-	return decodeBytesToBlock(sstBytes[blockRange.Start:blockRange.End], info.CompressionCodec)
+
+	fmt.Printf("%+v\n", blockRange)
+	var blk block.Block
+	if err := block.Decode(&blk, sstBytes[blockRange.Start:blockRange.End], info.CompressionCodec); err != nil {
+		return nil, err
+	}
+	return &blk, nil
 }
-
-// TODO: Remove this, just use sstable.NewBuilder(sstable.Config)
-//func (f *Decoder) TableBuilder() *Builder {
-//	return NewBuilder(f.conf)
-//}
-
-//func (f *Decoder) Clone() *Decoder {
-//	return &Decoder{
-//		BlockSize:        f.BlockSize,
-//		MinFilterKeys:    f.MinFilterKeys,
-//		CompressionCodec: f.CompressionCodec,
-//	}
-//}

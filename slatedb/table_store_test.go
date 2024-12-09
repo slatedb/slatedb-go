@@ -35,13 +35,12 @@ func (b BytesBlob) Read() ([]byte, error) {
 	return b.data, nil
 }
 
-func nextBlockToIter(builder *sstable.Builder) *block.Iterator {
+func nextBlockToIter(t *testing.T, builder *sstable.Builder, codec compress.Codec) *block.Iterator {
 	blockBytes, ok := builder.NextBlock().Get()
 	common.AssertTrue(ok, "Block should not be empty")
 	var decoded block.Block
 
-	// TODO(thrawn01): Handle this error when we refactor iterators
-	_ = block.Decode(&decoded, blockBytes[:len(blockBytes)-common.SizeOfUint32])
+	require.NoError(t, block.Decode(&decoded, blockBytes, codec))
 	return block.NewIterator(&decoded)
 }
 
@@ -71,12 +70,12 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	builder.Add([]byte("bbbbbbbb"), mo.Some([]byte("22222222")))
 	builder.Add([]byte("cccccccc"), mo.Some([]byte("33333333")))
 
-	iterator := nextBlockToIter(builder)
+	iterator := nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
 	_, ok := iterator.NextEntry()
 	assert.False(t, ok)
 
-	iterator = nextBlockToIter(builder)
+	iterator = nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
 	_, ok = iterator.NextEntry()
 	assert.False(t, ok)
@@ -84,7 +83,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	assert.True(t, builder.NextBlock().IsAbsent())
 	builder.Add([]byte("dddddddd"), mo.Some([]byte("44444444")))
 
-	iterator = nextBlockToIter(builder)
+	iterator = nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
 	_, ok = iterator.NextEntry()
 	assert.False(t, ok)

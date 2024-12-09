@@ -6,11 +6,10 @@ import (
 	"github.com/gammazero/deque"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/gen"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"hash/crc32"
 )
 
 // Table is the in memory representation of an SSTable
@@ -90,13 +89,8 @@ type Builder struct {
 	// The metadata for each block held by the SSTableIndex
 	blockMetaList []*flatbuf.BlockMetaT
 
-	// FirstKey is the first key of the current block that is being built.
-	// When the current block reaches BlockSize, a new Block is created and
-	// firstKey will then hold the first key of the new block
+	// firstKey is the first key of the first block in the SSTable
 	firstKey mo.Option[[]byte]
-
-	// sstFirstKey is the first key of the first block in the SSTable
-	sstFirstKey mo.Option[[]byte]
 
 	// The encoded/serialized blocks that get added to the SSTable
 	blocks *deque.Deque[[]byte]
@@ -104,7 +98,6 @@ type Builder struct {
 	// currentLen is the total length of all existing blocks
 	currentLen uint64
 
-	// TODO: Remove
 	// if numKeys >= minFilterKeys then we add a BloomFilter
 	// else we don't add BloomFilter since reading smaller set of keys
 	// is likely faster without BloomFilter
@@ -140,7 +133,6 @@ func NewBuilder(conf Config) *Builder {
 		blocks:        deque.New[[]byte](0),
 		blockMetaList: []*flatbuf.BlockMetaT{},
 		firstKey:      mo.None[[]byte](),
-		sstFirstKey:   mo.None[[]byte](),
 		conf:          conf,
 		currentLen:    0,
 		numKeys:       0,
@@ -152,21 +144,18 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 
 	if !b.blockBuilder.Add(key, value) {
 		// Create a new block builder and append block data
-		blockBytes, err := b.finishBlock()
+		buf, err := b.finishBlock()
 		if err != nil {
 			return err
 		}
-		buf, ok := blockBytes.Get()
-		if ok {
-			b.currentLen += uint64(len(buf))
-			b.blocks.PushBack(buf)
-		}
+		b.currentLen += uint64(len(buf))
+		b.blocks.PushBack(buf)
 
 		addSuccess := b.blockBuilder.Add(key, value)
-		common.AssertTrue(addSuccess, "block.Builder.Add() failed")
-		b.firstKey = mo.Some(key)
-	} else if b.sstFirstKey.IsAbsent() {
-		b.sstFirstKey = mo.Some(key)
+		assert.True(addSuccess, "block.Builder.Add() failed")
+	}
+
+	if b.firstKey.IsAbsent() {
 		b.firstKey = mo.Some(key)
 	}
 
@@ -181,45 +170,33 @@ func (b *Builder) NextBlock() mo.Option[[]byte] {
 	return mo.Some(b.blocks.PopFront())
 }
 
-func (b *Builder) finishBlock() (mo.Option[[]byte], error) {
+func (b *Builder) finishBlock() ([]byte, error) {
 	if b.blockBuilder.IsEmpty() {
-		return mo.None[[]byte](), nil
+		return nil, nil
 	}
 
 	blockBuilder := b.blockBuilder
 	b.blockBuilder = block.NewBuilder(b.conf.BlockSize)
 	blk, err := blockBuilder.Build()
 	if err != nil {
-		return mo.None[[]byte](), err
+		return nil, err
 	}
 
-	encodedBlock := block.Encode(blk)
-	compressedBlock, err := compress.Encode(encodedBlock, b.conf.Compression)
-	if err != nil {
-		return mo.None[[]byte](), err
-	}
-
-	firstKey, _ := b.firstKey.Get()
-	blockMeta := flatbuf.BlockMetaT{Offset: b.currentLen, FirstKey: firstKey}
-	b.blockMetaList = append(b.blockMetaList, &blockMeta)
-
-	checksum := crc32.ChecksumIEEE(compressedBlock)
-
-	buf := make([]byte, 0, len(compressedBlock)+common.SizeOfUint32)
-	buf = append(buf, compressedBlock...)
-	buf = binary.BigEndian.AppendUint32(buf, checksum)
-
-	return mo.Some(buf), nil
-}
-
-func (b *Builder) Build() (*Table, error) {
-	blkBytes, err := b.finishBlock()
+	buf, err := block.Encode(blk, b.conf.Compression)
 	if err != nil {
 		return nil, err
 	}
-	buf, ok := blkBytes.Get()
-	if !ok {
-		buf = []byte{}
+
+	blockMeta := flatbuf.BlockMetaT{Offset: b.currentLen, FirstKey: blk.FirstKey}
+	b.blockMetaList = append(b.blockMetaList, &blockMeta)
+
+	return buf, nil
+}
+
+func (b *Builder) Build() (*Table, error) {
+	buf, err := b.finishBlock()
+	if err != nil {
+		return nil, err
 	}
 
 	// Write the filter if the total number of keys equals of exceeds minFilterKeys
@@ -237,8 +214,7 @@ func (b *Builder) Build() (*Table, error) {
 		maybeFilter = mo.Some(filter)
 	}
 
-	// TODO: Need to move this into a encode/compress function
-	// Write the index block
+	// Compress and Write the index block
 	sstIndex := flatbuf.SsTableIndexT{BlockMeta: b.blockMetaList}
 	indexBlock := encodeIndex(sstIndex)
 	compressedIndexBlock, err := compress.Encode(indexBlock, b.conf.Compression)
@@ -249,7 +225,7 @@ func (b *Builder) Build() (*Table, error) {
 	buf = append(buf, compressedIndexBlock...)
 
 	metaOffset := b.currentLen + uint64(len(buf))
-	firstKey, _ := b.sstFirstKey.Get()
+	firstKey, _ := b.firstKey.Get()
 
 	// Append the encoded Info and checksum
 	sstInfo := &Info{
