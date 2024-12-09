@@ -104,7 +104,6 @@ type Builder struct {
 	// currentLen is the total length of all existing blocks
 	currentLen uint64
 
-	// TODO: Remove
 	// if numKeys >= minFilterKeys then we add a BloomFilter
 	// else we don't add BloomFilter since reading smaller set of keys
 	// is likely faster without BloomFilter
@@ -193,8 +192,7 @@ func (b *Builder) finishBlock() (mo.Option[[]byte], error) {
 		return mo.None[[]byte](), err
 	}
 
-	encodedBlock := block.Encode(blk)
-	compressedBlock, err := compress.Encode(encodedBlock, b.conf.Compression)
+	compressedBlock, err := block.Encode(blk, b.conf.Compression)
 	if err != nil {
 		return mo.None[[]byte](), err
 	}

@@ -37,6 +37,6 @@ func TestEncode(t *testing.T) {
 	}
 	assert.Equal(t, expectedLength, len(encoded))
 
-	// You might want to add more specific checks here, depending on the
-	// expected structure of your encoded SSTable
+	// TODO(thrawn01): Write some decode tests, builder is broken ATM, but tests didn't catch the issue!?!??!?!
+	//  ^^^^ DO THIS NEXT
 }
