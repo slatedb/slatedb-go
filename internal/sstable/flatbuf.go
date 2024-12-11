@@ -29,7 +29,7 @@ func (info *Index) BlockMeta() []*flatbuf.BlockMetaT {
 
 func (info *Index) BlockMetaLength() int {
 	if info.sstableIndex != nil {
-		info.sstableIndex.BlockMetaLength()
+		return info.sstableIndex.BlockMetaLength()
 	}
 	info.sstableIndex = flatbuf.GetRootAsSsTableIndex(info.Data, 0)
 	return info.sstableIndex.BlockMetaLength()

@@ -2,7 +2,6 @@ package sstable
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
@@ -119,7 +118,6 @@ func ReadBlocks(
 	blockRange common.Range,
 	obj common.ReadOnlyBlob,
 ) ([]block.Block, error) {
-	//index := indexData.SsTableIndex()
 	common.AssertTrue(blockRange.Start <= blockRange.End, "block start index cannot be greater than end index")
 	common.AssertTrue(blockRange.End <= uint64(index.BlockMetaLength()), "block end index out of range")
 
@@ -182,7 +180,6 @@ func ReadBlockRaw(
 ) (*block.Block, error) {
 	blockRange := getBlockRange(common.Range{Start: blockIndex, End: blockIndex + 1}, info, index)
 
-	fmt.Printf("%+v\n", blockRange)
 	var blk block.Block
 	if err := block.Decode(&blk, sstBytes[blockRange.Start:blockRange.End], info.CompressionCodec); err != nil {
 		return nil, err
