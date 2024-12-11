@@ -46,7 +46,7 @@ func (iter *Iterator) Next() (types.KeyValue, bool) {
 		if !shouldContinue {
 			return types.KeyValue{}, false
 		}
-		if entry.Value.IsTombstone {
+		if entry.Value.IsTombstone() {
 			continue
 		}
 		return types.KeyValue{
@@ -77,12 +77,12 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 
 	if valueLen != Tombstone {
 		result.Value = types.Value{
-			Value:       data[offset : uint32(offset)+valueLen],
-			IsTombstone: false,
+			Value: data[offset : uint32(offset)+valueLen],
+			Kind:  types.KindKeyValue,
 		}
 	} else {
 		result.Value = types.Value{
-			IsTombstone: true,
+			Kind: types.KindTombStone,
 		}
 	}
 

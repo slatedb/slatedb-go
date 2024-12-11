@@ -20,7 +20,6 @@ type EntryIterator struct {
 
 // NewEntryIterator is an iterator made up of RowEntry items. Users can add RowEntry items
 // via the NewEntryIterator() constructor or by calling Add() on the iterator.
-// TODO(thrawn01): Rename this when we rename RowEntry
 func NewEntryIterator(entries ...types.RowEntry) *EntryIterator {
 	return &EntryIterator{
 		entries: entries,

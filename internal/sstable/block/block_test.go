@@ -90,7 +90,7 @@ func TestBlockIterator(t *testing.T) {
 		assert.True(t, shouldContinue)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
 		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.Value.IsTombstone)
+		assert.False(t, kvDel.Value.IsTombstone())
 	}
 
 	kvDel, shouldContinue := iter.NextEntry()
@@ -149,7 +149,7 @@ func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 		assert.True(t, shouldContinue)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
 		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.Value.IsTombstone)
+		assert.False(t, kvDel.Value.IsTombstone())
 	}
 
 	kvDel, shouldContinue := iter.NextEntry()

@@ -131,7 +131,7 @@ func (iter *SortedRunIterator) Next() (types.KeyValue, bool) {
 		if !ok {
 			return types.KeyValue{}, false
 		}
-		if keyVal.Value.IsTombstone {
+		if keyVal.Value.IsTombstone() {
 			continue
 		}
 

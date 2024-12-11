@@ -47,7 +47,7 @@ func (m *MergeSort) Next() (types.KeyValue, bool) {
 		if !ok {
 			return types.KeyValue{}, false
 		}
-		if !entry.Value.IsTombstone {
+		if !entry.Value.IsTombstone() {
 			return types.KeyValue{Key: entry.Key, Value: entry.Value.Value}, true
 		}
 	}

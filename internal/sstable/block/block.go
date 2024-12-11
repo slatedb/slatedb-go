@@ -18,6 +18,7 @@ var (
 )
 
 const (
+	// TODO(thrawn01): Remove once KeyValue refactor is complete
 	Tombstone = math.MaxUint32
 )
 
@@ -259,7 +260,7 @@ func PrettyPrint(block *Block) string {
 		_, _ = fmt.Fprintf(buf, "Offset: %d\n", offset)
 		_, _ = fmt.Fprintf(buf, "  uint16(%d) - 2 bytes\n", len(kv.Key))
 		_, _ = fmt.Fprintf(buf, "  []byte(\"%s\") - %d bytes\n", Truncate(kv.Key, 30), len(kv.Key))
-		if kv.Value.IsTombstone {
+		if kv.Value.IsTombstone() {
 			_, _ = fmt.Fprintf(buf, "  uint32(%d) - 4 bytes\n", Tombstone)
 		} else {
 			v := kv.Value.Value

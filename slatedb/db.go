@@ -282,7 +282,7 @@ func (db *DB) replayWAL() error {
 
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
-			if kvDel.Value.IsTombstone {
+			if kvDel.Value.IsTombstone() {
 				db.state.DeleteKVFromMemtable(kvDel.Key)
 			} else {
 				db.state.PutKVToMemtable(kvDel.Key, kvDel.Value.Value)

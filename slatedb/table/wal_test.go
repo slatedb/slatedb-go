@@ -30,7 +30,7 @@ func TestWALOps(t *testing.T) {
 
 	// Delete KeyValue and verify that it is tombstoned
 	wal.Delete(kvPairs[1].Key)
-	assert.True(t, wal.Get(kvPairs[1].Key).MustGet().IsTombstone)
+	assert.True(t, wal.Get(kvPairs[1].Key).MustGet().IsTombstone())
 }
 
 func TestWALIter(t *testing.T) {

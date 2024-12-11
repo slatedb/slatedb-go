@@ -89,7 +89,7 @@ func (iter *Iterator) Next() (types.KeyValue, bool) {
 			return types.KeyValue{}, false
 		}
 
-		if keyVal.Value.IsTombstone {
+		if keyVal.Value.IsTombstone() {
 			continue
 		}
 

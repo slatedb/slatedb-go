@@ -46,8 +46,8 @@ func (t *KVTable) get(key []byte) mo.Option[types.Value] {
 func (t *KVTable) put(key []byte, value []byte) int64 {
 	oldSize := t.existingKVSize(key)
 	valueDel := types.Value{
-		Value:       value,
-		IsTombstone: false,
+		Kind:  types.KindKeyValue,
+		Value: value,
 	}
 	valueBytes := valueDel.ToBytes()
 	t.skl.Set(key, valueBytes)
@@ -59,7 +59,7 @@ func (t *KVTable) put(key []byte, value []byte) int64 {
 
 func (t *KVTable) delete(key []byte) {
 	oldSize := t.existingKVSize(key)
-	valueDel := types.Value{IsTombstone: true}
+	valueDel := types.Value{Kind: types.KindTombStone}
 	valueBytes := valueDel.ToBytes()
 	t.skl.Set(key, valueBytes)
 
@@ -146,7 +146,7 @@ func (iter *KVTableIterator) Next() (mo.Option[types.KeyValue], error) {
 		}
 		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.Value.IsTombstone {
+			if keyVal.Value.IsTombstone() {
 				continue
 			}
 
