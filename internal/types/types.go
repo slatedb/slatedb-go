@@ -33,29 +33,36 @@ type RowEntry struct {
 }
 
 // Value represents a value in a RowEntry which has a
-// Kind, that identifies what kind of Value it represents.
+// Kind which that identifies what kind of Value it represents.
 type Value struct {
-	Value       []byte
-	IsTombstone bool
+	Value []byte
+	Kind  Kind
+}
+
+func (v Value) IsTombstone() bool {
+	if v.Kind == KindTombStone {
+		return true
+	}
+	return false
 }
 
 // ValueDelFromBytes - if first byte is 1, then return tombstone
 // else return with value
 func ValueDelFromBytes(b []byte) Value {
 	if Kind(b[0]) == KindTombStone {
-		return Value{IsTombstone: true}
+		return Value{Kind: KindTombStone}
 	}
 
 	return Value{
-		Value:       b[1:],
-		IsTombstone: false,
+		Value: b[1:],
+		Kind:  KindKeyValue,
 	}
 }
 
 // ToBytes - if it is a tombstone return 1 (indicating tombstone) as the only byte
 // if it is not a tombstone the value is stored from second byte onwards
 func (v Value) ToBytes() []byte {
-	if v.IsTombstone {
+	if v.IsTombstone() {
 		return []byte{1}
 	}
 	return append([]byte{0}, v.Value...)
@@ -66,7 +73,7 @@ func (v Value) Size() int64 {
 }
 
 func (v Value) GetValue() mo.Option[[]byte] {
-	if v.IsTombstone {
+	if v.IsTombstone() {
 		return mo.None[[]byte]()
 	}
 	return mo.Some(v.Value)

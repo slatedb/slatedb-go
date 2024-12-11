@@ -29,7 +29,7 @@ func TestMemtableOps(t *testing.T) {
 
 	// Delete KeyValue and verify that it is tombstoned
 	memtable.Delete(kvPairs[1].Key)
-	assert.True(t, memtable.Get(kvPairs[1].Key).MustGet().IsTombstone)
+	assert.True(t, memtable.Get(kvPairs[1].Key).MustGet().IsTombstone())
 
 	memtable.SetLastWalID(1)
 	assert.Equal(t, uint64(1), memtable.LastWalID().MustGet())

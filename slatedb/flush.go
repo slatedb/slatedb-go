@@ -85,7 +85,7 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 			break
 		}
 		kv, _ := entry.Get()
-		if kv.Value.IsTombstone {
+		if kv.Value.IsTombstone() {
 			memtable.Delete(kv.Key)
 		} else {
 			memtable.Put(kv.Key, kv.Value.Value)
@@ -103,7 +103,7 @@ func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstabl
 		}
 		kv, _ := entry.Get()
 		val := mo.None[[]byte]()
-		if !kv.Value.IsTombstone {
+		if !kv.Value.IsTombstone() {
 			val = mo.Some(kv.Value.Value)
 		}
 		err = sstBuilder.Add(kv.Key, val)
