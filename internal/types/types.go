@@ -10,30 +10,29 @@ type Kind int
 const (
 	KindKeyValue Kind = iota
 	KindTombStone
+	// TODO(thrawn01): Future MergeOperator
 	KindMerge
 )
 
-// KeyValue Represents a key-value pair known not to be a tombstone.
+// KeyValue represents a key-value pair known not to be a tombstone.
 type KeyValue struct {
 	Key   []byte
 	Value []byte
 }
 
-// RowEntry Represents a key-value pair that may be a tombstone.
+// RowEntry represents a key-value pair that may be a tombstone.
 type RowEntry struct {
 	Key   []byte
 	Value Value
 
-	/*
-		// Future Use
-		Seq     uint64
-		Created time.Time
-		Expired time.Time
-	*/
+	// // Future Use
+	// Seq     uint64
+	// Created time.Time
+	// Expired time.Time
 }
 
-// Value represents a value in a RowEntry which has a
-// Kind which that identifies what kind of Value it represents.
+// Value in a RowEntry which has a Kind that identifies
+// what kind of Value it represents.
 type Value struct {
 	Value []byte
 	Kind  Kind
@@ -46,9 +45,9 @@ func (v Value) IsTombstone() bool {
 	return false
 }
 
-// ValueDelFromBytes - if first byte is 1, then return tombstone
+// ValueFromBytes - if first byte is 1, then return tombstone
 // else return with value
-func ValueDelFromBytes(b []byte) Value {
+func ValueFromBytes(b []byte) Value {
 	if Kind(b[0]) == KindTombStone {
 		return Value{Kind: KindTombStone}
 	}
