@@ -40,7 +40,7 @@ func (t *KVTable) get(key []byte) mo.Option[types.Value] {
 	}
 
 	val := elem.Value.([]byte)
-	return mo.Some(types.ValueDelFromBytes(val))
+	return mo.Some(types.ValueFromBytes(val))
 }
 
 func (t *KVTable) put(key []byte, value []byte) int64 {
@@ -171,6 +171,6 @@ func (iter *KVTableIterator) NextEntry() (mo.Option[types.RowEntry], error) {
 	valueBytes := elem.Value.([]byte)
 	return mo.Some(types.RowEntry{
 		Key:   elem.Key().([]byte),
-		Value: types.ValueDelFromBytes(valueBytes),
+		Value: types.ValueFromBytes(valueBytes),
 	}), nil
 }
