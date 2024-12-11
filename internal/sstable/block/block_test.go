@@ -5,7 +5,7 @@ import (
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -70,7 +70,7 @@ func TestBlockWithTombstone(t *testing.T) {
 }
 
 func TestBlockIterator(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -89,17 +89,17 @@ func TestBlockIterator(t *testing.T) {
 		kvDel, shouldContinue := iter.NextEntry()
 		assert.True(t, shouldContinue)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
-		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.ValueDel.IsTombstone)
+		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
+		assert.False(t, kvDel.Value.IsTombstone)
 	}
 
 	kvDel, shouldContinue := iter.NextEntry()
 	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KVDeletable{}, kvDel)
+	assert.Equal(t, types.RowEntry{}, kvDel)
 }
 
 func TestNewIteratorAtKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -124,11 +124,11 @@ func TestNewIteratorAtKey(t *testing.T) {
 
 	kv, shouldContinue := iter.Next()
 	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KV{}, kv)
+	assert.Equal(t, types.KeyValue{}, kv)
 }
 
 func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -148,17 +148,17 @@ func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 		kvDel, shouldContinue := iter.NextEntry()
 		assert.True(t, shouldContinue)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
-		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.ValueDel.IsTombstone)
+		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
+		assert.False(t, kvDel.Value.IsTombstone)
 	}
 
 	kvDel, shouldContinue := iter.NextEntry()
 	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KVDeletable{}, kvDel)
+	assert.Equal(t, types.RowEntry{}, kvDel)
 }
 
 func TestIterFromEnd(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -176,14 +176,14 @@ func TestIterFromEnd(t *testing.T) {
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	kv, ok := iter.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, kv)
+	assert.Equal(t, types.KeyValue{}, kv)
 }
 
 func TestNewBuilderWithOffsets(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
 
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("key1"), Value: []byte("value1")},
 		{Key: []byte("key2"), Value: []byte("value2")},
 		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},
@@ -199,7 +199,7 @@ func TestNewBuilderWithOffsets(t *testing.T) {
 
 	//t.Log("Block Offsets:")
 	//for i, offset := range b.Offsets {
-	//	t.Logf("Entry %d: Offset %d", i, offset)
+	//	t.Logf("RowEntry %d: Offset %d", i, offset)
 	//}
 
 	// Verify the number of entries
@@ -251,7 +251,7 @@ func TestBlockFirstKey(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
 
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("key1"), Value: []byte("value1")},
 		{Key: []byte("key2"), Value: []byte("value2")},
 		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},

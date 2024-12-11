@@ -2,7 +2,7 @@ package table
 
 import (
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"sync"
 )
 
@@ -32,7 +32,7 @@ func (m *Memtable) Put(key []byte, value []byte) int64 {
 	return m.table.put(key, value)
 }
 
-func (m *Memtable) Get(key []byte) mo.Option[common.ValueDeletable] {
+func (m *Memtable) Get(key []byte) mo.Option[types.Value] {
 	m.RLock()
 	defer m.RUnlock()
 	return m.table.get(key)
@@ -103,7 +103,7 @@ func NewImmutableMemtable(memtable *Memtable, lastWalID uint64) *ImmutableMemtab
 	}
 }
 
-func (im *ImmutableMemtable) Get(key []byte) mo.Option[common.ValueDeletable] {
+func (im *ImmutableMemtable) Get(key []byte) mo.Option[types.Value] {
 	im.RLock()
 	defer im.RUnlock()
 	return im.table.get(key)

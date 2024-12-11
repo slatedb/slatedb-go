@@ -410,7 +410,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 			break
 		}
 
-		value := kv.ValueDel.GetValue()
+		value := kv.Value.GetValue()
 		err = currentWriter.Add(kv.Key, value)
 		if err != nil {
 			return nil, err

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"container/heap"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 type MergeSort struct {
@@ -41,21 +41,21 @@ func NewMergeSort(iterators ...KVIterator) *MergeSort {
 	return ms
 }
 
-func (m *MergeSort) Next() (common.KV, bool) {
+func (m *MergeSort) Next() (types.KeyValue, bool) {
 	for {
 		entry, ok := m.NextEntry()
 		if !ok {
-			return common.KV{}, false
+			return types.KeyValue{}, false
 		}
-		if !entry.ValueDel.IsTombstone {
-			return common.KV{Key: entry.Key, Value: entry.ValueDel.Value}, true
+		if !entry.Value.IsTombstone {
+			return types.KeyValue{Key: entry.Key, Value: entry.Value.Value}, true
 		}
 	}
 }
 
 // NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 // a tombstone of a deleted key-value pair.
-func (m *MergeSort) NextEntry() (common.KVDeletable, bool) {
+func (m *MergeSort) NextEntry() (types.RowEntry, bool) {
 	for m.heap.Len() > 0 {
 		item := heap.Pop(&m.heap).(heapItem)
 		result := item.kv
@@ -74,12 +74,12 @@ func (m *MergeSort) NextEntry() (common.KVDeletable, bool) {
 		// If it's the same key, continue to the next item
 	}
 
-	return common.KVDeletable{}, false
+	return types.RowEntry{}, false
 }
 
 // heapItem is used in the Sorted Heap
 type heapItem struct {
-	kv    common.KVDeletable
+	kv    types.RowEntry
 	index int
 }
 
