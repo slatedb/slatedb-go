@@ -3,6 +3,7 @@ package block
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"sort"
 )
@@ -39,27 +40,27 @@ func NewIteratorAtKey(block *Block, key []byte) *Iterator {
 	}
 }
 
-func (iter *Iterator) Next() (common.KV, bool) {
+func (iter *Iterator) Next() (types.KeyValue, bool) {
 	for {
 		entry, shouldContinue := iter.NextEntry()
 		if !shouldContinue {
-			return common.KV{}, false
+			return types.KeyValue{}, false
 		}
-		if entry.ValueDel.IsTombstone {
+		if entry.Value.IsTombstone {
 			continue
 		}
-		return common.KV{
+		return types.KeyValue{
 			Key:   entry.Key,
-			Value: entry.ValueDel.Value,
+			Value: entry.Value.Value,
 		}, true
 	}
 }
 
-func (iter *Iterator) NextEntry() (common.KVDeletable, bool) {
+func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 	if iter.offsetIndex >= uint64(len(iter.block.Offsets)) {
-		return common.KVDeletable{}, false
+		return types.RowEntry{}, false
 	}
-	var result common.KVDeletable
+	var result types.RowEntry
 
 	data := iter.block.Data
 	offset := iter.block.Offsets[iter.offsetIndex]
@@ -75,12 +76,12 @@ func (iter *Iterator) NextEntry() (common.KVDeletable, bool) {
 	offset += common.SizeOfUint32
 
 	if valueLen != Tombstone {
-		result.ValueDel = common.ValueDeletable{
+		result.Value = types.Value{
 			Value:       data[offset : uint32(offset)+valueLen],
 			IsTombstone: false,
 		}
 	} else {
-		result.ValueDel = common.ValueDeletable{
+		result.Value = types.Value{
 			IsTombstone: true,
 		}
 	}

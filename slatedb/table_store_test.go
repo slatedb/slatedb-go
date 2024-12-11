@@ -11,6 +11,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -92,7 +93,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 }
 
 func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
-	kvList := []common.KV{
+	kvList := []types.KeyValue{
 		{Key: []byte("aaaaaaaa"), Value: []byte("11111111")},
 		{Key: []byte("bbbbbbbb"), Value: []byte("22222222")},
 		{Key: []byte("cccccccc"), Value: []byte("33333333")},

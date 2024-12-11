@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"math"
@@ -81,36 +82,36 @@ func NewIteratorAtKey(
 	return iter, nil
 }
 
-func (iter *Iterator) Next() (common.KV, bool) {
+func (iter *Iterator) Next() (types.KeyValue, bool) {
 	for {
 		keyVal, ok := iter.NextEntry()
 		if !ok {
-			return common.KV{}, false
+			return types.KeyValue{}, false
 		}
 
-		if keyVal.ValueDel.IsTombstone {
+		if keyVal.Value.IsTombstone {
 			continue
 		}
 
-		return common.KV{
+		return types.KeyValue{
 			Key:   keyVal.Key,
-			Value: keyVal.ValueDel.Value,
+			Value: keyVal.Value.Value,
 		}, true
 	}
 }
 
-func (iter *Iterator) NextEntry() (common.KVDeletable, bool) {
+func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 	for {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
-				return common.KVDeletable{}, false
+				return types.RowEntry{}, false
 			}
 
 			if nextBlockIter.IsPresent() {
 				iter.currentBlockIter = nextBlockIter
 			} else {
-				return common.KVDeletable{}, false
+				return types.RowEntry{}, false
 			}
 		}
 

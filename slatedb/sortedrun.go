@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -124,27 +125,27 @@ func newSortedRunIter(
 	}, nil
 }
 
-func (iter *SortedRunIterator) Next() (common.KV, bool) {
+func (iter *SortedRunIterator) Next() (types.KeyValue, bool) {
 	for {
 		keyVal, ok := iter.NextEntry()
 		if !ok {
-			return common.KV{}, false
+			return types.KeyValue{}, false
 		}
-		if keyVal.ValueDel.IsTombstone {
+		if keyVal.Value.IsTombstone {
 			continue
 		}
 
-		return common.KV{
+		return types.KeyValue{
 			Key:   keyVal.Key,
-			Value: keyVal.ValueDel.Value,
+			Value: keyVal.Value.Value,
 		}, true
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (common.KVDeletable, bool) {
+func (iter *SortedRunIterator) NextEntry() (types.RowEntry, bool) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
-			return common.KVDeletable{}, false
+			return types.RowEntry{}, false
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
@@ -155,12 +156,12 @@ func (iter *SortedRunIterator) NextEntry() (common.KVDeletable, bool) {
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
-			return common.KVDeletable{}, false
+			return types.RowEntry{}, false
 		}
 
 		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		if err != nil {
-			return common.KVDeletable{}, false
+			return types.RowEntry{}, false
 		}
 
 		iter.currentKVIter = mo.Some(newKVIter)
