@@ -9,15 +9,15 @@ import (
 
 func TestMergeUniqueIteratorPrecedence(t *testing.T) {
 	iters := make([]iter.KVIterator, 0)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("aaaa"), []byte("1111")).
 		Add([]byte("cccc"), []byte("use this one c")),
 	)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("cccc"), []byte("badc1")).
 		Add([]byte("xxxx"), []byte("use this one x")),
 	)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("bbbb"), []byte("2222")).
 		Add([]byte("cccc"), []byte("badc2")).
 		Add([]byte("xxxx"), []byte("badx1")),
@@ -35,17 +35,17 @@ func TestMergeUniqueIteratorPrecedence(t *testing.T) {
 
 func TestMergeUnique(t *testing.T) {
 	iters := make([]iter.KVIterator, 0)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("aaaa"), []byte("1111")).
 		Add([]byte("cccc"), []byte("3333")).
 		Add([]byte("zzzz"), []byte("26262626")),
 	)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("bbbb"), []byte("2222")).
 		Add([]byte("xxxx"), []byte("24242424")).
 		Add([]byte("yyyy"), []byte("25252525")),
 	)
-	iters = append(iters, iter.NewKV().
+	iters = append(iters, iter.NewEntryIterator().
 		Add([]byte("dddd"), []byte("4444")).
 		Add([]byte("eeee"), []byte("5555")).
 		Add([]byte("gggg"), []byte("7777")),
@@ -67,12 +67,12 @@ func TestMergeUnique(t *testing.T) {
 }
 
 func TestMergeSortTwoIterators(t *testing.T) {
-	iter1 := iter.NewKV().
+	iter1 := iter.NewEntryIterator().
 		Add([]byte("aaaa"), []byte("1111")).
 		Add([]byte("cccc"), []byte("3333")).
 		Add([]byte("zzzz"), []byte("26262626"))
 
-	iter2 := iter.NewKV().
+	iter2 := iter.NewEntryIterator().
 		Add([]byte("bbbb"), []byte("2222")).
 		Add([]byte("xxxx"), []byte("24242424")).
 		Add([]byte("yyyy"), []byte("25252525"))
@@ -90,11 +90,11 @@ func TestMergeSortTwoIterators(t *testing.T) {
 }
 
 func TestMergeSortTwoIteratorsPrecedence(t *testing.T) {
-	iter1 := iter.NewKV().
+	iter1 := iter.NewEntryIterator().
 		Add([]byte("aaaa"), []byte("1111")).
 		Add([]byte("cccc"), []byte("use this one c"))
 
-	iter2 := iter.NewKV().
+	iter2 := iter.NewEntryIterator().
 		Add([]byte("cccc"), []byte("badc")).
 		Add([]byte("xxxx"), []byte("24242424"))
 

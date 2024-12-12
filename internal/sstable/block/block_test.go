@@ -2,10 +2,9 @@ package block_test
 
 import (
 	"bytes"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -14,8 +13,8 @@ import (
 func TestNewBuilder(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
-	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.True(t, bb.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.True(t, bb.AddValue([]byte("key1"), []byte("value1")))
+	assert.True(t, bb.AddValue([]byte("key2"), []byte("value2")))
 	assert.False(t, bb.IsEmpty())
 
 	b, err := bb.Build()
@@ -34,8 +33,8 @@ func TestNewBuilder(t *testing.T) {
 func TestBlockCompression(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
-	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.True(t, bb.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.True(t, bb.AddValue([]byte("key1"), []byte("value1")))
+	assert.True(t, bb.AddValue([]byte("key2"), []byte("value2")))
 	assert.False(t, bb.IsEmpty())
 
 	b, err := bb.Build()
@@ -53,9 +52,9 @@ func TestBlockCompression(t *testing.T) {
 
 func TestBlockWithTombstone(t *testing.T) {
 	bb := block.NewBuilder(4096)
-	assert.True(t, bb.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.True(t, bb.Add([]byte("key2"), mo.None[[]byte]()))
-	assert.True(t, bb.Add([]byte("key3"), mo.Some([]byte("value3"))))
+	assert.True(t, bb.AddValue([]byte("key1"), []byte("value1")))
+	assert.True(t, bb.AddValue([]byte("key2"), []byte("")))
+	assert.True(t, bb.AddValue([]byte("key3"), []byte("value3")))
 
 	b, err := bb.Build()
 	assert.Nil(t, err)
@@ -70,7 +69,7 @@ func TestBlockWithTombstone(t *testing.T) {
 }
 
 func TestBlockIterator(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -78,7 +77,7 @@ func TestBlockIterator(t *testing.T) {
 
 	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()
@@ -86,20 +85,20 @@ func TestBlockIterator(t *testing.T) {
 
 	iter := block.NewIterator(b)
 	for i := 0; i < len(kvPairs); i++ {
-		kvDel, shouldContinue := iter.NextEntry()
-		assert.True(t, shouldContinue)
-		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
-		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.ValueDel.IsTombstone)
+		entry, ok := iter.NextEntry()
+		assert.True(t, ok)
+		assert.Equal(t, kvPairs[i].Key, entry.Key)
+		assert.Equal(t, kvPairs[i].Value, entry.Value.Value)
+		assert.False(t, entry.Value.IsTombstone())
 	}
 
-	kvDel, shouldContinue := iter.NextEntry()
-	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KVDeletable{}, kvDel)
+	kvDel, ok := iter.NextEntry()
+	assert.False(t, ok)
+	assert.Equal(t, types.RowEntry{}, kvDel)
 }
 
 func TestNewIteratorAtKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -107,28 +106,49 @@ func TestNewIteratorAtKey(t *testing.T) {
 
 	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	iter := block.NewIteratorAtKey(b, []byte("kratos"))
-	// Verify that iterator starts from index 1 which contains key "kratos"
-	for i := 1; i < len(kvPairs); i++ {
-		kv, shouldContinue := iter.Next()
-		assert.True(t, shouldContinue)
-		assert.True(t, bytes.Equal(kv.Key, kvPairs[i].Key))
-		assert.True(t, bytes.Equal(kv.Value, kvPairs[i].Value))
-	}
+	t.Run("NotFirstKey", func(t *testing.T) {
+		iter, err := block.NewIteratorAtKey(b, []byte("kratos"))
+		require.NoError(t, err)
 
-	kv, shouldContinue := iter.Next()
-	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KV{}, kv)
+		// Verify that iterator starts from index 1 which contains key "kratos"
+		for i := 1; i < len(kvPairs); i++ {
+			kv, ok := iter.Next()
+			assert.True(t, ok)
+			assert.True(t, bytes.Equal(kv.Key, kvPairs[i].Key))
+			assert.True(t, bytes.Equal(kv.Value, kvPairs[i].Value))
+		}
+
+		kv, ok := iter.Next()
+		assert.False(t, ok)
+		assert.Equal(t, types.KeyValue{}, kv)
+	})
+
+	t.Run("FirstKey", func(t *testing.T) {
+		iter, err := block.NewIteratorAtKey(b, []byte("donkey"))
+		require.NoError(t, err)
+
+		// Verify that iterator starts from index 0 which contains key "donkey"
+		for i := 0; i < len(kvPairs); i++ {
+			kv, ok := iter.Next()
+			assert.True(t, ok)
+			assert.True(t, bytes.Equal(kv.Key, kvPairs[i].Key))
+			assert.True(t, bytes.Equal(kv.Value, kvPairs[i].Value))
+		}
+
+		kv, ok := iter.Next()
+		assert.False(t, ok)
+		assert.Equal(t, types.KeyValue{}, kv)
+	})
 }
 
 func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -136,29 +156,31 @@ func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 
 	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	iter := block.NewIteratorAtKey(b, []byte("ka"))
+	iter, err := block.NewIteratorAtKey(b, []byte("ka"))
+	require.NoError(t, err)
+
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	for i := 1; i < len(kvPairs); i++ {
-		kvDel, shouldContinue := iter.NextEntry()
-		assert.True(t, shouldContinue)
+		kvDel, ok := iter.NextEntry()
+		assert.True(t, ok)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
-		assert.True(t, bytes.Equal(kvDel.ValueDel.Value, kvPairs[i].Value))
-		assert.False(t, kvDel.ValueDel.IsTombstone)
+		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
+		assert.False(t, kvDel.Value.IsTombstone())
 	}
 
-	kvDel, shouldContinue := iter.NextEntry()
-	assert.False(t, shouldContinue)
-	assert.Equal(t, common.KVDeletable{}, kvDel)
+	kvDel, ok := iter.NextEntry()
+	assert.False(t, ok)
+	assert.Equal(t, types.RowEntry{}, kvDel)
 }
 
 func TestIterFromEnd(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("donkey"), Value: []byte("kong")},
 		{Key: []byte("kratos"), Value: []byte("atreus")},
 		{Key: []byte("super"), Value: []byte("mario")},
@@ -166,24 +188,25 @@ func TestIterFromEnd(t *testing.T) {
 
 	bb := block.NewBuilder(1024)
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	iter := block.NewIteratorAtKey(b, []byte("zzz"))
+	iter, err := block.NewIteratorAtKey(b, []byte("zzz"))
+	require.NoError(t, err)
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	kv, ok := iter.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, kv)
+	assert.Equal(t, types.KeyValue{}, kv)
 }
 
 func TestNewBuilderWithOffsets(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
 
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("key1"), Value: []byte("value1")},
 		{Key: []byte("key2"), Value: []byte("value2")},
 		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},
@@ -191,7 +214,7 @@ func TestNewBuilderWithOffsets(t *testing.T) {
 	}
 
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()
@@ -199,7 +222,7 @@ func TestNewBuilderWithOffsets(t *testing.T) {
 
 	//t.Log("Block Offsets:")
 	//for i, offset := range b.Offsets {
-	//	t.Logf("Entry %d: Offset %d", i, offset)
+	//	t.Logf("RowEntry %d: Offset %d", i, offset)
 	//}
 
 	// Verify the number of entries
@@ -231,9 +254,9 @@ func TestTruncate(t *testing.T) {
 
 func TestPrettyPrint(t *testing.T) {
 	bb := block.NewBuilder(4096)
-	assert.True(t, bb.Add([]byte("database"), mo.Some([]byte("internals"))))
-	assert.True(t, bb.Add([]byte("data-intensive"), mo.Some([]byte("applications"))))
-	assert.True(t, bb.Add([]byte("deleted"), mo.Some([]byte(""))))
+	assert.True(t, bb.AddValue([]byte("database"), []byte("internals")))
+	assert.True(t, bb.AddValue([]byte("data-intensive"), []byte("applications")))
+	assert.True(t, bb.AddValue([]byte("deleted"), []byte("")))
 
 	b, err := bb.Build()
 	assert.NoError(t, err)
@@ -251,7 +274,7 @@ func TestBlockFirstKey(t *testing.T) {
 	bb := block.NewBuilder(4096)
 	assert.True(t, bb.IsEmpty())
 
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("key1"), Value: []byte("value1")},
 		{Key: []byte("key2"), Value: []byte("value2")},
 		{Key: []byte("longerkey3"), Value: []byte("longervalue3")},
@@ -259,7 +282,7 @@ func TestBlockFirstKey(t *testing.T) {
 	}
 
 	for _, kv := range kvPairs {
-		assert.True(t, bb.Add(kv.Key, mo.Some(kv.Value)))
+		assert.True(t, bb.AddValue(kv.Key, kv.Value))
 	}
 
 	b, err := bb.Build()

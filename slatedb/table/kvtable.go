@@ -3,7 +3,7 @@ package table
 import (
 	"github.com/huandu/skiplist"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"sync/atomic"
 )
 
@@ -12,7 +12,7 @@ import (
 // ------------------------------------------------
 
 type KVTable struct {
-	// skl skipList stores key ([]byte), value (ValueDeletable) pairs
+	// skl skipList stores key ([]byte), value (Value) pairs
 	skl *skiplist.SkipList
 
 	// size of KVTable changes when we put/delete a key
@@ -33,21 +33,21 @@ func newKVTable() *KVTable {
 	}
 }
 
-func (t *KVTable) get(key []byte) mo.Option[common.ValueDeletable] {
+func (t *KVTable) get(key []byte) mo.Option[types.Value] {
 	elem := t.skl.Get(key)
 	if elem == nil {
-		return mo.None[common.ValueDeletable]()
+		return mo.None[types.Value]()
 	}
 
 	val := elem.Value.([]byte)
-	return mo.Some(common.ValueDelFromBytes(val))
+	return mo.Some(types.ValueFromBytes(val))
 }
 
 func (t *KVTable) put(key []byte, value []byte) int64 {
 	oldSize := t.existingKVSize(key)
-	valueDel := common.ValueDeletable{
-		Value:       value,
-		IsTombstone: false,
+	valueDel := types.Value{
+		Kind:  types.KindKeyValue,
+		Value: value,
 	}
 	valueBytes := valueDel.ToBytes()
 	t.skl.Set(key, valueBytes)
@@ -59,7 +59,7 @@ func (t *KVTable) put(key []byte, value []byte) int64 {
 
 func (t *KVTable) delete(key []byte) {
 	oldSize := t.existingKVSize(key)
-	valueDel := common.ValueDeletable{IsTombstone: true}
+	valueDel := types.Value{Kind: types.KindTombStone}
 	valueBytes := valueDel.ToBytes()
 	t.skl.Set(key, valueBytes)
 
@@ -138,39 +138,39 @@ func newKVTableIterator(element *skiplist.Element) *KVTableIterator {
 	}
 }
 
-func (iter *KVTableIterator) Next() (mo.Option[common.KV], error) {
+func (iter *KVTableIterator) Next() (mo.Option[types.KeyValue], error) {
 	for {
 		entry, err := iter.NextEntry()
 		if err != nil {
-			return mo.None[common.KV](), err
+			return mo.None[types.KeyValue](), err
 		}
 		keyVal, ok := entry.Get()
 		if ok {
-			if keyVal.ValueDel.IsTombstone {
+			if keyVal.Value.IsTombstone() {
 				continue
 			}
 
-			return mo.Some(common.KV{
+			return mo.Some(types.KeyValue{
 				Key:   keyVal.Key,
-				Value: keyVal.ValueDel.Value,
+				Value: keyVal.Value.Value,
 			}), nil
 		} else {
-			return mo.None[common.KV](), nil
+			return mo.None[types.KeyValue](), nil
 		}
 	}
 }
 
-func (iter *KVTableIterator) NextEntry() (mo.Option[common.KVDeletable], error) {
+func (iter *KVTableIterator) NextEntry() (mo.Option[types.RowEntry], error) {
 	elem := iter.element
 	if elem == nil {
-		return mo.None[common.KVDeletable](), nil
+		return mo.None[types.RowEntry](), nil
 	}
 
 	iter.element = iter.element.Next()
 
 	valueBytes := elem.Value.([]byte)
-	return mo.Some(common.KVDeletable{
-		Key:      elem.Key().([]byte),
-		ValueDel: common.ValueDelFromBytes(valueBytes),
+	return mo.Some(types.RowEntry{
+		Key:   elem.Key().([]byte),
+		Value: types.ValueFromBytes(valueBytes),
 	}), nil
 }

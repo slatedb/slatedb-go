@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"math"
 	"sync"
 
@@ -184,7 +185,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 			}
 
 			if ok && bytes.Equal(kv.Key, key) {
-				return checkValue(kv.ValueDel)
+				return checkValue(kv.Value)
 			}
 		}
 	}
@@ -199,7 +200,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 
 			kv, ok := iter.NextEntry()
 			if ok && bytes.Equal(kv.Key, key) {
-				return checkValue(kv.ValueDel)
+				return checkValue(kv.Value)
 			}
 		}
 	}
@@ -270,7 +271,7 @@ func (db *DB) replayWAL() error {
 			return err
 		}
 
-		walReplayBuf := make([]common.KVDeletable, 0)
+		walReplayBuf := make([]types.RowEntry, 0)
 		for {
 			kvDel, ok := iter.NextEntry()
 			if !ok {
@@ -281,10 +282,10 @@ func (db *DB) replayWAL() error {
 
 		// update memtable with kv pairs in walReplayBuf
 		for _, kvDel := range walReplayBuf {
-			if kvDel.ValueDel.IsTombstone {
+			if kvDel.Value.IsTombstone() {
 				db.state.DeleteKVFromMemtable(kvDel.Key)
 			} else {
-				db.state.PutKVToMemtable(kvDel.Key, kvDel.ValueDel.Value)
+				db.state.PutKVToMemtable(kvDel.Key, kvDel.Value.Value)
 			}
 		}
 
@@ -367,7 +368,7 @@ func newDB(
 	return db, nil
 }
 
-func checkValue(val common.ValueDeletable) ([]byte, error) {
+func checkValue(val types.Value) ([]byte, error) {
 	if val.GetValue().IsAbsent() { // key is tombstoned/deleted
 		return nil, common.ErrKeyNotFound
 	} else { // key is present

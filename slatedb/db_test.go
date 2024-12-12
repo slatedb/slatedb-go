@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"strconv"
 	"strings"
 	"testing"
@@ -103,7 +104,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 
 		kv, ok = iter.Next()
 		assert.False(t, ok)
-		assert.Equal(t, common.KV{}, kv)
+		assert.Equal(t, types.KeyValue{}, kv)
 	}
 }
 
@@ -165,13 +166,13 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc1111"), Value: []byte("value1111")},
 		{Key: []byte("abc2222"), Value: []byte("value2222")},
 		{Key: []byte("abc3333"), Value: []byte("value3333")},
 	}
 
-	// write KV pairs to DB and call db.FlushWAL()
+	// write KeyValue pairs to DB and call db.FlushWAL()
 	for _, kv := range kvPairs {
 		db.Put(kv.Key, kv.Value)
 	}
@@ -182,7 +183,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	assert.Equal(t, int64(0), db.state.WAL().Size())
 	assert.Equal(t, 0, db.state.ImmWALs().Len())
 
-	// verify that all KV pairs are present in Memtable
+	// verify that all KeyValue pairs are present in Memtable
 	memtable := db.state.Memtable()
 	for _, kv := range kvPairs {
 		assert.True(t, memtable.Get(kv.Key).IsPresent())
