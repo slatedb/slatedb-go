@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"go.uber.org/zap"
@@ -102,11 +101,11 @@ func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstabl
 			break
 		}
 		kv, _ := entry.Get()
-		val := mo.None[[]byte]()
+		var val []byte
 		if !kv.Value.IsTombstone() {
-			val = mo.Some(kv.Value.Value)
+			val = kv.Value.Value
 		}
-		err = sstBuilder.Add(kv.Key, val)
+		err = sstBuilder.AddValue(kv.Key, val)
 		if err != nil {
 			return nil, err
 		}

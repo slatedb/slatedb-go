@@ -2,7 +2,6 @@ package sstable_test
 
 import (
 	"fmt"
-	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -24,9 +23,9 @@ func TestBuilder(t *testing.T) {
 		})
 
 		// Add some key-value pairs
-		require.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-		require.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
-		require.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
+		require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+		require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
+		require.NoError(t, builder.AddValue([]byte("key3"), []byte("value3")))
 
 		// Build the SSTable
 		table, err := builder.Build()
@@ -60,7 +59,7 @@ func TestBuilder(t *testing.T) {
 		})
 
 		for _, b := range blocks {
-			require.NoError(t, builder.Add(b[0].Key, mo.Some(b[0].Value)))
+			require.NoError(t, builder.AddValue(b[0].Key, b[0].Value))
 		}
 
 		table, err := builder.Build()
@@ -82,7 +81,7 @@ func TestBuilder(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			key := []byte(fmt.Sprintf("key%d", i))
 			value := []byte(fmt.Sprintf("value%d", i))
-			require.NoError(t, builder.Add(key, mo.Some(value)))
+			require.NoError(t, builder.AddValue(key, value))
 		}
 
 		table, err := builder.Build()
@@ -110,7 +109,7 @@ func TestEncodeDecode(t *testing.T) {
 
 	// Add some key-value pairs
 	for _, b := range input {
-		require.NoError(t, builder.Add(b[0].Key, mo.Some(b[0].Value)))
+		require.NoError(t, builder.AddValue(b[0].Key, b[0].Value))
 	}
 
 	// Build the SSTable

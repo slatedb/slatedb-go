@@ -104,7 +104,7 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 
 	for i := 0; i < int(offsetCount); i++ {
 		index := offsetStartIndex + (i * common.SizeOfUint16)
-		if index <= 0 && index >= len(buf) {
+		if index <= 0 || index >= len(buf) {
 			return fmt.Errorf("corrupt block: block offset[%d] is invalid", index)
 		}
 		offsets = append(offsets, binary.BigEndian.Uint16(buf[index:]))

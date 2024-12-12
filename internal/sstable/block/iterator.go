@@ -110,8 +110,6 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 }
 
 // Warnings returns types.ErrWarn if there was an error during iteration.
-// TODO(thrawn01): ensure all users of Iterator check for warnings
-//  also, add tests for blocks with warnings
 func (iter *Iterator) Warnings() *types.ErrWarn {
 	return &iter.warn
 }

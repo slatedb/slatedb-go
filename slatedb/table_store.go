@@ -221,7 +221,8 @@ type EncodedSSTableWriter struct {
 }
 
 func (w *EncodedSSTableWriter) Add(key []byte, value mo.Option[[]byte]) error {
-	err := w.builder.Add(key, value)
+	v, _ := value.Get()
+	err := w.builder.AddValue(key, v)
 	if err != nil {
 		logger.Error("unable to add key value", zap.Error(err))
 		return err

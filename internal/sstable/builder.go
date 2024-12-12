@@ -10,6 +10,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 // Table is the in memory representation of an SSTable
@@ -139,13 +140,18 @@ func NewBuilder(conf Config) *Builder {
 	}
 }
 
-// TODO(thrawn01): Change to AddValue() and implement Add(types.EntryRow)
-func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
+func (b *Builder) AddValue(key []byte, value []byte) error {
+	if len(value) == 0 {
+		return b.Add(key, types.RowEntry{Value: types.Value{Kind: types.KindTombStone}})
+	}
+	return b.Add(key, types.RowEntry{Value: types.Value{Value: value}})
+}
+
+func (b *Builder) Add(key []byte, entry types.RowEntry) error {
 	b.numKeys += 1
+	row := block.Row{Value: entry.Value}
 
-	v, _ := value.Get()
-
-	if !b.blockBuilder.AddValue(key, v) {
+	if !b.blockBuilder.Add(key, row) {
 		// Create a new block builder and append block data
 		buf, err := b.finishBlock()
 		if err != nil {
@@ -154,7 +160,7 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 		b.currentLen += uint64(len(buf))
 		b.blocks.PushBack(buf)
 
-		addSuccess := b.blockBuilder.AddValue(key, v)
+		addSuccess := b.blockBuilder.Add(key, row)
 		assert.True(addSuccess, "block.Builder.AddValue() failed")
 	}
 

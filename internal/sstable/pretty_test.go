@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -18,12 +17,12 @@ func TestPrettyPrint(t *testing.T) {
 	builder := NewBuilder(conf)
 
 	// First block
-	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	assert.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 	// Second block
-	assert.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
-	assert.NoError(t, builder.Add([]byte("key4"), mo.Some([]byte("value4"))))
+	assert.NoError(t, builder.AddValue([]byte("key3"), []byte("value3")))
+	assert.NoError(t, builder.AddValue([]byte("key4"), []byte("value4")))
 
 	table, err := builder.Build()
 	assert.NoError(t, err)

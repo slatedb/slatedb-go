@@ -5,13 +5,13 @@ import (
 	"github.com/samber/mo"
 )
 
-type Kind int
+type Kind byte
 
 const (
-	KindKeyValue Kind = iota
-	KindTombStone
+	KindKeyValue  Kind = 0x00
+	KindTombStone      = 0x01
 	// TODO(thrawn01): Future MergeOperator
-	KindMerge
+	KindMerge = 0x02
 )
 
 // KeyValue represents a key-value pair known not to be a tombstone.
@@ -45,7 +45,7 @@ func (v Value) IsTombstone() bool {
 	return false
 }
 
-// ValueFromBytes - if first byte is 1, then return tombstone
+// ValueFromBytes - if first byte is 0x01, then return tombstone
 // else return with value
 func ValueFromBytes(b []byte) Value {
 	if Kind(b[0]) == KindTombStone {
@@ -62,9 +62,9 @@ func ValueFromBytes(b []byte) Value {
 // if it is not a tombstone the value is stored from second byte onwards
 func (v Value) ToBytes() []byte {
 	if v.IsTombstone() {
-		return []byte{1}
+		return []byte{KindTombStone}
 	}
-	return append([]byte{0}, v.Value...)
+	return append([]byte{byte(KindKeyValue)}, v.Value...)
 }
 
 func (v Value) Size() int64 {

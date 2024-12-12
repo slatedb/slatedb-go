@@ -41,9 +41,9 @@ func TestOneSstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 
 	builder := tableStore.TableBuilder()
-	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
-	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.AddValue([]byte("key1"), []byte("value1"))
+	builder.AddValue([]byte("key2"), []byte("value2"))
+	builder.AddValue([]byte("key3"), []byte("value3"))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -69,8 +69,8 @@ func TestManySstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, format, "")
 
 	builder := tableStore.TableBuilder()
-	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+	builder.AddValue([]byte("key1"), []byte("value1"))
+	builder.AddValue([]byte("key2"), []byte("value2"))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -78,7 +78,7 @@ func TestManySstSRIter(t *testing.T) {
 	assert.NoError(t, err)
 
 	builder = tableStore.TableBuilder()
-	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.AddValue([]byte("key3"), []byte("value3"))
 
 	encodedSST, err = builder.Build()
 	assert.NoError(t, err)

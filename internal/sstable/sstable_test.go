@@ -2,7 +2,6 @@ package sstable_test
 
 import (
 	"bytes"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/stretchr/testify/assert"
@@ -68,8 +67,8 @@ func TestEncodeTable(t *testing.T) {
 		Compression:      compress.CodecNone,
 	})
 
-	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
+	assert.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	assert.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 	table, err := builder.Build()
 	assert.NoError(t, err)

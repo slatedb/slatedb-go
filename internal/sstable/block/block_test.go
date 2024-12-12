@@ -2,6 +2,7 @@ package block_test
 
 import (
 	"bytes"
+	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -48,6 +49,42 @@ func TestBlockCompression(t *testing.T) {
 	assert.Equal(t, b.FirstKey, []byte("key1"))
 	assert.Equal(t, b.Data, decoded.Data)
 	assert.Equal(t, b.Offsets, decoded.Offsets)
+}
+
+func TestSmallestCompressedBlock(t *testing.T) {
+	testCases := []struct {
+		codec compress.Codec
+	}{
+		{compress.CodecNone},
+		{compress.CodecLz4},
+		{compress.CodecSnappy},
+		{compress.CodecZstd},
+		{compress.CodecZlib},
+	}
+
+	for _, tc := range testCases {
+		bb := block.NewBuilder(4096)
+		assert.True(t, bb.IsEmpty())
+		assert.True(t, bb.AddValue([]byte("k"), nil))
+		assert.False(t, bb.IsEmpty())
+
+		b, err := bb.Build()
+		assert.Nil(t, err)
+
+		encoded, err := block.Encode(b, tc.codec)
+		assert.NoError(t, err)
+
+		var decoded block.Block
+		require.NoError(t, block.Decode(&decoded, encoded, tc.codec))
+		assert.Equal(t, b.FirstKey, []byte("k"))
+		assert.Equal(t, b.Data, decoded.Data)
+		//t.Logf("Compression '%s' results in block size: %d", tc.codec.String(), len(decoded.Data))
+		assert.True(t, len(b.Data) > 6)
+		assert.Equal(t, b.Offsets, decoded.Offsets)
+		it := block.NewIterator(&decoded)
+		assert2.NextEntry(t, it, []byte("k"), nil)
+	}
+
 }
 
 func TestBlockWithTombstone(t *testing.T) {
