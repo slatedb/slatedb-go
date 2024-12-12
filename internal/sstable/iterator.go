@@ -194,7 +194,9 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 			b := &blks[0]
 			fromKey, _ := iter.fromKey.Get()
 			if iter.fromKey.IsPresent() {
-				return mo.Some(block.NewIteratorAtKey(b, fromKey)), nil
+				// TODO(thrawn01): Handle this error
+				it, _ := block.NewIteratorAtKey(b, fromKey)
+				return mo.Some(it), nil
 			} else {
 				return mo.Some(block.NewIterator(b)), nil
 			}

@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"hash/crc32"
 	"math"
@@ -29,7 +29,6 @@ type Block struct {
 }
 
 // Encode encodes the Block into a byte slice using the following format
-//
 // +-----------------------------------------------+
 // |               Block                           |
 // +-----------------------------------------------+
@@ -37,7 +36,7 @@ type Block struct {
 // |  |  Block.Data                             |  |
 // |  |  (List of KeyValues)                    |  |
 // |  |  +-----------------------------------+  |  |
-// |  |  | KeyValue Pair                     |  |  |
+// |  |  | KeyValue Format (See row.go)      |  |  |
 // |  |  +-----------------------------------+  |  |
 // |  |  ...                                    |  |
 // |  +-----------------------------------------+  |
@@ -133,58 +132,11 @@ type Builder struct {
 	firstKey  []byte
 }
 
-// NewBuilder builds a block of key values in the following
-// Block.Data format along with the Block.Offsets which
-// point to the beginning of each key/value.
+// NewBuilder builds a block of key values in the v0RowCodec
+// format along with the Block.Offsets which point to the
+// beginning of each key/value.
 //
-// ## Example output from block.PrettyPrint()
-//
-// Offset: 0
-//   uint16(8) - 2 bytes
-//   []byte("database") - 8 bytes
-//   uint32(9) - 4 bytes
-//   []byte("internals") - 9 bytes
-// Offset: 23
-//   uint16(14) - 2 bytes
-//   []byte("data-intensive") - 14 bytes
-//   uint32(12) - 4 bytes
-//   []byte("applications") - 12 bytes
-// Offset: 55
-//   uint16(7) - 2 bytes
-//   []byte("deleted") - 7 bytes
-//   uint32(4294967295) - 4 bytes
-//
-//
-// +-----------------------------------------------+
-// |               KeyValue                        |
-// +-----------------------------------------------+
-// |  +-----------------------------------------+  |
-// |  |  Key Length (2 bytes)                   |  |
-// |  +-----------------------------------------+  |
-// |  |  Key                                    |  |
-// |  +-----------------------------------------+  |
-// |  |  Value Length (4 bytes)                 |  |
-// |  +-----------------------------------------+  |
-// |  |  Value                                  |  |
-// |  +-----------------------------------------+  |
-// +-----------------------------------------------+
-//
-// If it is a tombstone then KeyValue is represented as.
-//
-// +-----------------------------------------------+
-// |               KeyValue (Tombstone)            |
-// +-----------------------------------------------+
-// |  +-----------------------------------------+  |
-// |  |  Key Length (2 bytes)                   |  |
-// |  +-----------------------------------------+  |
-// |  |  Key                                    |  |
-// |  +-----------------------------------------+  |
-// |  |  Tombstone (4 bytes)                    |  |
-// |  +-----------------------------------------+  |
-// +-----------------------------------------------+
-//
-// The returned Block struct contains the Data as described
-// and the Offsets of each key value in the block.
+// See v0RowCodec for on disk format of the key values.
 func NewBuilder(blockSize uint64) *Builder {
 	return &Builder{
 		offsets:   make([]uint16, 0),
@@ -193,45 +145,38 @@ func NewBuilder(blockSize uint64) *Builder {
 	}
 }
 
-func (b *Builder) estimatedSize() int {
+func (b *Builder) curBlockSize() int {
 	return common.SizeOfUint16 + // number of key-value pairs in the block
 		(len(b.offsets) * common.SizeOfUint16) + // offsets
-		len(b.data) // key-value pairs
+		len(b.data) // Row entries already in the block
 }
 
-func (b *Builder) Add(key []byte, value mo.Option[[]byte]) bool {
+// TODO(thrawn01): Should accept a types.EntryRow instead of block.v0Row, I think?
+func (b *Builder) Add(key []byte, row v0Row) bool {
 	assert.True(len(key) > 0, "key must not be empty")
-
-	valueLen := 0
-	val, ok := value.Get()
-	if ok {
-		valueLen = len(val)
-	}
-	newSize := b.estimatedSize() + len(key) + valueLen + (common.SizeOfUint16 * 2) + common.SizeOfUint32
+	row.KeyPrefixLen = computePrefix(b.firstKey, key)
+	row.KeySuffix = key[row.KeyPrefixLen:]
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.
 	// (Unless the block is empty, in which case, allow the block to exceed the limit.)
-	if uint64(newSize) > b.blockSize && !b.IsEmpty() {
+	if uint64(b.curBlockSize()+row.Size()) > b.blockSize && !b.IsEmpty() {
 		return false
 	}
+
+	b.offsets = append(b.offsets, uint16(len(b.data)))
+	b.data = append(b.data, v0RowCodec.Encode(row)...)
 
 	if b.firstKey == nil {
 		b.firstKey = bytes.Clone(key)
 	}
-
-	b.offsets = append(b.offsets, uint16(len(b.data)))
-
-	// If value is present then append KeyLength(uint16), Key, ValueLength(uint32), value.
-	// if value is absent then append KeyLength(uint16), Key, Tombstone(uint32)
-	b.data = binary.BigEndian.AppendUint16(b.data, uint16(len(key)))
-	b.data = append(b.data, key...)
-	if valueLen > 0 {
-		b.data = binary.BigEndian.AppendUint32(b.data, uint32(valueLen))
-		b.data = append(b.data, val...)
-	} else {
-		b.data = binary.BigEndian.AppendUint32(b.data, Tombstone)
-	}
 	return true
+}
+
+func (b *Builder) AddValue(key []byte, value []byte) bool {
+	if len(value) == 0 {
+		return b.Add(key, v0Row{Value: types.Value{Kind: types.KindTombStone}})
+	}
+	return b.Add(key, v0Row{Value: types.Value{Value: value}})
 }
 
 func (b *Builder) IsEmpty() bool {

@@ -139,10 +139,13 @@ func NewBuilder(conf Config) *Builder {
 	}
 }
 
+// TODO(thrawn01): Change to AddValue() and implement Add(types.EntryRow)
 func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 	b.numKeys += 1
 
-	if !b.blockBuilder.Add(key, value) {
+	v, _ := value.Get()
+
+	if !b.blockBuilder.AddValue(key, v) {
 		// Create a new block builder and append block data
 		buf, err := b.finishBlock()
 		if err != nil {
@@ -151,8 +154,8 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 		b.currentLen += uint64(len(buf))
 		b.blocks.PushBack(buf)
 
-		addSuccess := b.blockBuilder.Add(key, value)
-		assert.True(addSuccess, "block.Builder.Add() failed")
+		addSuccess := b.blockBuilder.AddValue(key, v)
+		assert.True(addSuccess, "block.Builder.AddValue() failed")
 	}
 
 	if b.firstKey.IsAbsent() {
