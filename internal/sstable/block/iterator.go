@@ -2,9 +2,9 @@ package block
 
 import (
 	"bytes"
-	"encoding/binary"
+	"errors"
+	"fmt"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"sort"
 )
 
@@ -12,6 +12,8 @@ import (
 type Iterator struct {
 	block       *Block
 	offsetIndex uint64
+	warn        types.ErrWarn
+	firstKey    []byte
 }
 
 // NewIterator constructs a block.Iterator that starts at the beginning of the block
@@ -24,20 +26,44 @@ func NewIterator(block *Block) *Iterator {
 
 // NewIteratorAtKey Construct a block.Iterator that starts at the given key, or at the first
 // key greater than the given key if the exact key given is not in the block.
-func NewIteratorAtKey(block *Block, key []byte) *Iterator {
-	data := block.Data
-	index := sort.Search(len(block.Offsets), func(i int) bool {
-		off := block.Offsets[i]
-		keyLen := binary.BigEndian.Uint16(data[off:])
-		off += common.SizeOfUint16
-		curKey := data[off : off+keyLen]
-		return bytes.Compare(curKey, key) >= 0
+func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
+	if len(block.Offsets) <= 0 {
+		return nil, errors.New("number of block.Offsets must be greater than zero")
+	}
+
+	// First key in the block is a full key which cannot be corrupt else we lose
+	// all key values in the block as they are suffixes of the first key.
+	first, err := v0RowCodec.PeekAtKey(block.Data[block.Offsets[0]:])
+	if err != nil {
+		return nil, fmt.Errorf("while peeking at block.Offset[0]: %w; entire block is lost", err)
+	}
+
+	// If the first block is our key, then use that
+	if bytes.Compare(first.KeySuffix, key) >= 0 {
+		return &Iterator{
+			block:       block,
+			offsetIndex: uint64(0),
+		}, nil
+	}
+
+	var warn types.ErrWarn
+	index := sort.Search(len(block.Offsets)-1, func(i int) bool {
+		if block.Offsets[i+1] > uint16(len(block.Data)) {
+			warn.Add("block.Offset[%d] is out of bounds %d", i+1, block.Offsets[i])
+			return false
+		}
+		p, _ := v0RowCodec.PeekAtKey(block.Data[block.Offsets[i+1]:])
+		if err != nil {
+			warn.Add("while peeking at block.Offset[%d]: %s", i+1, err)
+			return false
+		}
+		return bytes.Compare(p.FullKey(first.KeySuffix), key) >= 0
 	})
 
 	return &Iterator{
 		block:       block,
-		offsetIndex: uint64(index),
-	}
+		offsetIndex: uint64(index + 1),
+	}, warn.If()
 }
 
 func (iter *Iterator) Next() (types.KeyValue, bool) {
@@ -60,32 +86,33 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 	if iter.offsetIndex >= uint64(len(iter.block.Offsets)) {
 		return types.RowEntry{}, false
 	}
-	var result types.RowEntry
 
 	data := iter.block.Data
 	offset := iter.block.Offsets[iter.offsetIndex]
 
-	// Read KeyLength(uint16), Key, (ValueLength(uint32), value)/Tombstone(uint32) from data
-	keyLen := binary.BigEndian.Uint16(data[offset:])
-	offset += common.SizeOfUint16
+	r, err := v0RowCodec.Decode(data[offset:])
+	if err != nil {
+		iter.warn.Add("while decoding at block.Offset[%d]: %s", iter.offsetIndex, err)
+		return types.RowEntry{}, false
+	}
 
-	result.Key = data[offset : offset+keyLen]
-	offset += keyLen
-
-	valueLen := binary.BigEndian.Uint32(data[offset:])
-	offset += common.SizeOfUint32
-
-	if valueLen != Tombstone {
-		result.Value = types.Value{
-			Value: data[offset : uint32(offset)+valueLen],
-			Kind:  types.KindKeyValue,
-		}
-	} else {
-		result.Value = types.Value{
-			Kind: types.KindTombStone,
-		}
+	if iter.firstKey == nil {
+		// TODO(thrawn01): Compaction is doing some thing such that the first key isn't a whole key
+		//  and this panics. 1) FullKey should protect itself from this, 2) Figure out what compaction is doing
+		//  ^^^^ DO THIS NEXT
+		iter.firstKey = r.FullKey(nil)
 	}
 
 	iter.offsetIndex += 1
-	return result, true
+	return types.RowEntry{
+		Key:   r.FullKey(iter.firstKey),
+		Value: r.ToValue(),
+	}, true
+}
+
+// Warnings returns types.ErrWarn if there was an error during iteration.
+// TODO(thrawn01): ensure all users of Iterator check for warnings
+//  also, add tests for blocks with warnings
+func (iter *Iterator) Warnings() *types.ErrWarn {
+	return &iter.warn
 }
