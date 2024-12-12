@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"hash/crc32"
 	"math"
 )
 
@@ -20,8 +22,9 @@ const (
 )
 
 type Block struct {
-	Data    []byte
-	Offsets []uint16
+	FirstKey []byte
+	Data     []byte
+	Offsets  []uint16
 }
 
 // Encode encodes the Block into a byte slice using the following format
@@ -35,7 +38,7 @@ type Block struct {
 // |  |  +-----------------------------------+  |  |
 // |  |  | KeyValue Pair                     |  |  |
 // |  |  +-----------------------------------+  |  |
-// |  |  ...                                 |  |  |
+// |  |  ...                                    |  |
 // |  +-----------------------------------------+  |
 // |  +-----------------------------------------+  |
 // |  |  Block.Offsets                          |  |
@@ -47,8 +50,10 @@ type Block struct {
 // |  +-----------------------------------------+  |
 // |  |  Number of Offsets (2 bytes)            |  |
 // |  +-----------------------------------------+  |
+// |  |  Checksum (4 bytes)                     |  |
+// |  +-----------------------------------------+  |
 // +-----------------------------------------------+
-func Encode(b *Block) []byte {
+func Encode(b *Block, codec compress.Codec) ([]byte, error) {
 	bufSize := len(b.Data) + len(b.Offsets)*common.SizeOfUint16 + common.SizeOfUint16
 
 	buf := make([]byte, 0, bufSize)
@@ -58,27 +63,65 @@ func Encode(b *Block) []byte {
 		buf = binary.BigEndian.AppendUint16(buf, offset)
 	}
 	buf = binary.BigEndian.AppendUint16(buf, uint16(len(b.Offsets)))
-	return buf
+
+	compressed, err := compress.Encode(buf, codec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Make a new buffer exactly the size of the compressed plus the checksum
+	buf = make([]byte, 0, len(compressed)+common.SizeOfUint32)
+	buf = append(buf, compressed...)
+	buf = binary.BigEndian.AppendUint32(buf, crc32.ChecksumIEEE(compressed))
+	return buf, nil
 }
 
 // Decode converts the encoded byte slice into the provided Block
-func Decode(b *Block, bytes []byte) error {
-	assert.True(len(bytes) > 6, "invalid block; block is too small; must be at least 6 bytes")
+// TODO(thrawn01): The asserts here should be returned as errors as its impossible
+//  to know which block is corrupt without context, nor is it possible to gracefully skip
+//  corrupt blocks if these assertions fail.
+func Decode(b *Block, input []byte, codec compress.Codec) error {
+	assert.True(len(input) > 6, "corrupt block; block is too small; must be at least 6 bytes")
 
-	// the last 2 bytes hold the offset count
-	offsetCountIndex := len(bytes) - common.SizeOfUint16
-	offsetCount := binary.BigEndian.Uint16(bytes[offsetCountIndex:])
+	// last 4 bytes hold the checksum
+	checksumIndex := len(input) - common.SizeOfUint32
+	compressed := input[:checksumIndex]
+	if binary.BigEndian.Uint32(input[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
+		return common.ErrChecksumMismatch
+	}
+
+	buf, err := compress.Decode(compressed, codec)
+	if err != nil {
+		return err
+	}
+
+	assert.True(len(buf) > common.SizeOfUint16,
+		"corrupt block; uncompressed block is too small; must be at least %d bytes", common.SizeOfUint16)
+
+	// The last 2 bytes hold the offset count
+	offsetCountIndex := len(buf) - common.SizeOfUint16
+	offsetCount := binary.BigEndian.Uint16(buf[offsetCountIndex:])
 
 	offsetStartIndex := offsetCountIndex - (int(offsetCount) * common.SizeOfUint16)
+	assert.True(offsetStartIndex >= 0,
+		"corrupt block; offset index %d cannot be negative", offsetStartIndex)
 	offsets := make([]uint16, 0, offsetCount)
 
 	for i := 0; i < int(offsetCount); i++ {
 		index := offsetStartIndex + (i * common.SizeOfUint16)
-		offsets = append(offsets, binary.BigEndian.Uint16(bytes[index:]))
+		assert.True(index >= 0 && index <= len(buf), "corrupt block; block offset[%d] is invalid", index)
+		offsets = append(offsets, binary.BigEndian.Uint16(buf[index:]))
 	}
 
-	b.Data = bytes[:offsetStartIndex]
+	b.Data = buf[:offsetStartIndex]
 	b.Offsets = offsets
+
+	assert.True(len(b.Offsets) != 0, "corrupt block; block Block.Offsets must be greater than 0")
+
+	// Extract the first key in the block
+	keyLen := binary.BigEndian.Uint16(b.Data[b.Offsets[0]:])
+	b.FirstKey = b.Data[b.Offsets[0]+2 : b.Offsets[0]+2+keyLen]
+
 	return nil
 }
 
@@ -86,6 +129,7 @@ type Builder struct {
 	offsets   []uint16
 	data      []byte
 	blockSize uint64
+	firstKey  []byte
 }
 
 // NewBuilder builds a block of key values in the following
@@ -170,6 +214,10 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) bool {
 		return false
 	}
 
+	if b.firstKey == nil {
+		b.firstKey = bytes.Clone(key)
+	}
+
 	b.offsets = append(b.offsets, uint16(len(b.data)))
 
 	// If value is present then append KeyLength(uint16), Key, ValueLength(uint32), value.
@@ -194,8 +242,9 @@ func (b *Builder) Build() (*Block, error) {
 		return nil, ErrEmptyBlock
 	}
 	return &Block{
-		Data:    b.data,
-		Offsets: b.offsets,
+		FirstKey: b.firstKey,
+		Offsets:  b.offsets,
+		Data:     b.data,
 	}, nil
 }
 

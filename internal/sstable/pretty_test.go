@@ -15,8 +15,7 @@ func TestPrettyPrint(t *testing.T) {
 		FilterBitsPerKey: 10,
 	}
 
-	builder := NewBuilder(conf.BlockSize, conf.MinFilterKeys, &FlatBufferSSTableInfoCodec{},
-		conf.FilterBitsPerKey, compress.CodecNone)
+	builder := NewBuilder(conf)
 
 	// First block
 	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))

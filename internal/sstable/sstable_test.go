@@ -6,6 +6,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
@@ -33,7 +34,7 @@ func TestInfoClone(t *testing.T) {
 	assert.NotEqual(t, original.FirstKey, clone.FirstKey)
 }
 
-func TestInfoEncode(t *testing.T) {
+func TestEncodeInfo(t *testing.T) {
 	info := &sstable.Info{
 		FirstKey:         []byte("testkey"),
 		IndexOffset:      100,
@@ -43,15 +44,14 @@ func TestInfoEncode(t *testing.T) {
 		CompressionCodec: compress.CodecSnappy,
 	}
 
-	codec := &sstable.FlatBufferSSTableInfoCodec{}
-	var buf []byte
-	info.Encode(&buf, codec)
+	buf := sstable.EncodeInfo(info)
 
 	assert.NotEmpty(t, buf)
 	assert.Greater(t, len(buf), 4) // At least 4 bytes for CRC
 
 	// Decode and verify
-	decodedInfo := codec.Decode(buf[:len(buf)-4]) // Exclude CRC
+	decodedInfo, err := sstable.DecodeInfo(buf)
+	require.NoError(t, err)
 	assert.Equal(t, info.FirstKey, decodedInfo.FirstKey)
 	assert.Equal(t, info.IndexOffset, decodedInfo.IndexOffset)
 	assert.Equal(t, info.IndexLen, decodedInfo.IndexLen)
@@ -60,31 +60,13 @@ func TestInfoEncode(t *testing.T) {
 	assert.Equal(t, info.CompressionCodec, decodedInfo.CompressionCodec)
 }
 
-func TestSsTableInfoCodec(t *testing.T) {
-	codec := &sstable.FlatBufferSSTableInfoCodec{}
-	
-	original := &sstable.Info{
-		FirstKey:         []byte("testkey"),
-		IndexOffset:      100,
-		IndexLen:         200,
-		FilterOffset:     300,
-		FilterLen:        400,
-		CompressionCodec: compress.CodecSnappy,
-	}
-
-	encoded := codec.Encode(original)
-	decoded := codec.Decode(encoded)
-
-	assert.Equal(t, original.FirstKey, decoded.FirstKey)
-	assert.Equal(t, original.IndexOffset, decoded.IndexOffset)
-	assert.Equal(t, original.IndexLen, decoded.IndexLen)
-	assert.Equal(t, original.FilterOffset, decoded.FilterOffset)
-	assert.Equal(t, original.FilterLen, decoded.FilterLen)
-	assert.Equal(t, original.CompressionCodec, decoded.CompressionCodec)
-}
-
 func TestEncodeTable(t *testing.T) {
-	builder := sstable.NewBuilder(20, 10, &sstable.FlatBufferSSTableInfoCodec{}, 10, compress.CodecNone)
+	builder := sstable.NewBuilder(sstable.Config{
+		BlockSize:        20,
+		MinFilterKeys:    10,
+		FilterBitsPerKey: 10,
+		Compression:      compress.CodecNone,
+	})
 
 	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
 	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))

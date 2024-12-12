@@ -72,26 +72,16 @@ func PrettyPrint(table *Table, conf Config) string {
 		_, _ = fmt.Fprintf(&buf, "  No Bloom Filter\n")
 	}
 
-	// TODO: sstable.Table should also include the sstable.Config
-	//  instead of requiring the user to provide the SSTable config
-	decoder := &SSTableFormat{
-		BlockSize:        conf.BlockSize,
-		MinFilterKeys:    conf.MinFilterKeys,
-		FilterBitsPerKey: conf.FilterBitsPerKey,
-		SstCodec:         FlatBufferSSTableInfoCodec{},
-		CompressionCodec: conf.Compression,
-	}
-
 	encoded := EncodeTable(table)
 
-	index, err := decoder.ReadIndexRaw(table.Info, encoded)
+	index, err := ReadIndexRaw(table.Info, encoded)
 	if err != nil {
 		buf.WriteString(fmt.Sprintf("ERROR: while parsing index at [%d:%d] - %s\n",
 			table.Info.IndexOffset, table.Info.IndexLen, err.Error()))
 		return buf.String()
 	}
 
-	blocksMeta := index.SsTableIndex().UnPack().BlockMeta
+	blocksMeta := index.BlockMeta()
 	_, _ = fmt.Fprintf(&buf, "Blocks:\n")
 	_, _ = fmt.Fprintf(&buf, "  First Block Offset: %d\n", blocksMeta[0].Offset)
 	_, _ = fmt.Fprintf(&buf, "  End Offset: %d\n", table.Info.FilterOffset)
@@ -102,7 +92,7 @@ func PrettyPrint(table *Table, conf Config) string {
 		_, _ = fmt.Fprintf(&buf, "    FirstKey: []byte(\"%s\")\n", meta.FirstKey)
 		_, _ = fmt.Fprintf(&buf, "    KeyValues:\n")
 
-		blk, err := decoder.ReadBlockRaw(table.Info, index, uint64(i), encoded)
+		blk, err := ReadBlockRaw(table.Info, index, uint64(i), encoded)
 		if err != nil {
 			buf.WriteString(fmt.Sprintf("ERROR: while parsing block at offset %d - %s\n",
 				meta.Offset, err.Error()))
