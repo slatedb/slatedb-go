@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"math"
 	"time"
 )
@@ -14,54 +15,78 @@ var v0RowCodec v0Codec
 type v0RowFlags uint8
 
 const (
-	FlagTombstone v0RowFlags = 1 << iota
-	FlagHasExpire
-	FlagHasCreate
+	flagTombstone v0RowFlags = 1 << iota
+	flagHasExpire
+	flagHasCreate
 
 	v0ErrPrefix = "corrupt v0 row: "
 )
 
-type v0Row struct {
-	KeyPrefixLen uint16
-	KeySuffix    []byte
-	Seq          uint64
-	ExpireAt     time.Time
-	CreatedAt    time.Time
-	Value        types.Value
+type Row struct {
+	Seq       uint64
+	ExpireAt  time.Time
+	CreatedAt time.Time
+	Value     types.Value
+
+	// Used by v0Codec, might consider moving into a separate
+	// v0Row structure if future row versions are radically different
+	keyPrefixLen uint16
+	keySuffix    []byte
 }
 
-// FullKey restores the full key by prepending the prefix to the key suffix.
-// Keys in a v0RowCodec are stored with prefix stripped off to reduce the storage size.
-func (r v0Row) FullKey(prefix []byte) []byte {
-	result := make([]byte, int(r.KeyPrefixLen)+len(r.KeySuffix))
-	copy(result[:r.KeyPrefixLen], prefix[:r.KeyPrefixLen])
-	copy(result[r.KeyPrefixLen:], r.KeySuffix)
-	return result
-}
-
-func (r v0Row) ToValue() types.Value {
+func (r Row) ToValue() types.Value {
 	if r.Value.IsTombstone() {
 		return types.Value{Kind: types.KindTombStone}
 	}
 	return types.Value{Kind: types.KindKeyValue, Value: r.Value.Value}
 }
 
-func (r v0Row) Flags() v0RowFlags {
+// V0EstimateBlockSize estimates the block size that will result given the
+// provided list of types.KeyValue. This estimate assumes no compression is used.
+// This function is useful in tests to calculate the block size needed to force
+// the creation of multiple blocks.
+func V0EstimateBlockSize(kv []types.KeyValue) uint64 {
+	b := Builder{}
+
+	// The minimum block size includes all the required offset and length fields
+	result := b.curBlockSize()
+
+	for _, kv := range kv {
+		r := Row{
+			Value:     types.Value{Value: kv.Value},
+			keySuffix: kv.Key,
+		}
+		result += v0Size(r)
+		result += common.SizeOfUint16 // The size of a single uint16 offset
+	}
+	return uint64(result + common.SizeOfUint32) // The size of the checksum
+}
+
+// v0FullKey restores the full key by prepending the prefix to the key suffix.
+// Keys in a v0RowCodec are stored with prefix stripped off to reduce the storage size.
+func v0FullKey(r Row, prefix []byte) []byte {
+	result := make([]byte, int(r.keyPrefixLen)+len(r.keySuffix))
+	copy(result[:r.keyPrefixLen], prefix[:r.keyPrefixLen])
+	copy(result[r.keyPrefixLen:], r.keySuffix)
+	return result
+}
+
+func v0Flags(r Row) v0RowFlags {
 	var flags v0RowFlags
 	if r.Value.IsTombstone() {
-		flags |= FlagTombstone
+		flags |= flagTombstone
 	}
 	if r.ExpireAt.Nanosecond() != 0 {
-		flags |= FlagHasExpire
+		flags |= flagHasExpire
 	}
 	if r.CreatedAt.Nanosecond() != 0 {
-		flags |= FlagHasCreate
+		flags |= flagHasCreate
 	}
 	return flags
 }
 
-func (r v0Row) Size() int {
-	size := 2 + 2 + len(r.KeySuffix) + 8 + 1 // KeyPrefixLen + keySuffixLen + KeySuffix + Seq + Flags
+func v0Size(r Row) int {
+	size := 2 + 2 + len(r.keySuffix) + 8 + 1 // keyPrefixLen + keySuffixLen + keySuffix + Seq + Flags
 	if r.ExpireAt.Nanosecond() != 0 {
 		size += 8
 	}
@@ -82,6 +107,7 @@ type v0Codec struct{}
 // The `v0` codec for the key is (for non-tombstones):
 //
 // ```txt
+//          2               2                            8        1                                   4
 //  |---------------------------------------------------------------------------------------------------------------------|
 //  |     uint16     |    uint16      |  []byte     | uint64  | uint8     | int64     | int64     | uint32    |  []byte   |
 //  |----------------|----------------|-------------|---------|-----------|-----------|-----------|-----------|-----------|
@@ -112,26 +138,26 @@ type v0Codec struct{}
 // | `value`          | `[]byte` | Value bytes                                            |
 //
 // NOTE: both expireAt and createdAt are epoch
-func (c v0Codec) Encode(r v0Row) []byte {
-	output := make([]byte, r.Size())
+func (c v0Codec) Encode(r Row) []byte {
+	output := make([]byte, v0Size(r))
 	var offset int
 
-	// Encode KeyPrefixLen and KeySuffixLen
-	binary.BigEndian.PutUint16(output[offset:], r.KeyPrefixLen)
+	// Encode keyPrefixLen and KeySuffixLen
+	binary.BigEndian.PutUint16(output[offset:], r.keyPrefixLen)
 	offset += 2
-	binary.BigEndian.PutUint16(output[offset:], uint16(len(r.KeySuffix)))
+	binary.BigEndian.PutUint16(output[offset:], uint16(len(r.keySuffix)))
 	offset += 2
 
-	// Encode KeySuffix
-	copy(output[offset:], r.KeySuffix)
-	offset += len(r.KeySuffix)
+	// Encode keySuffix
+	copy(output[offset:], r.keySuffix)
+	offset += len(r.keySuffix)
 
 	// Encode seq
 	binary.BigEndian.PutUint64(output[offset:], r.Seq)
 	offset += 8
 
 	// Encode flags
-	output[offset] = uint8(r.Flags())
+	output[offset] = uint8(v0Flags(r))
 	offset++
 
 	// Encode ExpireAt and CreatedAt if present
@@ -154,26 +180,26 @@ func (c v0Codec) Encode(r v0Row) []byte {
 	return output
 }
 
-func (c v0Codec) Decode(data []byte) (*v0Row, error) {
-	if len(data) < 13 { // Minimum size: KeyPrefixLen + KeySuffixLen + Seq + Flags
+func (c v0Codec) Decode(data []byte) (*Row, error) {
+	if len(data) < 13 { // Minimum size: keyPrefixLen + KeySuffixLen + Seq + Flags
 		return nil, errors.New(v0ErrPrefix + "data length too short to decode a row")
 	}
 
 	var offset int
-	var r v0Row
+	var r Row
 
-	// Decode KeyPrefixLen and KeySuffixLen
-	r.KeyPrefixLen = binary.BigEndian.Uint16(data[offset:])
+	// Decode keyPrefixLen and KeySuffixLen
+	r.keyPrefixLen = binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 	keySuffixLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 
-	// Decode KeySuffix
+	// Decode keySuffix
 	if len(data[offset:]) < int(keySuffixLen) {
 		return nil, errors.New(v0ErrPrefix + "data length too short for key suffix")
 	}
-	r.KeySuffix = make([]byte, keySuffixLen)
-	copy(r.KeySuffix, data[offset:offset+int(keySuffixLen)])
+	r.keySuffix = make([]byte, keySuffixLen)
+	copy(r.keySuffix, data[offset:offset+int(keySuffixLen)])
 	offset += int(keySuffixLen)
 
 	// Decode Seq
@@ -185,7 +211,7 @@ func (c v0Codec) Decode(data []byte) (*v0Row, error) {
 	offset++
 
 	// Decode expire_ts and create_ts if present
-	if flags&FlagHasExpire != 0 {
+	if flags&flagHasExpire != 0 {
 		if len(data[offset:]) < 8 {
 			return nil, errors.New(v0ErrPrefix + "data length too short for expire")
 		}
@@ -193,7 +219,7 @@ func (c v0Codec) Decode(data []byte) (*v0Row, error) {
 		r.ExpireAt = time.UnixMilli(expire)
 		offset += 8
 	}
-	if flags&FlagHasCreate != 0 {
+	if flags&flagHasCreate != 0 {
 		if len(data[offset:]) < 8 {
 			return nil, errors.New(v0ErrPrefix + "data length too short for create")
 		}
@@ -203,7 +229,7 @@ func (c v0Codec) Decode(data []byte) (*v0Row, error) {
 	}
 
 	// Decode value for non-tombstones
-	if flags&FlagTombstone == 0 {
+	if flags&flagTombstone == 0 {
 		if len(data[offset:]) < 4 {
 			return nil, errors.New(v0ErrPrefix + "data length too short for for value length")
 		}
@@ -222,22 +248,22 @@ func (c v0Codec) Decode(data []byte) (*v0Row, error) {
 	return &r, nil
 }
 
-// PeekAtKey returns a v0Row with only the KeyPrefixLen and KeySuffix populated where
-// the KeySuffix is a sub slice of the provided []byte.
-func (c v0Codec) PeekAtKey(data []byte) (v0Row, error) {
+// PeekAtKey returns a Row with only the keyPrefixLen and keySuffix populated where
+// the keySuffix is a sub slice of the provided []byte.
+func (c v0Codec) PeekAtKey(data []byte) (Row, error) {
 	var offset int
-	var r v0Row
+	var r Row
 
-	// Decode KeyPrefixLen and KeySuffixLen
-	r.KeyPrefixLen = binary.BigEndian.Uint16(data[offset:])
+	// Decode keyPrefixLen and KeySuffixLen
+	r.keyPrefixLen = binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 	keySuffixLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 
 	if len(data[offset:]) < int(keySuffixLen) {
-		return v0Row{}, errors.New(v0ErrPrefix + "data length too short for key suffix")
+		return Row{}, errors.New(v0ErrPrefix + "data length too short for key suffix")
 	}
-	r.KeySuffix = data[offset : offset+int(keySuffixLen)]
+	r.keySuffix = data[offset : offset+int(keySuffixLen)]
 	return r, nil
 }
 

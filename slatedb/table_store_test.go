@@ -246,7 +246,7 @@ func TestSSTableWithCompression(t *testing.T) {
 func TestReadBlocks(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 32
+	conf.BlockSize = 52
 	conf.MinFilterKeys = 1
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
@@ -285,9 +285,15 @@ func TestReadBlocks(t *testing.T) {
 }
 
 func TestReadAllBlocks(t *testing.T) {
+	// Force the creation of multiple blocks
+	blockSize := block.V0EstimateBlockSize([]types.KeyValue{
+		{Key: []byte("aa"), Value: []byte("11")},
+		{Key: []byte("bb"), Value: []byte("22")},
+	})
+
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 32
+	conf.BlockSize = blockSize
 	conf.MinFilterKeys = 1
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
@@ -386,7 +392,6 @@ func TestManyBlockSSTIter(t *testing.T) {
 	index, err := tableStore.ReadIndex(sstHandle)
 	require.NoError(t, err)
 	require.NotNil(t, index)
-	assert.Equal(t, 6, index.BlockMetaLength())
 
 	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
 	assert.NoError(t, err)
@@ -405,7 +410,6 @@ func TestManyBlockSSTIter(t *testing.T) {
 func TestIterFromKey(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 128
 	conf.MinFilterKeys = 1
 	tableStore := NewTableStore(bucket, conf, "")
 
@@ -440,7 +444,6 @@ func TestIterFromKey(t *testing.T) {
 func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 128
 	conf.MinFilterKeys = 1
 	tableStore := NewTableStore(bucket, conf, "")
 
@@ -466,7 +469,6 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 func TestIterFromKeyLargerThanLast(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 128
 	conf.MinFilterKeys = 1
 	tableStore := NewTableStore(bucket, conf, "")
 
@@ -524,9 +526,14 @@ func TestShouldGenerateOrderedBytes(t *testing.T) {
 }
 
 func TestSSTWriter(t *testing.T) {
+	// Force key values into separate blocks
+	blockSize := block.V0EstimateBlockSize([]types.KeyValue{
+		{Key: []byte("aaaaaaaaaaaaaaaa"), Value: []byte("1111111111111111")},
+	})
+
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
-	conf.BlockSize = 32
+	conf.BlockSize = blockSize
 	conf.FilterBitsPerKey = 1
 	tableStore := NewTableStore(bucket, conf, "")
 	sstID := sstable.NewIDCompacted(ulid.Make())

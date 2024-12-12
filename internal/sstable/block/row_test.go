@@ -2,6 +2,7 @@ package block
 
 import (
 	"bytes"
+	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,49 +13,49 @@ import (
 func TestRowFlags(t *testing.T) {
 	tests := []struct {
 		name     string
-		row      v0Row
+		row      Row
 		expected v0RowFlags
 	}{
 		{
 			name:     "Empty row",
-			row:      v0Row{},
+			row:      Row{},
 			expected: 0,
 		},
 		{
 			name: "Tombstone",
-			row: v0Row{
+			row: Row{
 				Value: types.Value{Kind: types.KindTombStone},
 			},
-			expected: FlagTombstone,
+			expected: flagTombstone,
 		},
 		{
 			name: "WithExpire",
-			row: v0Row{
+			row: Row{
 				ExpireAt: time.Now(),
 			},
-			expected: FlagHasExpire,
+			expected: flagHasExpire,
 		},
 		{
 			name: "WithCreate",
-			row: v0Row{
+			row: Row{
 				CreatedAt: time.Now(),
 			},
-			expected: FlagHasCreate,
+			expected: flagHasCreate,
 		},
 		{
 			name: "AllFlags",
-			row: v0Row{
+			row: Row{
 				Value:     types.Value{Kind: types.KindTombStone},
 				ExpireAt:  time.Now(),
 				CreatedAt: time.Now(),
 			},
-			expected: FlagTombstone | FlagHasExpire | FlagHasCreate,
+			expected: flagTombstone | flagHasExpire | flagHasCreate,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.row.Flags())
+			assert.Equal(t, tt.expected, v0Flags(tt.row))
 		})
 	}
 }
@@ -109,14 +110,14 @@ func TestV0RowCodecDecodeErrors(t *testing.T) {
 func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 	tests := []struct {
 		name           string
-		row            v0Row
+		row            Row
 		firstKeyPrefix []byte
 	}{
 		{
 			name: "NormalRowWithExpireAt",
-			row: v0Row{
-				KeyPrefixLen: 3,
-				KeySuffix:    []byte("key"),
+			row: Row{
+				keyPrefixLen: 3,
+				keySuffix:    []byte("key"),
 				Seq:          1,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -126,9 +127,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "NormalRowWithoutExpireAt",
-			row: v0Row{
-				KeyPrefixLen: 0,
-				KeySuffix:    []byte("key"),
+			row: Row{
+				keyPrefixLen: 0,
+				keySuffix:    []byte("key"),
 				Seq:          1,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -138,9 +139,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "RowWithBothTimestamps",
-			row: v0Row{
-				KeyPrefixLen: 5,
-				KeySuffix:    []byte("both"),
+			row: Row{
+				keyPrefixLen: 5,
+				keySuffix:    []byte("both"),
 				Seq:          100,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.UnixMilli(1234567890),
@@ -150,9 +151,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "RowWithOnlyCreateAt",
-			row: v0Row{
-				KeyPrefixLen: 4,
-				KeySuffix:    []byte("create"),
+			row: Row{
+				keyPrefixLen: 4,
+				keySuffix:    []byte("create"),
 				Seq:          50,
 				Value:        types.Value{Value: []byte("test_value")},
 				CreatedAt:    time.UnixMilli(1234567890),
@@ -162,9 +163,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "TombstoneRow",
-			row: v0Row{
-				KeyPrefixLen: 4,
-				KeySuffix:    []byte("tomb"),
+			row: Row{
+				keyPrefixLen: 4,
+				keySuffix:    []byte("tomb"),
 				Seq:          1,
 				Value:        types.Value{Kind: types.KindTombStone},
 				CreatedAt:    time.UnixMilli(2),
@@ -174,9 +175,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "EmptyKeySuffix",
-			row: v0Row{
-				KeyPrefixLen: 4,
-				KeySuffix:    []byte(""),
+			row: Row{
+				keyPrefixLen: 4,
+				keySuffix:    []byte(""),
 				Seq:          1,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -186,9 +187,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "LargeSequenceNumber",
-			row: v0Row{
-				KeyPrefixLen: 3,
-				KeySuffix:    []byte("seq"),
+			row: Row{
+				keyPrefixLen: 3,
+				keySuffix:    []byte("seq"),
 				Seq:          ^uint64(0),
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -198,9 +199,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "LargeValue",
-			row: v0Row{
-				KeyPrefixLen: 2,
-				KeySuffix:    []byte("big"),
+			row: Row{
+				keyPrefixLen: 2,
+				keySuffix:    []byte("big"),
 				Seq:          1,
 				Value:        types.Value{Value: bytes.Repeat([]byte("x"), 100)},
 				CreatedAt:    time.Time{},
@@ -210,9 +211,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "LongKeySuffix",
-			row: v0Row{
-				KeyPrefixLen: 2,
-				KeySuffix:    bytes.Repeat([]byte("k"), 100),
+			row: Row{
+				keyPrefixLen: 2,
+				keySuffix:    bytes.Repeat([]byte("k"), 100),
 				Seq:          1,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -222,9 +223,9 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 		},
 		{
 			name: "UnicodeKeySuffix",
-			row: v0Row{
-				KeyPrefixLen: 3,
-				KeySuffix:    []byte("你好世界"),
+			row: Row{
+				keyPrefixLen: 3,
+				keySuffix:    []byte("你好世界"),
 				Seq:          1,
 				Value:        types.Value{Value: []byte("value")},
 				CreatedAt:    time.Time{},
@@ -245,8 +246,8 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 			assert.Equal(t, &tt.row, decoded)
 
 			// Test restoring full key
-			fullKey := tt.row.FullKey(tt.firstKeyPrefix)
-			assert.Equal(t, append(tt.firstKeyPrefix[:tt.row.KeyPrefixLen], decoded.KeySuffix...), fullKey)
+			fullKey := v0FullKey(tt.row, tt.firstKeyPrefix)
+			assert.Equal(t, append(tt.firstKeyPrefix[:tt.row.keyPrefixLen], decoded.keySuffix...), fullKey)
 			//t.Logf("FullKey: %s", fullKey)
 		})
 	}
@@ -366,4 +367,19 @@ func BenchmarkComputePrefix(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestV0EstimateBlockSize(t *testing.T) {
+	bb := NewBuilder(4096)
+	assert.True(t, bb.IsEmpty())
+	assert.True(t, bb.AddValue([]byte("k"), []byte("v")))
+	assert.False(t, bb.IsEmpty())
+
+	b, err := bb.Build()
+	assert.NoError(t, err)
+	blk, err := Encode(b, compress.CodecNone)
+	assert.NoError(t, err)
+
+	estimatedSize := V0EstimateBlockSize([]types.KeyValue{{Key: []byte("k"), Value: []byte("v")}})
+	assert.Equal(t, uint64(len(blk)), estimatedSize)
 }

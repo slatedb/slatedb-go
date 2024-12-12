@@ -39,10 +39,11 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 	}
 
 	// If the first block is our key, then use that
-	if bytes.Compare(first.KeySuffix, key) >= 0 {
+	if bytes.Compare(first.keySuffix, key) >= 0 {
 		return &Iterator{
-			block:       block,
+			firstKey:    bytes.Clone(first.keySuffix),
 			offsetIndex: uint64(0),
+			block:       block,
 		}, nil
 	}
 
@@ -57,19 +58,20 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 			warn.Add("while peeking at block.Offset[%d]: %s", i+1, err)
 			return false
 		}
-		return bytes.Compare(p.FullKey(first.KeySuffix), key) >= 0
+		return bytes.Compare(v0FullKey(p, first.keySuffix), key) >= 0
 	})
 
 	return &Iterator{
-		block:       block,
+		firstKey:    bytes.Clone(first.keySuffix),
 		offsetIndex: uint64(index + 1),
+		block:       block,
 	}, warn.If()
 }
 
 func (iter *Iterator) Next() (types.KeyValue, bool) {
 	for {
-		entry, shouldContinue := iter.NextEntry()
-		if !shouldContinue {
+		entry, ok := iter.NextEntry()
+		if !ok {
 			return types.KeyValue{}, false
 		}
 		if entry.Value.IsTombstone() {
@@ -97,15 +99,12 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 	}
 
 	if iter.firstKey == nil {
-		// TODO(thrawn01): Compaction is doing some thing such that the first key isn't a whole key
-		//  and this panics. 1) FullKey should protect itself from this, 2) Figure out what compaction is doing
-		//  ^^^^ DO THIS NEXT
-		iter.firstKey = r.FullKey(nil)
+		iter.firstKey = v0FullKey(*r, nil)
 	}
 
 	iter.offsetIndex += 1
 	return types.RowEntry{
-		Key:   r.FullKey(iter.firstKey),
+		Key:   v0FullKey(*r, iter.firstKey),
 		Value: r.ToValue(),
 	}, true
 }

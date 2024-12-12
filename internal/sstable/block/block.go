@@ -151,15 +151,16 @@ func (b *Builder) curBlockSize() int {
 		len(b.data) // Row entries already in the block
 }
 
-// TODO(thrawn01): Should accept a types.EntryRow instead of block.v0Row, I think?
-func (b *Builder) Add(key []byte, row v0Row) bool {
+func (b *Builder) Add(key []byte, row Row) bool {
 	assert.True(len(key) > 0, "key must not be empty")
-	row.KeyPrefixLen = computePrefix(b.firstKey, key)
-	row.KeySuffix = key[row.KeyPrefixLen:]
+	row.keyPrefixLen = computePrefix(b.firstKey, key)
+	row.keySuffix = key[row.keyPrefixLen:]
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.
 	// (Unless the block is empty, in which case, allow the block to exceed the limit.)
-	if uint64(b.curBlockSize()+row.Size()) > b.blockSize && !b.IsEmpty() {
+	// NOTE: This is the current block size, plus the size of a new offset in block.Offsets,
+	// plus the size of the new row to be added.
+	if uint64(b.curBlockSize()+common.SizeOfUint16+v0Size(row)) > b.blockSize && !b.IsEmpty() {
 		return false
 	}
 
@@ -174,9 +175,9 @@ func (b *Builder) Add(key []byte, row v0Row) bool {
 
 func (b *Builder) AddValue(key []byte, value []byte) bool {
 	if len(value) == 0 {
-		return b.Add(key, v0Row{Value: types.Value{Kind: types.KindTombStone}})
+		return b.Add(key, Row{Value: types.Value{Kind: types.KindTombStone}})
 	}
-	return b.Add(key, v0Row{Value: types.Value{Value: value}})
+	return b.Add(key, Row{Value: types.Value{Value: value}})
 }
 
 func (b *Builder) IsEmpty() bool {
