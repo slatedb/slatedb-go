@@ -94,7 +94,7 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 
 	r, err := v0RowCodec.Decode(data[offset:])
 	if err != nil {
-		iter.warn.Add("while decoding at block.Offset[%d]: %s", iter.offsetIndex, err)
+		iter.warn.Add("while decoding block.Offset[%d]: %s", iter.offsetIndex, err)
 		return types.RowEntry{}, false
 	}
 

@@ -59,6 +59,7 @@ type SortedRunIterator struct {
 	tableStore        *TableStore
 	numBlocksToFetch  uint64
 	numBlocksToBuffer uint64
+	warn              types.ErrWarn
 }
 
 func newSortedRunIterator(
@@ -152,20 +153,33 @@ func (iter *SortedRunIterator) NextEntry() (types.RowEntry, bool) {
 		kv, ok := kvIter.NextEntry()
 		if ok {
 			return kv, true
+		} else {
+			if warn := kvIter.Warnings(); warn != nil {
+				iter.warn.Merge(warn)
+			}
 		}
 
 		sst, ok := iter.sstListIter.Next()
 		if !ok {
+			if warn := kvIter.Warnings(); warn != nil {
+				iter.warn.Merge(warn)
+			}
 			return types.RowEntry{}, false
 		}
 
 		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		if err != nil {
+			iter.warn.Add(err.Error())
 			return types.RowEntry{}, false
 		}
 
 		iter.currentKVIter = mo.Some(newKVIter)
 	}
+}
+
+// Warnings returns types.ErrWarn if there was a warning during iteration.
+func (iter *SortedRunIterator) Warnings() *types.ErrWarn {
+	return &iter.warn
 }
 
 // ------------------------------------------------

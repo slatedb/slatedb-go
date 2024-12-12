@@ -12,7 +12,6 @@ import (
 	"sync"
 )
 
-// TODO(thrawn01): Remove once we untangle the store from the implementation
 type TableStore interface {
 	ReadIndex(*Handle) (*Index, error)
 	ReadBlocksUsingIndex(*Handle, common.Range, *Index) ([]block.Block, error)
@@ -30,6 +29,7 @@ type Iterator struct {
 	fetchTasks          chan chan mo.Option[[]block.Block]
 	maxFetchTasks       uint64
 	numBlocksToFetch    uint64
+	warn                types.ErrWarn
 }
 
 func NewIterator(
@@ -118,6 +118,9 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 		currentBlockIter, _ := iter.currentBlockIter.Get()
 		kv, ok := currentBlockIter.NextEntry()
 		if !ok {
+			if warn := currentBlockIter.Warnings(); warn != nil {
+				iter.warn.Merge(warn)
+			}
 			// We have exhausted the current block, but not necessarily the entire SST,
 			// so we fall back to the top to check if we have more blocks to read.
 			iter.currentBlockIter = mo.None[*block.Iterator]()
@@ -160,6 +163,7 @@ func (iter *Iterator) SpawnFetches() {
 		go func() {
 			blocks, err := tableStore.ReadBlocksUsingIndex(table, blocksRange, index)
 			if err != nil {
+				// TODO(thrawn01): handle error
 				blocksCh <- mo.None[[]block.Block]()
 			} else {
 				blocksCh <- mo.Some(blocks)
@@ -234,4 +238,9 @@ loop:
 	}
 
 	return uint64(foundBlockID)
+}
+
+// Warnings returns types.ErrWarn if there was a warning during iteration.
+func (iter *Iterator) Warnings() *types.ErrWarn {
+	return &iter.warn
 }

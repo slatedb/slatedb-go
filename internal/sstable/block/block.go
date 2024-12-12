@@ -10,16 +10,10 @@ import (
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"hash/crc32"
-	"math"
 )
 
 var (
 	ErrEmptyBlock = errors.New("empty block")
-)
-
-const (
-	// TODO(thrawn01): Remove once KeyValue refactor is complete
-	Tombstone = math.MaxUint32
 )
 
 type Block struct {
@@ -77,11 +71,10 @@ func Encode(b *Block, codec compress.Codec) ([]byte, error) {
 }
 
 // Decode converts the encoded byte slice into the provided Block
-// TODO(thrawn01): The asserts here should be returned as errors as its impossible
-//  to know which block is corrupt without context, nor is it possible to gracefully skip
-//  corrupt blocks if these assertions fail.
 func Decode(b *Block, input []byte, codec compress.Codec) error {
-	assert.True(len(input) > 6, "corrupt block; block is too small; must be at least 6 bytes")
+	if len(input) < 6 {
+		return errors.New("corrupt block: block is too small; must be at least 6 bytes")
+	}
 
 	// last 4 bytes hold the checksum
 	checksumIndex := len(input) - common.SizeOfUint32
@@ -95,28 +88,34 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 		return err
 	}
 
-	assert.True(len(buf) > common.SizeOfUint16,
-		"corrupt block; uncompressed block is too small; must be at least %d bytes", common.SizeOfUint16)
+	if len(buf) < common.SizeOfUint16 {
+		return errors.New("corrupt block: uncompressed block is too small; must be at least 2 bytes")
+	}
 
 	// The last 2 bytes hold the offset count
 	offsetCountIndex := len(buf) - common.SizeOfUint16
 	offsetCount := binary.BigEndian.Uint16(buf[offsetCountIndex:])
 
 	offsetStartIndex := offsetCountIndex - (int(offsetCount) * common.SizeOfUint16)
-	assert.True(offsetStartIndex >= 0,
-		"corrupt block; offset index %d cannot be negative", offsetStartIndex)
+	if offsetStartIndex <= 0 {
+		return fmt.Errorf("corrupt block: invalid index offset '%d'; cannot be negative", offsetStartIndex)
+	}
 	offsets := make([]uint16, 0, offsetCount)
 
 	for i := 0; i < int(offsetCount); i++ {
 		index := offsetStartIndex + (i * common.SizeOfUint16)
-		assert.True(index >= 0 && index <= len(buf), "corrupt block; block offset[%d] is invalid", index)
+		if index <= 0 && index >= len(buf) {
+			return fmt.Errorf("corrupt block: block offset[%d] is invalid", index)
+		}
 		offsets = append(offsets, binary.BigEndian.Uint16(buf[index:]))
 	}
 
 	b.Data = buf[:offsetStartIndex]
 	b.Offsets = offsets
 
-	assert.True(len(b.Offsets) != 0, "corrupt block; block Block.Offsets must be greater than 0")
+	if len(b.Offsets) == 0 {
+		return fmt.Errorf("corrupt block: Block.Offsets must be greater than 0")
+	}
 
 	// Extract the first key in the block
 	keyLen := binary.BigEndian.Uint16(b.Data[b.Offsets[0]:])
@@ -201,17 +200,19 @@ func PrettyPrint(block *Block) string {
 	for _, offset := range block.Offsets {
 		kv, ok := it.NextEntry()
 		if !ok {
-			_, _ = fmt.Fprintf(buf, "WARN: there are more offsets than blocks")
+			if warn := it.Warnings(); warn != nil {
+				_, _ = fmt.Fprintf(buf, "WARN: %s\n", warn.String())
+			} else {
+				_, _ = fmt.Fprintf(buf, "WARN: there are more offsets than blocks")
+			}
 		}
 		_, _ = fmt.Fprintf(buf, "Offset: %d\n", offset)
-		_, _ = fmt.Fprintf(buf, "  uint16(%d) - 2 bytes\n", len(kv.Key))
-		_, _ = fmt.Fprintf(buf, "  []byte(\"%s\") - %d bytes\n", Truncate(kv.Key, 30), len(kv.Key))
+		_, _ = fmt.Fprintf(buf, "    Key: []byte(\"%s\") - %d bytes\n", Truncate(kv.Key, 30), len(kv.Key))
 		if kv.Value.IsTombstone() {
-			_, _ = fmt.Fprintf(buf, "  uint32(%d) - 4 bytes\n", Tombstone)
+			_, _ = fmt.Fprintf(buf, "    IsTombstone\n")
 		} else {
 			v := kv.Value.Value
-			_, _ = fmt.Fprintf(buf, "  uint32(%d) - 4 bytes\n", len(v))
-			_, _ = fmt.Fprintf(buf, "  []byte(\"%s\") - %d bytes\n", Truncate(v, 30), len(v))
+			_, _ = fmt.Fprintf(buf, "  Value: []byte(\"%s\") - %d bytes\n", Truncate(v, 30), len(v))
 		}
 	}
 	if _, ok := it.NextEntry(); ok {

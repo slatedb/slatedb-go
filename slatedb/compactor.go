@@ -3,6 +3,7 @@ package slatedb
 import (
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -90,6 +91,7 @@ func spawnAndRunCompactorOrchestrator(
 		ticker := time.NewTicker(options.PollInterval)
 		defer ticker.Stop()
 
+		// TODO(thrawn01): Race, cannot know if no more work is coming by checking length of the channel
 		for !(orchestrator.executor.isStopped() && len(orchestrator.workerCh) == 0) {
 			select {
 			case <-ticker.C:
@@ -400,6 +402,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 	if err != nil {
 		return nil, err
 	}
+	var warn types.ErrWarn
 
 	outputSSTs := make([]sstable.Handle, 0)
 	currentWriter := e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
@@ -407,6 +410,9 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 	for {
 		kv, ok := allIter.NextEntry()
 		if !ok {
+			if w := allIter.Warnings(); w != nil {
+				warn.Merge(w)
+			}
 			break
 		}
 
@@ -443,7 +449,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 	return &SortedRun{
 		id:      compaction.destination,
 		sstList: outputSSTs,
-	}, nil
+	}, warn.If()
 }
 
 func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
@@ -461,6 +467,7 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 				sortedRun, err := e.executeCompaction(compaction)
 				var msg WorkerToOrchestratorMsg
 				if err != nil {
+					// TODO(thrawn01): log the error somewhere.
 					msg = WorkerToOrchestratorMsg{CompactionError: err}
 				} else if sortedRun != nil {
 					msg = WorkerToOrchestratorMsg{CompactionResult: sortedRun}

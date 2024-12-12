@@ -28,7 +28,7 @@ func TestPrettyPrint(t *testing.T) {
 	table, err := builder.Build()
 	assert.NoError(t, err)
 
-	prettyOutput := PrettyPrint(table, conf)
+	prettyOutput := PrettyPrint(table)
 	//t.Logf("%s", prettyOutput)
 
 	// Add some basic assertions

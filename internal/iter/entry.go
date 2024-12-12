@@ -11,6 +11,9 @@ type KVIterator interface {
 	// NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 	// a tombstone of a deleted key-value pair.
 	NextEntry() (types.RowEntry, bool)
+
+	// Warnings returns any warnings issued during iteration which should be logged by the caller
+	Warnings() *types.ErrWarn
 }
 
 type EntryIterator struct {
@@ -59,4 +62,9 @@ func (k *EntryIterator) Add(key []byte, value []byte) *EntryIterator {
 
 func (k *EntryIterator) Len() int {
 	return len(k.entries)
+}
+
+// Warnings returns types.ErrWarn if there was a warning during iteration.
+func (k *EntryIterator) Warnings() *types.ErrWarn {
+	return nil
 }

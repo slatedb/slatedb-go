@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -10,6 +11,10 @@ type ErrWarn struct {
 }
 
 func (e *ErrWarn) Error() string {
+	return strings.Join(e.Warnings, "\n")
+}
+
+func (e *ErrWarn) String() string {
 	return strings.Join(e.Warnings, "\n")
 }
 
@@ -27,4 +32,17 @@ func (e *ErrWarn) If() error {
 		return e
 	}
 	return nil
+}
+
+// Merge the provided ErrWarn with this ErrWarn, omitting duplicates
+func (e *ErrWarn) Merge(rhs *ErrWarn) {
+	if rhs == nil {
+		return
+	}
+
+	for _, w := range rhs.Warnings {
+		if !slices.Contains(e.Warnings, w) {
+			e.Warnings = append(e.Warnings, w)
+		}
+	}
 }
