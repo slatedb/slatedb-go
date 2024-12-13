@@ -7,38 +7,37 @@ import (
 	"strconv"
 )
 
-// TODO(thrawn01): consider renaming to CompressionCodec
-type CompressionFormat int8
+type CompressionCodec int8
 
 const (
-	CompressionFormatNone   CompressionFormat = 0
-	CompressionFormatSnappy CompressionFormat = 1
-	CompressionFormatZlib   CompressionFormat = 2
-	CompressionFormatLz4    CompressionFormat = 3
-	CompressionFormatZstd   CompressionFormat = 4
+	CompressionCodecNone   CompressionCodec = 0
+	CompressionCodecSnappy CompressionCodec = 1
+	CompressionCodecZlib   CompressionCodec = 2
+	CompressionCodecLz4    CompressionCodec = 3
+	CompressionCodecZstd   CompressionCodec = 4
 )
 
-var EnumNamesCompressionFormat = map[CompressionFormat]string{
-	CompressionFormatNone:   "None",
-	CompressionFormatSnappy: "Snappy",
-	CompressionFormatZlib:   "Zlib",
-	CompressionFormatLz4:    "Lz4",
-	CompressionFormatZstd:   "Zstd",
+var EnumNamesCompressionCodec = map[CompressionCodec]string{
+	CompressionCodecNone:   "None",
+	CompressionCodecSnappy: "Snappy",
+	CompressionCodecZlib:   "Zlib",
+	CompressionCodecLz4:    "Lz4",
+	CompressionCodecZstd:   "Zstd",
 }
 
-var EnumValuesCompressionFormat = map[string]CompressionFormat{
-	"None":   CompressionFormatNone,
-	"Snappy": CompressionFormatSnappy,
-	"Zlib":   CompressionFormatZlib,
-	"Lz4":    CompressionFormatLz4,
-	"Zstd":   CompressionFormatZstd,
+var EnumValuesCompressionCodec = map[string]CompressionCodec{
+	"None":   CompressionCodecNone,
+	"Snappy": CompressionCodecSnappy,
+	"Zlib":   CompressionCodecZlib,
+	"Lz4":    CompressionCodecLz4,
+	"Zstd":   CompressionCodecZstd,
 }
 
-func (v CompressionFormat) String() string {
-	if s, ok := EnumNamesCompressionFormat[v]; ok {
+func (v CompressionCodec) String() string {
+	if s, ok := EnumNamesCompressionCodec[v]; ok {
 		return s
 	}
-	return "CompressionFormat(" + strconv.FormatInt(int64(v), 10) + ")"
+	return "CompressionCodec(" + strconv.FormatInt(int64(v), 10) + ")"
 }
 
 type CompactedSstIdT struct {
@@ -248,12 +247,12 @@ func CompactedSsTableEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 }
 
 type SsTableInfoT struct {
-	FirstKey          []byte            `json:"first_key"`
-	IndexOffset       uint64            `json:"index_offset"`
-	IndexLen          uint64            `json:"index_len"`
-	FilterOffset      uint64            `json:"filter_offset"`
-	FilterLen         uint64            `json:"filter_len"`
-	CompressionFormat CompressionFormat `json:"compression_format"`
+	FirstKey          []byte           `json:"first_key"`
+	IndexOffset       uint64           `json:"index_offset"`
+	IndexLen          uint64           `json:"index_len"`
+	FilterOffset      uint64           `json:"filter_offset"`
+	FilterLen         uint64           `json:"filter_len"`
+	CompressionFormat CompressionCodec `json:"compression_format"`
 }
 
 func (t *SsTableInfoT) Pack(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
@@ -409,15 +408,15 @@ func (rcv *SsTableInfo) MutateFilterLen(n uint64) bool {
 	return rcv._tab.MutateUint64Slot(12, n)
 }
 
-func (rcv *SsTableInfo) CompressionFormat() CompressionFormat {
+func (rcv *SsTableInfo) CompressionFormat() CompressionCodec {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
 	if o != 0 {
-		return CompressionFormat(rcv._tab.GetInt8(o + rcv._tab.Pos))
+		return CompressionCodec(rcv._tab.GetInt8(o + rcv._tab.Pos))
 	}
 	return 0
 }
 
-func (rcv *SsTableInfo) MutateCompressionFormat(n CompressionFormat) bool {
+func (rcv *SsTableInfo) MutateCompressionFormat(n CompressionCodec) bool {
 	return rcv._tab.MutateInt8Slot(14, int8(n))
 }
 
@@ -442,7 +441,7 @@ func SsTableInfoAddFilterOffset(builder *flatbuffers.Builder, filterOffset uint6
 func SsTableInfoAddFilterLen(builder *flatbuffers.Builder, filterLen uint64) {
 	builder.PrependUint64Slot(4, filterLen, 0)
 }
-func SsTableInfoAddCompressionFormat(builder *flatbuffers.Builder, compressionFormat CompressionFormat) {
+func SsTableInfoAddCompressionFormat(builder *flatbuffers.Builder, compressionFormat CompressionCodec) {
 	builder.PrependInt8Slot(5, int8(compressionFormat), 0)
 }
 func SsTableInfoEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {

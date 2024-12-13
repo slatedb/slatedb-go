@@ -7,7 +7,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
-	flatbuf "github.com/slatedb/slatedb-go/gen"
+	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"io"
 )
 
@@ -39,35 +39,35 @@ func (c Codec) String() string {
 	}
 }
 
-func CodecFromFlatBuf(f flatbuf.CompressionFormat) Codec {
+func CodecFromFlatBuf(f flatbuf.CompressionCodec) Codec {
 	switch f {
-	case flatbuf.CompressionFormatNone:
+	case flatbuf.CompressionCodecNone:
 		return CodecNone
-	case flatbuf.CompressionFormatSnappy:
+	case flatbuf.CompressionCodecSnappy:
 		return CodecSnappy
-	case flatbuf.CompressionFormatZlib:
+	case flatbuf.CompressionCodecZlib:
 		return CodecZlib
-	case flatbuf.CompressionFormatLz4:
+	case flatbuf.CompressionCodecLz4:
 		return CodecLz4
-	case flatbuf.CompressionFormatZstd:
+	case flatbuf.CompressionCodecZstd:
 		return CodecZstd
 	default:
 		panic(ErrInvalidCodec.Error())
 	}
 }
 
-func CodecToFlatBuf(c Codec) flatbuf.CompressionFormat {
+func CodecToFlatBuf(c Codec) flatbuf.CompressionCodec {
 	switch c {
 	case CodecNone:
-		return flatbuf.CompressionFormatNone
+		return flatbuf.CompressionCodecNone
 	case CodecSnappy:
-		return flatbuf.CompressionFormatSnappy
+		return flatbuf.CompressionCodecSnappy
 	case CodecZlib:
-		return flatbuf.CompressionFormatZlib
+		return flatbuf.CompressionCodecZlib
 	case CodecLz4:
-		return flatbuf.CompressionFormatLz4
+		return flatbuf.CompressionCodecLz4
 	case CodecZstd:
-		return flatbuf.CompressionFormatZstd
+		return flatbuf.CompressionCodecZstd
 	default:
 		panic(ErrInvalidCodec.Error())
 	}

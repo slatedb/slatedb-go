@@ -8,7 +8,7 @@ table CompactedSsTable {
     info: SsTableInfo (required);
 }
 
-enum CompressionFormat: byte {
+enum CompressionCodec: byte {
     None,
     Snappy,
     Zlib,
@@ -34,7 +34,7 @@ table SsTableInfo {
     filter_len: ulong;
 
     // Type of compression algorithm used.
-    compression_format: CompressionFormat;
+    compression_format: CompressionCodec;
 }
 
 table BlockMeta {
