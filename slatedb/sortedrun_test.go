@@ -8,6 +8,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"testing"
 )
@@ -18,20 +19,22 @@ func buildSRWithSSTs(
 	tableStore *TableStore,
 	keyGen common.OrderedBytesGenerator,
 	valGen common.OrderedBytesGenerator,
-) SortedRun {
+) (SortedRun, error) {
 
 	sstList := make([]sstable.Handle, 0, n)
 	for i := uint64(0); i < n; i++ {
 		writer := tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 		for j := uint64(0); j < keysPerSST; j++ {
-			writer.Add(keyGen.Next(), mo.Some(valGen.Next()))
+			if err := writer.Add(keyGen.Next(), mo.Some(valGen.Next())); err != nil {
+				return SortedRun{}, err
+			}
 		}
 
 		sst, _ := writer.Close()
 		sstList = append(sstList, *sst)
 	}
 
-	return SortedRun{0, sstList}
+	return SortedRun{0, sstList}, nil
 }
 
 func TestOneSstSRIter(t *testing.T) {
@@ -41,9 +44,9 @@ func TestOneSstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 
 	builder := tableStore.TableBuilder()
-	builder.AddValue([]byte("key1"), []byte("value1"))
-	builder.AddValue([]byte("key2"), []byte("value2"))
-	builder.AddValue([]byte("key3"), []byte("value3"))
+	require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
+	require.NoError(t, builder.AddValue([]byte("key3"), []byte("value3")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -69,21 +72,22 @@ func TestManySstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, format, "")
 
 	builder := tableStore.TableBuilder()
-	builder.AddValue([]byte("key1"), []byte("value1"))
-	builder.AddValue([]byte("key2"), []byte("value2"))
+	require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
 	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	builder = tableStore.TableBuilder()
-	builder.AddValue([]byte("key3"), []byte("value3"))
+	err = builder.AddValue([]byte("key3"), []byte("value3"))
+	require.NoError(t, err)
 
 	encodedSST, err = builder.Build()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	sstHandle2, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	sr := SortedRun{0, []sstable.Handle{*sstHandle, *sstHandle2}}
 	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
@@ -111,7 +115,8 @@ func TestSRIterFromKey(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 	testCaseValGen := valGen.Clone()
 
-	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	require.NoError(t, err)
 
 	for i := 0; i < 30; i++ {
 		expectedKeyGen := testCaseKeyGen.Clone()
@@ -145,7 +150,9 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 	expectedValGen := valGen.Clone()
 
-	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	require.NoError(t, err)
+
 	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
 	assert.NoError(t, err)
 
@@ -169,7 +176,9 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	firstVal := []byte("1111111111111111")
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
-	sr := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
+	require.NoError(t, err)
+
 	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	assert.NoError(t, err)
 	next, ok := kvIter.Next()

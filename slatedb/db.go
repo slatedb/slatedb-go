@@ -3,25 +3,26 @@ package slatedb
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"github.com/kapetan-io/tackle/set"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"log/slog"
 	"math"
 	"sync"
 
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
 )
 
 const BlockSize = 4096
 
 type DB struct {
-	state      *DBState
-	options    DBOptions
-	tableStore *TableStore
 	manifest   *FenceableManifest
+	tableStore *TableStore
 	compactor  *Compactor
+	opts       DBOptions
+	state      *DBState
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
 	// and the goroutine running the walFlush task reads this channel and shuts down
@@ -43,12 +44,11 @@ func Open(path string, bucket objstore.Bucket) (*DB, error) {
 }
 
 func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
-	logger.Init()
-	logger.Info("Application started")
 	conf := sstable.DefaultConfig()
 	conf.BlockSize = BlockSize
 	conf.MinFilterKeys = options.MinFilterKeys
 	conf.Compression = options.CompressionCodec
+	set.Default(&options.Log, slog.Default())
 
 	tableStore := NewTableStore(bucket, conf, path)
 	manifestStore := newManifestStore(path, bucket)
@@ -66,7 +66,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 
 	db, err := newDB(options, tableStore, state, memtableFlushNotifierCh)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("during db init: %w", err)
 	}
 	db.manifest = manifest
 
@@ -80,11 +80,10 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 	db.spawnMemtableFlushTask(manifest, memtableFlushNotifierCh, db.memtableFlushTaskWG)
 
 	var compactor *Compactor
-	if db.options.CompactorOptions != nil {
-		compactor, err = newCompactor(manifestStore, tableStore, db.options.CompactorOptions)
+	if db.opts.CompactorOptions != nil {
+		compactor, err = newCompactor(manifestStore, tableStore, db.opts)
 		if err != nil {
-			logger.Error("unable to create compactor", zap.Error(err))
-			return nil, err
+			return nil, fmt.Errorf("while creating compactor: %w", err)
 		}
 	}
 	db.compactor = compactor
@@ -93,8 +92,6 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 }
 
 func (db *DB) Close() error {
-	defer logger.Sync()
-
 	if db.compactor != nil {
 		db.compactor.close()
 	}
@@ -300,7 +297,7 @@ func (db *DB) replayWAL() error {
 }
 
 func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
-	if state.Memtable().Size() < int64(db.options.L0SSTSizeBytes) {
+	if state.Memtable().Size() < int64(db.opts.L0SSTSizeBytes) {
 		return
 	}
 	state.freezeMemtable(walID)
@@ -321,6 +318,7 @@ func (db *DB) FlushMemtableToL0() error {
 	flusher := MemtableFlusher{
 		db:       db,
 		manifest: db.manifest,
+		log:      db.opts.Log,
 	}
 	return flusher.flushImmMemtablesToL0()
 }
@@ -355,7 +353,7 @@ func newDB(
 	state := newDBState(coreDBState)
 	db := &DB{
 		state:                   state,
-		options:                 options,
+		opts:                    options,
 		tableStore:              tableStore,
 		memtableFlushNotifierCh: memtableFlushNotifierCh,
 		walFlushTaskWG:          &sync.WaitGroup{},

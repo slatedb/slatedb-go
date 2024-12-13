@@ -111,12 +111,6 @@ func encodeIndex(index flatbuf.SsTableIndexT) []byte {
 	return builder.FinishedBytes()
 }
 
-// TODO(thrawn01): This does not appear to be used anywhere, perhaps we need to add a test
-//  for it??????
-func decodeIndex(b []byte) *flatbuf.SsTableIndexT {
-	return flatbuf.GetRootAsSsTableIndex(b, 0).UnPack()
-}
-
 // EncodeTable encodes the provided sstable.Table into the
 // SSTable format as []byte.
 func EncodeTable(table *Table) []byte {

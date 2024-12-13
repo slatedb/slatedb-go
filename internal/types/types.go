@@ -1,7 +1,6 @@
 package types
 
 import (
-	"encoding/binary"
 	"github.com/samber/mo"
 )
 
@@ -9,9 +8,9 @@ type Kind byte
 
 const (
 	KindKeyValue  Kind = 0x00
-	KindTombStone      = 0x01
+	KindTombStone Kind = 0x01
 	// TODO(thrawn01): Future MergeOperator
-	KindMerge = 0x02
+	KindMerge Kind = 0x02
 )
 
 // KeyValue represents a key-value pair known not to be a tombstone.
@@ -39,10 +38,7 @@ type Value struct {
 }
 
 func (v Value) IsTombstone() bool {
-	if v.Kind == KindTombStone {
-		return true
-	}
-	return false
+	return v.Kind == KindTombStone
 }
 
 // ValueFromBytes - if first byte is 0x01, then return tombstone
@@ -62,13 +58,9 @@ func ValueFromBytes(b []byte) Value {
 // if it is not a tombstone the value is stored from second byte onwards
 func (v Value) ToBytes() []byte {
 	if v.IsTombstone() {
-		return []byte{KindTombStone}
+		return []byte{byte(KindTombStone)}
 	}
 	return append([]byte{byte(KindKeyValue)}, v.Value...)
-}
-
-func (v Value) Size() int64 {
-	return int64(binary.Size(v.Value) + binary.Size(v.IsTombstone))
 }
 
 func (v Value) GetValue() mo.Option[[]byte] {

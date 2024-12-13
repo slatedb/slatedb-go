@@ -139,19 +139,6 @@ func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 	return fb.builder.FinishedBytes()
 }
 
-func (fb *DBFlatBufferBuilder) createSSTIndex(index flatbuf.SsTableIndexT) []byte {
-	offset := index.Pack(fb.builder)
-	fb.builder.Finish(offset)
-	return fb.builder.FinishedBytes()
-}
-
-func (fb *DBFlatBufferBuilder) createSSTInfo(info *sstable.Info) []byte {
-	fbSSTInfo := sstable.SstInfoToFlatBuf(info)
-	offset := fbSSTInfo.Pack(fb.builder)
-	fb.builder.Finish(offset)
-	return fb.builder.FinishedBytes()
-}
-
 func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []sstable.Handle) []*flatbuf.CompactedSsTableT {
 	compactedSSTs := make([]*flatbuf.CompactedSsTableT, 0)
 	for _, sst := range sstList {

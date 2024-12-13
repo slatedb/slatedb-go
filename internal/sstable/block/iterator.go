@@ -47,7 +47,7 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 	}
 
 	// If the first block is our key, then use that
-	if bytes.Compare(first.keySuffix, key) == 0 {
+	if bytes.Equal(first.keySuffix, key) {
 		return &Iterator{
 			firstKey:    bytes.Clone(first.keySuffix),
 			offsetIndex: uint64(0),

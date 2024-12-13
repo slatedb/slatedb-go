@@ -3,6 +3,7 @@ package slatedb
 import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/table"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -10,8 +11,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -64,12 +63,12 @@ func (c *CoreDBState) clone() *CoreDBState {
 	return coreState
 }
 
-func (c *CoreDBState) logState() {
-	logger.Info("DB Levels:")
-	logger.Info("-----------------")
-	logger.Info("state", zap.Any("L0", c.l0))
-	logger.Info("state", zap.Any("compacted", c.compacted))
-	logger.Info("-----------------")
+func LogState(log *slog.Logger, c *CoreDBState) {
+	log.Info("DB Levels:")
+	log.Info("-----------------")
+	log.Info("state", "L0", c.l0)
+	log.Info("state", "compacted", c.compacted)
+	log.Info("-----------------")
 }
 
 // DBStateSnapshot contains state required for read methods (eg. GET)

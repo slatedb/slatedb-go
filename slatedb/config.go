@@ -2,10 +2,11 @@ package slatedb
 
 import (
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"log/slog"
 	"time"
 )
 
-// DBOptions Configuration options for the database. These options are set on client startup.
+// DBOptions Configuration opts for the database. These opts are set on client startup.
 type DBOptions struct {
 	// How frequently to flush the write-ahead log to object storage (in
 	// milliseconds).
@@ -65,7 +66,10 @@ type DBOptions struct {
 	//   secondary readers to see new data.
 	L0SSTSizeBytes uint64
 
-	// Configuration options for the compactor.
+	// Log used to log database warnings
+	Log *slog.Logger
+
+	// Configuration opts for the compactor.
 	CompactorOptions *CompactorOptions
 	CompressionCodec compress.Codec
 }
@@ -78,6 +82,7 @@ func DefaultDBOptions() DBOptions {
 		L0SSTSizeBytes:       64 * 1024 * 1024,
 		CompactorOptions:     DefaultCompactorOptions(),
 		CompressionCodec:     compress.CodecNone,
+		Log:                  slog.Default(),
 	}
 }
 

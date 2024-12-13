@@ -1,18 +1,10 @@
 package common
 
-import (
-	"math"
-)
-
 type OrderedBytesGenerator struct {
 	suffix []byte
 	data   []byte
 	min    byte
 	max    byte
-}
-
-func newOrderedBytesGeneratorWithSuffix(suffix, data []byte) OrderedBytesGenerator {
-	return OrderedBytesGenerator{suffix, data, 0, math.MaxUint8}
 }
 
 func NewOrderedBytesGeneratorWithByteRange(data []byte, min byte, max byte) OrderedBytesGenerator {
