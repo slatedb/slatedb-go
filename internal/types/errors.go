@@ -34,6 +34,10 @@ func (e *ErrWarn) If() error {
 	return nil
 }
 
+func (e *ErrWarn) Empty() bool {
+	return len(e.Warnings) == 0
+}
+
 // Merge the provided ErrWarn with this ErrWarn, omitting duplicates
 func (e *ErrWarn) Merge(rhs *ErrWarn) {
 	if rhs == nil {

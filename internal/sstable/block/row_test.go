@@ -2,6 +2,7 @@ package block
 
 import (
 	"bytes"
+	"github.com/kapetan-io/tackle/random"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
@@ -73,34 +74,71 @@ func TestV0RowCodecDecodeErrors(t *testing.T) {
 		},
 		{
 			name:        "InvalidKeySuffixLength",
-			input:       []byte{0, 1, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			expectedErr: v0ErrPrefix + "data length too short for key suffix",
+			input:       []byte{0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			expectedErr: v0ErrPrefix + "key suffix length exceeds length of block",
+		},
+		{
+			name:        "InvalidKeyPrefixLength",
+			input:       []byte{0, 255, 0, 1, 23, 0, 0, 0, 0, 0, 0, 0, 0},
+			expectedErr: v0ErrPrefix + "key prefix length exceeds length of first key in block",
 		},
 		{
 			name:        "InvalidExpireTimestamp",
-			input:       []byte{0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2},
+			input:       []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2},
 			expectedErr: v0ErrPrefix + "data length too short for expire",
 		},
 		{
 			name:        "InvalidCreateTimestamp",
-			input:       []byte{0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4},
+			input:       []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4},
 			expectedErr: v0ErrPrefix + "data length too short for create",
 		},
 		{
 			name:        "InvalidValueLength",
-			input:       []byte{0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			input:       []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			expectedErr: v0ErrPrefix + "data length too short for for value length",
 		},
 		{
 			name:        "InvalidValue",
-			input:       []byte{0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5},
+			input:       []byte{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5},
 			expectedErr: v0ErrPrefix + "data length too short for for value",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := v0RowCodec.Decode(tt.input)
+			_, err := v0RowCodec.Decode(tt.input, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
+}
+
+func TestV0CodecPeekAtKeyErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []byte
+		expectedErr string
+	}{
+		{
+			name:        "TooShort",
+			input:       []byte{0, 1, 2},
+			expectedErr: v0ErrPrefix + "data length too short to peek at row",
+		},
+		{
+			name:        "InvalidKeySuffixLength",
+			input:       []byte{0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			expectedErr: v0ErrPrefix + "key suffix length exceeds length of block",
+		},
+		{
+			name:        "InvalidKeyPrefixLength",
+			input:       []byte{0, 255, 0, 1, 23, 0, 0, 0, 0, 0, 0, 0, 0},
+			expectedErr: v0ErrPrefix + "key prefix length exceeds length of first key in block",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := v0RowCodec.PeekAtKey(tt.input, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedErr)
 		})
@@ -241,7 +279,7 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 			encoded := v0RowCodec.Encode(tt.row)
 
 			// Decode the row
-			decoded, err := v0RowCodec.Decode(encoded)
+			decoded, err := v0RowCodec.Decode(encoded, tt.firstKeyPrefix)
 			require.NoError(t, err)
 			assert.Equal(t, &tt.row, decoded)
 
@@ -254,6 +292,7 @@ func TestRowCodecV0EncodeAndDecode(t *testing.T) {
 }
 
 func TestComputePrefix(t *testing.T) {
+	prefix := random.String("", 200)
 	tests := []struct {
 		name     string
 		lhs      []byte
@@ -285,10 +324,16 @@ func TestComputePrefix(t *testing.T) {
 			expected: 3,
 		},
 		{
-			name:     "LongCommonPrefix",
-			lhs:      []byte("This is a long string with a common prefix"),
-			rhs:      []byte("This is a long string with a different ending"),
-			expected: 29,
+			name:     "ChunkOfCommonPrefix",
+			lhs:      []byte(prefix + "with a common prefix"),
+			rhs:      []byte(prefix + "with a different ending"),
+			expected: 207,
+		},
+		{
+			name:     "MultipleChunksOfCommonPrefix",
+			lhs:      []byte(prefix + prefix + prefix + "with a common prefix"),
+			rhs:      []byte(prefix + prefix + prefix + "with a different ending"),
+			expected: 607,
 		},
 		{
 			name:     "UnicodeStrings",
@@ -300,7 +345,7 @@ func TestComputePrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, uint16(tt.expected), computePrefix(tt.lhs, tt.rhs))
+			assert.Equal(t, uint16(tt.expected), computePrefixLen(tt.lhs, tt.rhs))
 		})
 	}
 }
@@ -363,7 +408,7 @@ func BenchmarkComputePrefix(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				computePrefix(bm.lhs, bm.rhs)
+				computePrefixLen(bm.lhs, bm.rhs)
 			}
 		})
 	}

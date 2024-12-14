@@ -23,6 +23,12 @@ type Block struct {
 }
 
 // Encode encodes the Block into a byte slice using the following format
+//
+// NOTE: The first key in the block is a "full key" which means it
+// shares no prefix with any previous keys. Subsequent keys in the block store
+// only store the suffix of the first if they share a common prefix with the first
+// key in the block, If they don't share a common prefix, then the suffix holds
+// the full key.
 // +-----------------------------------------------+
 // |               Block                           |
 // +-----------------------------------------------+
@@ -152,7 +158,7 @@ func (b *Builder) curBlockSize() int {
 
 func (b *Builder) Add(key []byte, row Row) bool {
 	assert.True(len(key) > 0, "key must not be empty")
-	row.keyPrefixLen = computePrefix(b.firstKey, key)
+	row.keyPrefixLen = computePrefixLen(b.firstKey, key)
 	row.keySuffix = key[row.keyPrefixLen:]
 
 	// If adding the key-value pair would exceed the block size limit, don't add it.

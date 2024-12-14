@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"math"
@@ -64,7 +65,12 @@ func V0EstimateBlockSize(kv []types.KeyValue) uint64 {
 
 // v0FullKey restores the full key by prepending the prefix to the key suffix.
 // Keys in a v0RowCodec are stored with prefix stripped off to reduce the storage size.
+//
+// NOTE: We don't store the full key in the Row to save space, it is up to the
+// caller to keep track of the first valid key in the block.
 func v0FullKey(r Row, prefix []byte) []byte {
+	assert.True(r.keyPrefixLen <= uint16(len(prefix)),
+		"row key prefix length %d; exceeds prefix length '%d'", r.keyPrefixLen, len(prefix))
 	result := make([]byte, int(r.keyPrefixLen)+len(r.keySuffix))
 	copy(result[:r.keyPrefixLen], prefix[:r.keyPrefixLen])
 	copy(result[r.keyPrefixLen:], r.keySuffix)
@@ -179,7 +185,7 @@ func (c v0Codec) Encode(r Row) []byte {
 	return output
 }
 
-func (c v0Codec) Decode(data []byte) (*Row, error) {
+func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	if len(data) < 13 { // Minimum size: keyPrefixLen + KeySuffixLen + Seq + Flags
 		return nil, errors.New(v0ErrPrefix + "data length too short to decode a row")
 	}
@@ -193,9 +199,13 @@ func (c v0Codec) Decode(data []byte) (*Row, error) {
 	keySuffixLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 
+	if r.keyPrefixLen > uint16(len(firstKey)) {
+		return nil, errors.New(v0ErrPrefix + "key prefix length exceeds length of first key in block")
+	}
+
 	// Decode keySuffix
 	if len(data[offset:]) < int(keySuffixLen) {
-		return nil, errors.New(v0ErrPrefix + "data length too short for key suffix")
+		return nil, errors.New(v0ErrPrefix + "key suffix length exceeds length of block")
 	}
 	r.keySuffix = make([]byte, keySuffixLen)
 	copy(r.keySuffix, data[offset:offset+int(keySuffixLen)])
@@ -249,9 +259,13 @@ func (c v0Codec) Decode(data []byte) (*Row, error) {
 
 // PeekAtKey returns a Row with only the keyPrefixLen and keySuffix populated where
 // the keySuffix is a sub slice of the provided []byte.
-func (c v0Codec) PeekAtKey(data []byte) (Row, error) {
+func (c v0Codec) PeekAtKey(data []byte, firstKey []byte) (Row, error) {
 	var offset int
 	var r Row
+
+	if len(data) < 4 { // Minimum size: keyPrefixLen + KeySuffixLen
+		return Row{}, errors.New(v0ErrPrefix + "data length too short to peek at row")
+	}
 
 	// Decode keyPrefixLen and KeySuffixLen
 	r.keyPrefixLen = binary.BigEndian.Uint16(data[offset:])
@@ -259,16 +273,20 @@ func (c v0Codec) PeekAtKey(data []byte) (Row, error) {
 	keySuffixLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 
+	if r.keyPrefixLen > uint16(len(firstKey)) {
+		return Row{}, errors.New(v0ErrPrefix + "key prefix length exceeds length of first key in block")
+	}
+
 	if len(data[offset:]) < int(keySuffixLen) {
-		return Row{}, errors.New(v0ErrPrefix + "data length too short for key suffix")
+		return Row{}, errors.New(v0ErrPrefix + "key suffix length exceeds length of block")
 	}
 	r.keySuffix = data[offset : offset+int(keySuffixLen)]
 	return r, nil
 }
 
-// computePrefix calculates the length of the common prefix between two byte slices.
+// computePrefixLen calculates the length of the common prefix between two byte slices.
 // Source: https://users.rust-lang.org/t/how-to-find-common-prefix-of-two-byte-slices-effectively/25815/4
-func computePrefix(lhs, rhs []byte) uint16 {
+func computePrefixLen(lhs, rhs []byte) uint16 {
 	return computePrefixChunks(lhs, rhs, 128)
 }
 

@@ -141,6 +141,10 @@ func NewBuilder(conf Config) *Builder {
 }
 
 func (b *Builder) AddValue(key []byte, value []byte) error {
+	// TODO(thrawn01): As of now, all of the code assumes if the value is missing it is
+	//  a tombstone. Once we implement transactions we should remove AddValue() method and
+	//  explicitly set the types.RowEntry.Value.Kind to determine what kind of value it is,
+	//  instead of assuming it is a tombstone if the value is absent.
 	if len(value) == 0 {
 		return b.Add(key, types.RowEntry{Value: types.Value{Kind: types.KindTombStone}})
 	}

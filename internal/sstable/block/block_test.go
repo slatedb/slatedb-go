@@ -203,6 +203,7 @@ func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify that iterator starts from index 1 which contains key "kratos"
+	// which is near to `ka`
 	for i := 1; i < len(kvPairs); i++ {
 		kvDel, ok := iter.NextEntry()
 		assert.True(t, ok)
@@ -326,4 +327,117 @@ func TestBlockFirstKey(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []byte("key1"), b.FirstKey)
+}
+
+func TestNewIteratorAtKeyWithCorruptedKeys(t *testing.T) {
+
+	t.Run("AllKeysCorrupted", func(t *testing.T) {
+		bb := block.NewBuilder(4096)
+		kvPairs := []types.KeyValue{
+			{Key: []byte("key1"), Value: []byte("value1")},
+			{Key: []byte("key2"), Value: []byte("value2")},
+		}
+		for _, kv := range kvPairs {
+			assert.True(t, bb.AddValue(kv.Key, kv.Value))
+		}
+		b, err := bb.Build()
+		require.NoError(t, err)
+
+		// Corrupt all keys
+		for _, offset := range b.Offsets {
+			b.Data[offset] = 0xFF
+		}
+
+		_, err = block.NewIteratorAtKey(b, []byte("key1"))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unable to locate uncorrupted first key in block; block is corrupt")
+	})
+
+	t.Run("AllKeysCorruptedFirstKeyCorrupt", func(t *testing.T) {
+		bb := block.NewBuilder(4096)
+		kvPairs := []types.KeyValue{
+			{Key: []byte("key1"), Value: []byte("value1")},
+			{Key: []byte("key2"), Value: []byte("value2")},
+			{Key: []byte("key3"), Value: []byte("value3")},
+			{Key: []byte("key4"), Value: []byte("value4")},
+			{Key: []byte("key5"), Value: []byte("value5")},
+		}
+		for _, kv := range kvPairs {
+			assert.True(t, bb.AddValue(kv.Key, kv.Value))
+		}
+		b, err := bb.Build()
+		require.NoError(t, err)
+
+		// Corrupt the first key
+		b.Data[0] = 0xFF
+
+		// Because all the keys in the block share the same prefix
+		// the subsequent keys cannot be reconstructed. As a result we
+		// are unable to find "key4".
+		_, err = block.NewIteratorAtKey(b, []byte("key4"))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unable to locate uncorrupted first key in block; block is corrupt")
+	})
+
+	t.Run("CorruptedFirstKey", func(t *testing.T) {
+		bb := block.NewBuilder(4096)
+		kvPairs := []types.KeyValue{
+			{Key: []byte("hello"), Value: []byte("world")},
+			{Key: []byte("rainbow"), Value: []byte("dash")},
+			{Key: []byte("wonderful"), Value: []byte("day")},
+		}
+		for _, kv := range kvPairs {
+			assert.True(t, bb.AddValue(kv.Key, kv.Value))
+		}
+		b, err := bb.Build()
+		require.NoError(t, err)
+
+		// Corrupt the first key
+		b.Data[b.Offsets[0]] = 0xFF // This will make the first key invalid
+
+		iter, err := block.NewIteratorAtKey(b, []byte("key1"))
+		require.NoError(t, err)
+
+		// The iterator should start from the second key as the second
+		// key is a full key -- because it doesn't share a prefix with
+		// the previous key.
+		assert2.Next(t, iter, []byte("rainbow"), []byte("dash"))
+		// Should iterate to the next key
+		assert2.Next(t, iter, []byte("wonderful"), []byte("day"))
+
+		// Assert there were warnings
+		assert.False(t, iter.Warnings().Empty())
+		//t.Logf("Warnings: %s", iter.Warnings().String())
+	})
+
+	t.Run("SomeKeysCorrupted", func(t *testing.T) {
+		bb := block.NewBuilder(4096)
+		kvPairs := []types.KeyValue{
+			{Key: []byte("key1"), Value: []byte("value1")},
+			{Key: []byte("key2"), Value: []byte("value2")},
+			{Key: []byte("key3"), Value: []byte("value3")},
+			{Key: []byte("key4"), Value: []byte("value4")},
+			{Key: []byte("key5"), Value: []byte("value5")},
+		}
+		for _, kv := range kvPairs {
+			assert.True(t, bb.AddValue(kv.Key, kv.Value))
+		}
+		b, err := bb.Build()
+		require.NoError(t, err)
+
+		// Corrupt key2 and key3
+		b.Data[b.Offsets[1]] = 0xFF
+		b.Data[b.Offsets[2]] = 0xFF
+
+		iter, err := block.NewIteratorAtKey(b, []byte("key4"))
+		require.NoError(t, err)
+
+		// The iterator should start from the fourth key
+		assert2.Next(t, iter, []byte("key4"), []byte("value4"))
+		assert2.Next(t, iter, []byte("key5"), []byte("value5"))
+		_, ok := iter.Next()
+		assert.False(t, ok)
+		assert.False(t, iter.Warnings().Empty())
+		//t.Logf("Warnings: %s", iter.Warnings())
+	})
 }
