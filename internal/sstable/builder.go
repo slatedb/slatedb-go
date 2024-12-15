@@ -5,11 +5,12 @@ import (
 	"encoding/binary"
 	"github.com/gammazero/deque"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/gen"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 // Table is the in memory representation of an SSTable
@@ -139,10 +140,22 @@ func NewBuilder(conf Config) *Builder {
 	}
 }
 
-func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
-	b.numKeys += 1
+func (b *Builder) AddValue(key []byte, value []byte) error {
+	// TODO(thrawn01): As of now, all of the code assumes if the value is missing it is
+	//  a tombstone. Once we implement transactions we should remove AddValue() method and
+	//  explicitly set the types.RowEntry.Value.Kind to determine what kind of value it is,
+	//  instead of assuming it is a tombstone if the value is absent.
+	if len(value) == 0 {
+		return b.Add(key, types.RowEntry{Value: types.Value{Kind: types.KindTombStone}})
+	}
+	return b.Add(key, types.RowEntry{Value: types.Value{Value: value}})
+}
 
-	if !b.blockBuilder.Add(key, value) {
+func (b *Builder) Add(key []byte, entry types.RowEntry) error {
+	b.numKeys += 1
+	row := block.Row{Value: entry.Value}
+
+	if !b.blockBuilder.Add(key, row) {
 		// Create a new block builder and append block data
 		buf, err := b.finishBlock()
 		if err != nil {
@@ -151,8 +164,8 @@ func (b *Builder) Add(key []byte, value mo.Option[[]byte]) error {
 		b.currentLen += uint64(len(buf))
 		b.blocks.PushBack(buf)
 
-		addSuccess := b.blockBuilder.Add(key, value)
-		assert.True(addSuccess, "block.Builder.Add() failed")
+		addSuccess := b.blockBuilder.Add(key, row)
+		assert.True(addSuccess, "block.Builder.AddValue() failed")
 	}
 
 	if b.firstKey.IsAbsent() {

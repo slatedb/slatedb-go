@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/google/flatbuffers/go"
-	"github.com/slatedb/slatedb-go/gen"
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"hash/crc32"
 )
@@ -70,7 +70,7 @@ func EncodeInfo(info *Info) []byte {
 	flatbuf.SsTableInfoAddIndexLen(builder, info.IndexLen)
 	flatbuf.SsTableInfoAddFilterOffset(builder, info.FilterOffset)
 	flatbuf.SsTableInfoAddFilterLen(builder, info.FilterLen)
-	flatbuf.SsTableInfoAddCompressionFormat(builder, flatbuf.CompressionFormat(info.CompressionCodec))
+	flatbuf.SsTableInfoAddCompressionFormat(builder, flatbuf.CompressionCodec(info.CompressionCodec))
 	infoOffset := flatbuf.SsTableInfoEnd(builder)
 
 	builder.Finish(infoOffset)

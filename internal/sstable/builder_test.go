@@ -2,11 +2,11 @@ package sstable_test
 
 import (
 	"fmt"
-	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,16 +16,16 @@ import (
 func TestBuilder(t *testing.T) {
 	t.Run("Basic Build", func(t *testing.T) {
 		builder := sstable.NewBuilder(sstable.Config{
-			BlockSize:        100,
+			BlockSize:        4096,
 			MinFilterKeys:    10,
 			FilterBitsPerKey: 10,
 			Compression:      compress.CodecNone,
 		})
 
 		// Add some key-value pairs
-		require.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-		require.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
-		require.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
+		require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+		require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
+		require.NoError(t, builder.AddValue([]byte("key3"), []byte("value3")))
 
 		// Build the SSTable
 		table, err := builder.Build()
@@ -43,17 +43,23 @@ func TestBuilder(t *testing.T) {
 	})
 
 	t.Run("Multiple Blocks", func(t *testing.T) {
+
+		var blocks [][]types.KeyValue
+		for i := 0; i < 10; i++ {
+			key := []byte(fmt.Sprintf("key%d", i))
+			value := []byte(fmt.Sprintf("value%d", i))
+			blocks = append(blocks, []types.KeyValue{{Key: key, Value: value}})
+		}
+
 		builder := sstable.NewBuilder(sstable.Config{
-			BlockSize:        10, // Small block size to force multiple blocks
+			BlockSize:        block.V0EstimateBlockSize(blocks[0]), // Small block size to force multiple blocks
 			MinFilterKeys:    5,
 			FilterBitsPerKey: 10,
 			Compression:      compress.CodecNone,
 		})
 
-		for i := 0; i < 10; i++ {
-			key := []byte(fmt.Sprintf("key%d", i))
-			value := []byte(fmt.Sprintf("value%d", i))
-			require.NoError(t, builder.Add(key, mo.Some(value)))
+		for _, b := range blocks {
+			require.NoError(t, builder.AddValue(b[0].Key, b[0].Value))
 		}
 
 		table, err := builder.Build()
@@ -66,7 +72,7 @@ func TestBuilder(t *testing.T) {
 
 	t.Run("Compression", func(t *testing.T) {
 		builder := sstable.NewBuilder(sstable.Config{
-			BlockSize:        100,
+			BlockSize:        4096,
 			MinFilterKeys:    5,
 			FilterBitsPerKey: 10,
 			Compression:      compress.CodecSnappy,
@@ -75,7 +81,7 @@ func TestBuilder(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			key := []byte(fmt.Sprintf("key%d", i))
 			value := []byte(fmt.Sprintf("value%d", i))
-			require.NoError(t, builder.Add(key, mo.Some(value)))
+			require.NoError(t, builder.AddValue(key, value))
 		}
 
 		table, err := builder.Build()
@@ -87,17 +93,24 @@ func TestBuilder(t *testing.T) {
 }
 
 func TestEncodeDecode(t *testing.T) {
+
+	input := [][]types.KeyValue{
+		{types.KeyValue{Key: []byte("key1"), Value: []byte("value1")}},
+		{types.KeyValue{Key: []byte("key2"), Value: []byte("value2")}},
+		{types.KeyValue{Key: []byte("key3"), Value: []byte("value3")}},
+	}
+
 	builder := sstable.NewBuilder(sstable.Config{
-		BlockSize:        20,
+		BlockSize:        block.V0EstimateBlockSize(input[0]),
 		MinFilterKeys:    0,
 		FilterBitsPerKey: 10,
 		Compression:      compress.CodecNone,
 	})
 
 	// Add some key-value pairs
-	assert.NoError(t, builder.Add([]byte("key1"), mo.Some([]byte("value1"))))
-	assert.NoError(t, builder.Add([]byte("key2"), mo.Some([]byte("value2"))))
-	assert.NoError(t, builder.Add([]byte("key3"), mo.Some([]byte("value3"))))
+	for _, b := range input {
+		require.NoError(t, builder.AddValue(b[0].Key, b[0].Value))
+	}
 
 	// Build the SSTable
 	table, err := builder.Build()
@@ -125,7 +138,7 @@ func TestEncodeDecode(t *testing.T) {
 	// Read the first block from the table
 	blocks, err := sstable.ReadBlocks(info, index, common.Range{Start: 0, End: 3}, blob)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(blocks))
+	assert.Equal(t, 3, len(input))
 
 	// Should be 1 key per block
 	it := block.NewIterator(&blocks[0])

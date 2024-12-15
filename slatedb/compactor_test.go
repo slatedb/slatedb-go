@@ -3,6 +3,7 @@ package slatedb
 import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"math"
 	"slices"
 	"testing"
@@ -65,7 +66,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 
 	next, ok := iter.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, next)
+	assert.Equal(t, types.KeyValue{}, next)
 }
 
 func TestShouldWriteManifestSafely(t *testing.T) {

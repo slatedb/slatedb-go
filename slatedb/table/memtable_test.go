@@ -2,13 +2,13 @@ package table
 
 import (
 	"bytes"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestMemtableOps(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -17,26 +17,26 @@ func TestMemtableOps(t *testing.T) {
 	memtable := NewMemtable()
 
 	var size int64
-	// Put KV pairs
+	// Put KeyValue pairs
 	for _, kvPair := range kvPairs {
 		size += memtable.Put(kvPair.Key, kvPair.Value)
 	}
-	// verify Get for all the KV pairs
+	// verify Get for all the KeyValue pairs
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, memtable.Get(kvPair.Key).MustGet().Value)
 	}
 	assert.Equal(t, size, memtable.Size())
 
-	// Delete KV and verify that it is tombstoned
+	// Delete KeyValue and verify that it is tombstoned
 	memtable.Delete(kvPairs[1].Key)
-	assert.True(t, memtable.Get(kvPairs[1].Key).MustGet().IsTombstone)
+	assert.True(t, memtable.Get(kvPairs[1].Key).MustGet().IsTombstone())
 
 	memtable.SetLastWalID(1)
 	assert.Equal(t, uint64(1), memtable.LastWalID().MustGet())
 }
 
 func TestMemtableIter(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -82,7 +82,7 @@ func TestMemtableIterDelete(t *testing.T) {
 }
 
 func TestMemtableRangeFromExistingKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -112,7 +112,7 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 }
 
 func TestMemtableRangeFromNonExistingKey(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -142,7 +142,7 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 }
 
 func TestImmMemtableOps(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -155,7 +155,7 @@ func TestImmMemtableOps(t *testing.T) {
 		memtable.Put(kvPairs[i].Key, kvPairs[i].Value)
 	}
 
-	// create ImmutableMemtable from memtable and verify Get values for all KV pairs
+	// create ImmutableMemtable from memtable and verify Get values for all KeyValue pairs
 	immMemtable := NewImmutableMemtable(memtable, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immMemtable.Get(kvPair.Key).MustGet().Value)
@@ -176,14 +176,14 @@ func TestImmMemtableOps(t *testing.T) {
 }
 
 func TestMemtableClone(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
 	}
 
 	memtable := NewMemtable()
-	// Put KV pairs to memtable
+	// Put KeyValue pairs to memtable
 	for _, kvPair := range kvPairs {
 		memtable.Put(kvPair.Key, kvPair.Value)
 	}

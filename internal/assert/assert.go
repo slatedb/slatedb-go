@@ -20,11 +20,11 @@ func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 	assert2.True(t, ok)
 	assert2.Equal(t, key, entry.Key)
 	if value == nil {
-		assert2.True(t, entry.ValueDel.IsTombstone)
-		assert2.Equal(t, []byte(nil), entry.ValueDel.Value)
+		assert2.True(t, entry.Value.IsTombstone())
+		assert2.Equal(t, []byte(nil), entry.Value.Value)
 	} else {
-		assert2.False(t, entry.ValueDel.IsTombstone)
-		assert2.Equal(t, value, entry.ValueDel.Value)
+		assert2.False(t, entry.Value.IsTombstone())
+		assert2.Equal(t, value, entry.Value.Value)
 	}
 }
 

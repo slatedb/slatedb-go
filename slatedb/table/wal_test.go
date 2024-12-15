@@ -2,13 +2,13 @@ package table
 
 import (
 	"bytes"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestWALOps(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -18,23 +18,23 @@ func TestWALOps(t *testing.T) {
 	assert.Equal(t, int64(0), wal.Size())
 
 	var size int64
-	// Put KV pairs
+	// Put KeyValue pairs
 	for _, kvPair := range kvPairs {
 		size += wal.Put(kvPair.Key, kvPair.Value)
 	}
-	// verify Get values for all KV pairs
+	// verify Get values for all KeyValue pairs
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, wal.Get(kvPair.Key).MustGet().Value)
 	}
 	assert.Equal(t, size, wal.Size())
 
-	// Delete KV and verify that it is tombstoned
+	// Delete KeyValue and verify that it is tombstoned
 	wal.Delete(kvPairs[1].Key)
-	assert.True(t, wal.Get(kvPairs[1].Key).MustGet().IsTombstone)
+	assert.True(t, wal.Get(kvPairs[1].Key).MustGet().IsTombstone())
 }
 
 func TestWALIter(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
@@ -80,19 +80,19 @@ func TestWALIterDelete(t *testing.T) {
 }
 
 func TestImmWALOps(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
 	}
 
 	wal := NewWAL()
-	// Put KV pairs to wal
+	// Put KeyValue pairs to wal
 	for _, kvPair := range kvPairs {
 		wal.Put(kvPair.Key, kvPair.Value)
 	}
 
-	// create ImmutableMemtable from memtable and verify Get values for all KV pairs
+	// create ImmutableMemtable from memtable and verify Get values for all KeyValue pairs
 	immWAL := NewImmutableWAL(wal, 1)
 	for _, kvPair := range kvPairs {
 		assert.Equal(t, kvPair.Value, immWAL.Get(kvPair.Key).MustGet().Value)
@@ -113,14 +113,14 @@ func TestImmWALOps(t *testing.T) {
 }
 
 func TestWALClone(t *testing.T) {
-	kvPairs := []common.KV{
+	kvPairs := []types.KeyValue{
 		{Key: []byte("abc111"), Value: []byte("value1")},
 		{Key: []byte("abc222"), Value: []byte("value2")},
 		{Key: []byte("abc333"), Value: []byte("value3")},
 	}
 
 	wal := NewWAL()
-	// Put KV pairs to wal
+	// Put KeyValue pairs to wal
 	for _, kvPair := range kvPairs {
 		wal.Put(kvPair.Key, kvPair.Value)
 	}

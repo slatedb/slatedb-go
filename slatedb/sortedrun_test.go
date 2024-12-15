@@ -5,6 +5,7 @@ import (
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
@@ -40,9 +41,9 @@ func TestOneSstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 
 	builder := tableStore.TableBuilder()
-	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
-	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.AddValue([]byte("key1"), []byte("value1"))
+	builder.AddValue([]byte("key2"), []byte("value2"))
+	builder.AddValue([]byte("key3"), []byte("value3"))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -58,7 +59,7 @@ func TestOneSstSRIter(t *testing.T) {
 
 	kv, ok := iterator.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, kv)
+	assert.Equal(t, types.KeyValue{}, kv)
 }
 
 func TestManySstSRIter(t *testing.T) {
@@ -68,8 +69,8 @@ func TestManySstSRIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, format, "")
 
 	builder := tableStore.TableBuilder()
-	builder.Add([]byte("key1"), mo.Some([]byte("value1")))
-	builder.Add([]byte("key2"), mo.Some([]byte("value2")))
+	builder.AddValue([]byte("key1"), []byte("value1"))
+	builder.AddValue([]byte("key2"), []byte("value2"))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -77,7 +78,7 @@ func TestManySstSRIter(t *testing.T) {
 	assert.NoError(t, err)
 
 	builder = tableStore.TableBuilder()
-	builder.Add([]byte("key3"), mo.Some([]byte("value3")))
+	builder.AddValue([]byte("key3"), []byte("value3"))
 
 	encodedSST, err = builder.Build()
 	assert.NoError(t, err)
@@ -93,7 +94,7 @@ func TestManySstSRIter(t *testing.T) {
 
 	kv, ok := iterator.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, kv)
+	assert.Equal(t, types.KeyValue{}, kv)
 }
 
 func TestSRIterFromKey(t *testing.T) {
@@ -126,7 +127,7 @@ func TestSRIterFromKey(t *testing.T) {
 		}
 		next, ok := kvIter.Next()
 		assert.False(t, ok)
-		assert.Equal(t, common.KV{}, next)
+		assert.Equal(t, types.KeyValue{}, next)
 	}
 }
 
@@ -153,7 +154,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	}
 	next, ok := kvIter.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, next)
+	assert.Equal(t, types.KeyValue{}, next)
 }
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
@@ -173,5 +174,5 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	assert.NoError(t, err)
 	next, ok := kvIter.Next()
 	assert.False(t, ok)
-	assert.Equal(t, common.KV{}, next)
+	assert.Equal(t, types.KeyValue{}, next)
 }

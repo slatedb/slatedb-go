@@ -16,8 +16,8 @@ vet:
 
 .PHONY: flatbuf
 flatbuf:
-	flatc -o gen --go --gen-object-api --gen-all --gen-onefile --go-namespace flatbuf schemas/manifest.fbs
-	go fmt ./gen/*.go
+	flatc -o internal/flatbuf --go --gen-object-api --gen-all --gen-onefile --go-namespace flatbuf internal/flatbuf/schemas/manifest.fbs
+	go fmt ./internal/flatbuf/*.go
 
 .PHONY: build
 build: flatbuf fmt vet

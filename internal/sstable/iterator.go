@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
+	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"math"
 	"sync"
 )
 
-// TODO(thrawn01): Remove once we untangle the store from the implementation
 type TableStore interface {
 	ReadIndex(*Handle) (*Index, error)
 	ReadBlocksUsingIndex(*Handle, common.Range, *Index) ([]block.Block, error)
@@ -29,6 +29,7 @@ type Iterator struct {
 	fetchTasks          chan chan mo.Option[[]block.Block]
 	maxFetchTasks       uint64
 	numBlocksToFetch    uint64
+	warn                types.ErrWarn
 }
 
 func NewIterator(
@@ -81,42 +82,45 @@ func NewIteratorAtKey(
 	return iter, nil
 }
 
-func (iter *Iterator) Next() (common.KV, bool) {
+func (iter *Iterator) Next() (types.KeyValue, bool) {
 	for {
 		keyVal, ok := iter.NextEntry()
 		if !ok {
-			return common.KV{}, false
+			return types.KeyValue{}, false
 		}
 
-		if keyVal.ValueDel.IsTombstone {
+		if keyVal.Value.IsTombstone() {
 			continue
 		}
 
-		return common.KV{
+		return types.KeyValue{
 			Key:   keyVal.Key,
-			Value: keyVal.ValueDel.Value,
+			Value: keyVal.Value.Value,
 		}, true
 	}
 }
 
-func (iter *Iterator) NextEntry() (common.KVDeletable, bool) {
+func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 	for {
 		if iter.currentBlockIter.IsAbsent() {
 			nextBlockIter, err := iter.nextBlockIter()
 			if err != nil {
-				return common.KVDeletable{}, false
+				return types.RowEntry{}, false
 			}
 
 			if nextBlockIter.IsPresent() {
 				iter.currentBlockIter = nextBlockIter
 			} else {
-				return common.KVDeletable{}, false
+				return types.RowEntry{}, false
 			}
 		}
 
 		currentBlockIter, _ := iter.currentBlockIter.Get()
 		kv, ok := currentBlockIter.NextEntry()
 		if !ok {
+			if warn := currentBlockIter.Warnings(); warn != nil {
+				iter.warn.Merge(warn)
+			}
 			// We have exhausted the current block, but not necessarily the entire SST,
 			// so we fall back to the top to check if we have more blocks to read.
 			iter.currentBlockIter = mo.None[*block.Iterator]()
@@ -159,6 +163,7 @@ func (iter *Iterator) SpawnFetches() {
 		go func() {
 			blocks, err := tableStore.ReadBlocksUsingIndex(table, blocksRange, index)
 			if err != nil {
+				// TODO(thrawn01): handle error
 				blocksCh <- mo.None[[]block.Block]()
 			} else {
 				blocksCh <- mo.Some(blocks)
@@ -193,7 +198,9 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 			b := &blks[0]
 			fromKey, _ := iter.fromKey.Get()
 			if iter.fromKey.IsPresent() {
-				return mo.Some(block.NewIteratorAtKey(b, fromKey)), nil
+				// TODO(thrawn01): Handle this error
+				it, _ := block.NewIteratorAtKey(b, fromKey)
+				return mo.Some(it), nil
 			} else {
 				return mo.Some(block.NewIterator(b)), nil
 			}
@@ -231,4 +238,9 @@ loop:
 	}
 
 	return uint64(foundBlockID)
+}
+
+// Warnings returns types.ErrWarn if there was a warning during iteration.
+func (iter *Iterator) Warnings() *types.ErrWarn {
+	return &iter.warn
 }

@@ -7,6 +7,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/flatbuffers v24.3.25+incompatible
 	github.com/huandu/skiplist v1.2.1
+	github.com/kapetan-io/tackle v0.11.0
 	github.com/klauspost/compress v1.17.11
 	github.com/maypok86/otter v1.2.2
 	github.com/oklog/ulid/v2 v2.1.1-0.20240413180941-96c4edf226ef
