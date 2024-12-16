@@ -169,7 +169,7 @@ func (iter *SortedRunIterator) NextEntry() (types.RowEntry, bool) {
 
 		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
 		if err != nil {
-			iter.warn.Add(err.Error())
+			iter.warn.Add("while creating SSTable iterator: %s", err.Error())
 			return types.RowEntry{}, false
 		}
 

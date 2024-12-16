@@ -7,7 +7,6 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"math"
 	"sync"
 )
@@ -205,7 +204,7 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 				return mo.Some(block.NewIterator(b)), nil
 			}
 		} else {
-			logger.Error("unable to read block")
+			// TODO(thrawn01): Return the actual error which occurred.
 			return mo.None[*block.Iterator](), common.ErrReadBlocks
 		}
 	}

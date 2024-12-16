@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"path"
 	"slices"
@@ -10,9 +11,7 @@ import (
 
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
 )
 
 type ObjectMeta struct {
@@ -67,8 +66,7 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		logger.Error("unable to read data", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("while reading data: %w", err)
 	}
 	return data, nil
 }

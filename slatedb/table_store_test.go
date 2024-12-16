@@ -50,15 +50,17 @@ func buildSSTWithNBlocks(
 	tableStore *TableStore,
 	keyGen common.OrderedBytesGenerator,
 	valGen common.OrderedBytesGenerator,
-) (*sstable.Handle, int) {
+) (*sstable.Handle, int, error) {
 	writer := tableStore.TableWriter(sstable.NewIDWal(0))
 	nKeys := 0
 	for writer.blocksWritten < n {
-		writer.Add(keyGen.Next(), mo.Some(valGen.Next()))
+		if err := writer.Add(keyGen.Next(), mo.Some(valGen.Next())); err != nil {
+			return nil, 0, err
+		}
 		nKeys += 1
 	}
 	sst, _ := writer.Close()
-	return sst, nKeys
+	return sst, nKeys, nil
 }
 
 func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
@@ -67,9 +69,9 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	conf.BlockSize = 32
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
-	builder.AddValue([]byte("aaaaaaaa"), []byte("11111111"))
-	builder.AddValue([]byte("bbbbbbbb"), []byte("22222222"))
-	builder.AddValue([]byte("cccccccc"), []byte("33333333"))
+	require.NoError(t, builder.AddValue([]byte("aaaaaaaa"), []byte("11111111")))
+	require.NoError(t, builder.AddValue([]byte("bbbbbbbb"), []byte("22222222")))
+	require.NoError(t, builder.AddValue([]byte("cccccccc"), []byte("33333333")))
 
 	iterator := nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
@@ -82,7 +84,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 	assert.False(t, ok)
 
 	assert.True(t, builder.NextBlock().IsAbsent())
-	builder.AddValue([]byte("dddddddd"), []byte("44444444"))
+	require.NoError(t, builder.AddValue([]byte("dddddddd"), []byte("44444444")))
 
 	iterator = nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
@@ -105,7 +107,7 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 	for _, kv := range kvList {
-		builder.AddValue(kv.Key, kv.Value)
+		require.NoError(t, builder.AddValue(kv.Key, kv.Value))
 	}
 
 	firstBlock, ok := builder.NextBlock().Get()
@@ -139,8 +141,8 @@ func TestSSTable(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 
-	builder.AddValue([]byte("key1"), []byte("value1"))
-	builder.AddValue([]byte("key2"), []byte("value2"))
+	require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -177,8 +179,8 @@ func TestSSTableNoFilter(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 
-	builder.AddValue([]byte("key1"), []byte("value1"))
-	builder.AddValue([]byte("key2"), []byte("value2"))
+	require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -201,7 +203,7 @@ func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
 		tableStore := NewTableStore(bucket, conf, "")
 		builder := tableStore.TableBuilder()
 		for i := 0; i < 8; i++ {
-			builder.AddValue([]byte(strconv.Itoa(i)), []byte("value"))
+			require.NoError(t, builder.AddValue([]byte(strconv.Itoa(i)), []byte("value")))
 		}
 		encodedSST, err := builder.Build()
 		assert.NoError(t, err)
@@ -221,8 +223,8 @@ func TestSSTableWithCompression(t *testing.T) {
 		tableStore := NewTableStore(bucket, conf, "")
 		builder := tableStore.TableBuilder()
 
-		builder.AddValue([]byte("key1"), []byte("value1"))
-		builder.AddValue([]byte("key2"), []byte("value2"))
+		require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+		require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
 
 		encodedSST, err := builder.Build()
 		assert.NoError(t, err)
@@ -251,10 +253,10 @@ func TestReadBlocks(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 
-	builder.AddValue([]byte("aa"), []byte("11"))
-	builder.AddValue([]byte("bb"), []byte("22"))
-	builder.AddValue([]byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	builder.AddValue([]byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
+	require.NoError(t, builder.AddValue([]byte("aa"), []byte("11")))
+	require.NoError(t, builder.AddValue([]byte("bb"), []byte("22")))
+	require.NoError(t, builder.AddValue([]byte("cccccccccccccccccccc"), []byte("33333333333333333333")))
+	require.NoError(t, builder.AddValue([]byte("dddddddddddddddddddd"), []byte("44444444444444444444")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -298,10 +300,10 @@ func TestReadAllBlocks(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 
-	builder.AddValue([]byte("aa"), []byte("11"))
-	builder.AddValue([]byte("bb"), []byte("22"))
-	builder.AddValue([]byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	builder.AddValue([]byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
+	require.NoError(t, builder.AddValue([]byte("aa"), []byte("11")))
+	require.NoError(t, builder.AddValue([]byte("bb"), []byte("22")))
+	require.NoError(t, builder.AddValue([]byte("cccccccccccccccccccc"), []byte("33333333333333333333")))
+	require.NoError(t, builder.AddValue([]byte("dddddddddddddddddddd"), []byte("44444444444444444444")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
@@ -345,14 +347,15 @@ func TestOneBlockSSTIter(t *testing.T) {
 	tableStore := NewTableStore(bucket, conf, "")
 	builder := tableStore.TableBuilder()
 
-	builder.AddValue([]byte("key1"), []byte("value1"))
-	builder.AddValue([]byte("key2"), []byte("value2"))
-	builder.AddValue([]byte("key3"), []byte("value3"))
-	builder.AddValue([]byte("key4"), []byte("value4"))
+	require.NoError(t, builder.AddValue([]byte("key1"), []byte("value1")))
+	require.NoError(t, builder.AddValue([]byte("key2"), []byte("value2")))
+	require.NoError(t, builder.AddValue([]byte("key3"), []byte("value3")))
+	require.NoError(t, builder.AddValue([]byte("key4"), []byte("value4")))
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	_, err = tableStore.WriteSST(sstable.NewIDWal(0), encodedSST)
+	require.NoError(t, err)
 	sstHandle, err := tableStore.OpenSST(sstable.NewIDWal(0))
 	assert.NoError(t, err)
 	index, err := tableStore.ReadIndex(sstHandle)
@@ -380,7 +383,7 @@ func TestManyBlockSSTIter(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
 		value := []byte(fmt.Sprintf("value%d", i))
-		builder.AddValue(key, value)
+		require.NoError(t, builder.AddValue(key, value))
 	}
 
 	encodedSST, err := builder.Build()
@@ -421,7 +424,8 @@ func TestIterFromKey(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 	testCaseValGen := valGen.Clone()
 
-	sst, nKeys := buildSSTWithNBlocks(3, tableStore, keyGen, valGen)
+	sst, nKeys, err := buildSSTWithNBlocks(3, tableStore, keyGen, valGen)
+	require.NoError(t, err)
 
 	for i := 0; i < nKeys; i++ {
 		expectedKeyGen := testCaseKeyGen.Clone()
@@ -455,7 +459,9 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 	expectedValGen := valGen.Clone()
 
-	sst, nKeys := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	sst, nKeys, err := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	require.NoError(t, err)
+
 	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
 	assert.NoError(t, err)
 
@@ -478,7 +484,8 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	firstVal := []byte("2222222222222222")
 	valGen := common.NewOrderedBytesGeneratorWithByteRange(firstVal, byte(1), byte(26))
 
-	sst, _ := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	sst, _, err := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
+	require.NoError(t, err)
 	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
 	assert.NoError(t, err)
 
@@ -539,10 +546,10 @@ func TestSSTWriter(t *testing.T) {
 	sstID := sstable.NewIDCompacted(ulid.Make())
 
 	writer := tableStore.TableWriter(sstID)
-	writer.Add([]byte("aaaaaaaaaaaaaaaa"), mo.Some([]byte("1111111111111111")))
-	writer.Add([]byte("bbbbbbbbbbbbbbbb"), mo.Some([]byte("2222222222222222")))
-	writer.Add([]byte("cccccccccccccccc"), mo.None[[]byte]())
-	writer.Add([]byte("dddddddddddddddd"), mo.Some([]byte("4444444444444444")))
+	require.NoError(t, writer.Add([]byte("aaaaaaaaaaaaaaaa"), mo.Some([]byte("1111111111111111"))))
+	require.NoError(t, writer.Add([]byte("bbbbbbbbbbbbbbbb"), mo.Some([]byte("2222222222222222"))))
+	require.NoError(t, writer.Add([]byte("cccccccccccccccc"), mo.None[[]byte]()))
+	require.NoError(t, writer.Add([]byte("dddddddddddddddd"), mo.Some([]byte("4444444444444444"))))
 	sst, err := writer.Close()
 	assert.NoError(t, err)
 

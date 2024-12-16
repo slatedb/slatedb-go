@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
+	"log/slog"
 	"strconv"
 )
 
@@ -30,6 +29,8 @@ func NewIDCompacted(id ulid.ULID) ID {
 	return ID{Type: Compacted, Value: id.String()}
 }
 
+// TODO(thrawn01): If ID can represent both a ulid and uint64 then we
+//  need to handle the error here, instead of just logging the error.
 func (s *ID) WalID() mo.Option[uint64] {
 	if s.Type != WAL {
 		return mo.None[uint64]()
@@ -37,7 +38,7 @@ func (s *ID) WalID() mo.Option[uint64] {
 
 	val, err := strconv.Atoi(s.Value)
 	if err != nil {
-		logger.Error("unable to parse table id", zap.Error(err))
+		slog.Error("unable to parse table id", "error", err)
 		return mo.None[uint64]()
 	}
 
@@ -51,7 +52,7 @@ func (s *ID) CompactedID() mo.Option[ulid.ULID] {
 
 	val, err := ulid.Parse(s.Value)
 	if err != nil {
-		logger.Error("unable to parse table id", zap.Error(err))
+		slog.Error("unable to parse table id", "error", err)
 		return mo.None[ulid.ULID]()
 	}
 

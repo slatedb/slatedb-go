@@ -4,27 +4,30 @@ import (
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/table"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
 )
 
 func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *sync.WaitGroup) {
 	walFlushTaskWG.Add(1)
 	go func() {
 		defer walFlushTaskWG.Done()
-		ticker := time.NewTicker(db.options.FlushInterval)
+		ticker := time.NewTicker(db.opts.FlushInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				db.FlushWAL()
+				if err := db.FlushWAL(); err != nil {
+					db.opts.Log.Warn("Flush WAL failed", "error", err)
+				}
 			case <-walFlushNotifierCh:
-				db.FlushWAL()
+				if err := db.FlushWAL(); err != nil {
+					db.opts.Log.Warn("Flush WAL failed", "error", err)
+				}
 				return
 			}
 		}
@@ -138,10 +141,11 @@ func (db *DB) spawnMemtableFlushTask(
 	go func() {
 		defer memtableFlushTaskWG.Done()
 		flusher := MemtableFlusher{
-			db:       db,
+			log:      db.opts.Log,
 			manifest: manifest,
+			db:       db,
 		}
-		ticker := time.NewTicker(db.options.ManifestPollInterval)
+		ticker := time.NewTicker(db.opts.ManifestPollInterval)
 		defer ticker.Stop()
 
 		// Stop the loop when the shut down has been received and all
@@ -151,7 +155,7 @@ func (db *DB) spawnMemtableFlushTask(
 			case <-ticker.C:
 				err := flusher.loadManifest()
 				if err != nil {
-					logger.Error("error load manifest", zap.Error(err))
+					db.opts.Log.Error("error load manifest", "error", err)
 				}
 			case val := <-memtableFlushNotifierCh:
 				if val == Shutdown {
@@ -159,7 +163,7 @@ func (db *DB) spawnMemtableFlushTask(
 				} else if val == FlushImmutableMemtables {
 					err := flusher.flushImmMemtablesToL0()
 					if err != nil {
-						logger.Error("Error flushing memtable", zap.Error(err))
+						db.opts.Log.Error("error flushing memtable", "error", err)
 					}
 				}
 			}
@@ -167,7 +171,7 @@ func (db *DB) spawnMemtableFlushTask(
 
 		err := flusher.writeManifestSafely()
 		if err != nil {
-			logger.Error("error writing manifest on shutdown", zap.Error(err))
+			db.opts.Log.Error("error writing manifest on shutdown", "error", err)
 		}
 	}()
 }
@@ -182,6 +186,7 @@ const (
 type MemtableFlusher struct {
 	db       *DB
 	manifest *FenceableManifest
+	log      *slog.Logger
 }
 
 func (m *MemtableFlusher) loadManifest() error {
@@ -207,7 +212,7 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 
 		err = m.writeManifest()
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			logger.Warn("conflicting manifest version. retry write", zap.Error(err))
+			m.log.Warn("conflicting manifest version. retry write", "error", err)
 		} else if err != nil {
 			return err
 		} else {

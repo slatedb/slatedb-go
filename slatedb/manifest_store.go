@@ -294,7 +294,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 	filename := path.Base(latestManifest.Location)
 	manifestBytes, err := s.objectStore.get(s.manifestPath(filename))
 	if err != nil {
-		return mo.None[manifestInfo](), common.ErrObjectStore
+		return mo.None[manifestInfo](), err
 	}
 
 	manifest, err := s.codec.decode(manifestBytes)

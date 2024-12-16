@@ -4,6 +4,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"log/slog"
 	"math"
 	"slices"
 	"testing"
@@ -17,7 +18,7 @@ import (
 )
 
 func TestCompactorCompactsL0(t *testing.T) {
-	options := dbOptions(compactorOptions())
+	options := dbOptions(compactorOptions().CompactorOptions)
 	_, manifestStore, tableStore, db := buildTestDB(options)
 	defer db.Close()
 	for i := 0; i < 4; i++ {
@@ -148,9 +149,12 @@ func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 	}
 }
 
-func compactorOptions() *CompactorOptions {
-	return &CompactorOptions{
-		PollInterval: 100 * time.Millisecond,
-		MaxSSTSize:   1024 * 1024 * 1024,
+func compactorOptions() DBOptions {
+	return DBOptions{
+		CompactorOptions: &CompactorOptions{
+			PollInterval: 100 * time.Millisecond,
+			MaxSSTSize:   1024 * 1024 * 1024,
+		},
+		Log: slog.Default(),
 	}
 }

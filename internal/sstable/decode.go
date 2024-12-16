@@ -8,8 +8,6 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
 )
 
 func DefaultConfig() Config {
@@ -58,8 +56,7 @@ func ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter]
 
 	filterBytes, err := obj.ReadRange(filterOffsetRange)
 	if err != nil {
-		logger.Error("unable to read filter", zap.Error(err))
-		return mo.None[bloom.Filter](), err
+		return mo.None[bloom.Filter](), fmt.Errorf("while reading filter offset: %w", err)
 	}
 
 	filterData, err := compress.Decode(filterBytes, sstInfo.CompressionCodec)

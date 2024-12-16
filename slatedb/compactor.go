@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"log/slog"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -12,8 +13,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
-	"go.uber.org/zap"
 )
 
 type CompactionScheduler interface {
@@ -45,10 +44,10 @@ type Compactor struct {
 	compactorWG *sync.WaitGroup
 }
 
-func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, options *CompactorOptions) (*Compactor, error) {
+func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, opts DBOptions) (*Compactor, error) {
 	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
 
-	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, options, compactorMsgCh)
+	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts, compactorMsgCh)
 
 	err := <-errCh
 	common.AssertTrue(err == nil, "Failed to start compactor")
@@ -71,7 +70,7 @@ func (c *Compactor) close() {
 func spawnAndRunCompactorOrchestrator(
 	manifestStore *ManifestStore,
 	tableStore *TableStore,
-	options *CompactorOptions,
+	opts DBOptions,
 	compactorMsgCh <-chan CompactorMainMsg,
 ) (*sync.WaitGroup, chan error) {
 
@@ -81,14 +80,14 @@ func spawnAndRunCompactorOrchestrator(
 
 	go func() {
 		defer compactorWG.Done()
-		orchestrator, err := newCompactorOrchestrator(options, manifestStore, tableStore, compactorMsgCh)
+		orchestrator, err := newCompactorOrchestrator(opts, manifestStore, tableStore, compactorMsgCh)
 		if err != nil {
 			errCh <- err
 			return
 		}
 		errCh <- nil
 
-		ticker := time.NewTicker(options.PollInterval)
+		ticker := time.NewTicker(opts.CompactorOptions.PollInterval)
 		defer ticker.Stop()
 
 		// TODO(thrawn01): Race, cannot know if no more work is coming by checking length of the channel
@@ -99,7 +98,7 @@ func spawnAndRunCompactorOrchestrator(
 				common.AssertTrue(err == nil, "Failed to load manifest")
 			case msg := <-orchestrator.workerCh:
 				if msg.CompactionError != nil {
-					logger.Error("Error executing compaction", zap.Error(msg.CompactionError))
+					opts.Log.Error("Error executing compaction", "error", msg.CompactionError)
 				} else if msg.CompactionResult != nil {
 					err := orchestrator.finishCompaction(msg.CompactionResult)
 					common.AssertTrue(err == nil, "Failed to finish compaction")
@@ -132,10 +131,11 @@ type CompactorOrchestrator struct {
 	// workerCh - CompactionExecutor sends a CompactionFinished message to this channel once compaction is done.
 	// The CompactorOrchestrator loops through each item in this channel and calls finishCompaction
 	workerCh <-chan WorkerToOrchestratorMsg
+	log      *slog.Logger
 }
 
 func newCompactorOrchestrator(
-	options *CompactorOptions,
+	opts DBOptions,
 	manifestStore *ManifestStore,
 	tableStore *TableStore,
 	compactorMsgCh <-chan CompactorMainMsg,
@@ -161,17 +161,19 @@ func newCompactorOrchestrator(
 
 	scheduler := loadCompactionScheduler()
 	workerCh := make(chan WorkerToOrchestratorMsg, 1)
-	executor := newCompactorExecutor(options, workerCh, tableStore)
+	executor := newCompactorExecutor(opts.CompactorOptions, workerCh, tableStore)
 
-	return &CompactorOrchestrator{
-		options:        options,
+	o := CompactorOrchestrator{
+		options:        opts.CompactorOptions,
 		manifest:       manifest,
 		state:          state,
 		scheduler:      scheduler,
 		executor:       executor,
 		compactorMsgCh: compactorMsgCh,
 		workerCh:       workerCh,
-	}, nil
+		log:            opts.Log,
+	}
+	return &o, nil
 }
 
 func loadState(manifest *FenceableManifest) (*CompactorState, error) {
@@ -179,7 +181,7 @@ func loadState(manifest *FenceableManifest) (*CompactorState, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newCompactorState(dbState.clone()), nil
+	return newCompactorState(dbState.clone(), nil), nil
 }
 
 func loadCompactionScheduler() CompactionScheduler {
@@ -294,7 +296,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 		core := o.state.dbState.clone()
 		err = o.manifest.updateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
-			logger.Warn("conflicting manifest version. retry write", zap.Error(err))
+			o.log.Warn("conflicting manifest version. retry write", "error", err)
 			continue
 		}
 		return err
@@ -304,7 +306,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
-		logger.Warn("invalid compaction", zap.Error(err))
+		o.log.Warn("invalid compaction", "error", err)
 		return nil
 	}
 	o.startCompaction(compaction)
@@ -312,9 +314,9 @@ func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 }
 
 func (o *CompactorOrchestrator) logCompactionState() {
-	//o.state.dbState.logState()
+	// LogState(o.log, o.state.dbState)
 	for _, compaction := range o.state.compactions {
-		logger.Info("in-flight compaction", zap.Any("compaction", compaction))
+		o.log.Info("in-flight compaction", "compaction", compaction)
 	}
 }
 
@@ -479,7 +481,6 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 					case <-e.abortCh:
 						return
 					case e.workerCh <- msg:
-					default:
 					}
 				}
 			}

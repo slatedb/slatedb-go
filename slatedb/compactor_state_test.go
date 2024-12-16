@@ -206,6 +206,6 @@ func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
 	common.AssertTrue(err == nil, "Could not load stored manifest")
 	common.AssertTrue(sm.IsPresent(), "Could not find stored manifest")
 	storedManifest, _ := sm.Get()
-	state := newCompactorState(storedManifest.dbState())
+	state := newCompactorState(storedManifest.dbState(), nil)
 	return bucket, storedManifest, state
 }

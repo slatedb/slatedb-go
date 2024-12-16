@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"path"
 	"slices"
@@ -16,9 +17,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
 )
 
 // ------------------------------------------------
@@ -64,8 +63,7 @@ func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error)
 		return nil
 	}, objstore.WithRecursiveIter())
 	if err != nil {
-		logger.Error("unable to iterate over the table list", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("while iterating over the table list: %w", err)
 	}
 
 	slices.Sort(walList)
@@ -95,8 +93,7 @@ func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstab
 
 	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
 	if err != nil {
-		logger.Error("unable to upload bucket", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("during object write: %w", err)
 	}
 
 	ts.cacheFilter(id, encodedSST.Bloom)
@@ -107,8 +104,7 @@ func (ts *TableStore) OpenSST(id sstable.ID) (*sstable.Handle, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(id)}
 	sstInfo, err := sstable.ReadInfo(obj)
 	if err != nil {
-		logger.Error("unable to open table", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("while reading sst info: %w", err)
 	}
 
 	return sstable.NewHandle(id, sstInfo), nil
@@ -182,8 +178,7 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		logger.Warn("invalid id", zap.Error(err))
-		return 0, common.ErrInvalidDBState
+		return 0, fmt.Errorf("while parsing id '%s': %w", idStr, err)
 	}
 
 	return id, nil
@@ -224,8 +219,7 @@ func (w *EncodedSSTableWriter) Add(key []byte, value mo.Option[[]byte]) error {
 	v, _ := value.Get()
 	err := w.builder.AddValue(key, v)
 	if err != nil {
-		logger.Error("unable to add key value", zap.Error(err))
-		return err
+		return fmt.Errorf("builder failed to add key value: %w", err)
 	}
 
 	for {
@@ -247,8 +241,7 @@ func (w *EncodedSSTableWriter) Written() uint64 {
 func (w *EncodedSSTableWriter) Close() (*sstable.Handle, error) {
 	encodedSST, err := w.builder.Build()
 	if err != nil {
-		logger.Error("unable to close SS Table", zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("SST build failed: %w", err)
 	}
 
 	blocksData := w.buffer
@@ -281,8 +274,7 @@ type ReadOnlyObject struct {
 func (r ReadOnlyObject) Len() (int, error) {
 	attr, err := r.bucket.Attributes(context.Background(), r.path)
 	if err != nil {
-		logger.Warn("invalid object", zap.Error(err))
-		return 0, common.ErrObjectStore
+		return 0, fmt.Errorf("while fetching object attributes: %w", err)
 	}
 	return int(attr.Size), nil
 }
@@ -290,14 +282,12 @@ func (r ReadOnlyObject) Len() (int, error) {
 func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
 	read, err := r.bucket.GetRange(context.Background(), r.path, int64(rng.Start), int64(rng.End-rng.Start))
 	if err != nil {
-		logger.Warn("invalid object", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("while fetching object range [%d:%d]: %w", rng.Start, rng.End-rng.Start, err)
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
-		logger.Error("unable to read data", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("while reading object [%d:%d]: %w", rng.Start, rng.End, err)
 	}
 
 	return data, nil
@@ -306,14 +296,12 @@ func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
 func (r ReadOnlyObject) Read() ([]byte, error) {
 	read, err := r.bucket.Get(context.Background(), r.path)
 	if err != nil {
-		logger.Error("unable to get bucket", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("while fetching object '%s': %w", r.path, err)
 	}
 
 	data, err := io.ReadAll(read)
 	if err != nil {
-		logger.Error("unable to read data", zap.Error(err))
-		return nil, common.ErrObjectStore
+		return nil, fmt.Errorf("while reading object '%s': %w", r.path, err)
 	}
 
 	return data, nil

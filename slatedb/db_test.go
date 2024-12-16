@@ -41,7 +41,7 @@ func TestPutGetDelete(t *testing.T) {
 	assert.Equal(t, value, val)
 
 	db.Delete(key)
-	val, err = db.Get(key)
+	_, err = db.Get(key)
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
@@ -306,7 +306,7 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 
-	value, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
+	_, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
@@ -358,7 +358,7 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 // TODO(thrawn01): Disabled flapping test, likely due to the race condition
 //  in Iterator.nextBlockIter()
 //func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
-//	options := testDBOptionsCompactor(
+//	opts := testDBOptionsCompactor(
 //		math.MaxUint32,
 //		127,
 //		&CompactorOptions{
@@ -366,8 +366,8 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 //			MaxSSTSize:   256,
 //		},
 //	)
-//	doTestShouldReadCompactedDB(t, options)
-//	doTestDeleteAndWaitForCompaction(t, options)
+//	doTestShouldReadCompactedDB(t, opts)
+//	doTestDeleteAndWaitForCompaction(t, opts)
 //}
 
 func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {

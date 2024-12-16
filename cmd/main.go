@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/slatedb/slatedb-go/slatedb"
-	"github.com/slatedb/slatedb-go/slatedb/logger"
 	"github.com/thanos-io/objstore"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -24,12 +23,14 @@ func main() {
 	fmt.Println("Get:", string(key), string(data))
 
 	db.Delete(key)
-	data, err := db.Get(key)
+	_, err := db.Get(key)
 	if err != nil && err.Error() == "key not found" {
 		fmt.Println("Delete:", string(key))
 	} else {
-		logger.Error("Unable to delete", zap.Error(err))
+		slog.Error("Unable to delete", "error", err)
 	}
 
-	db.Close()
+	if err := db.Close(); err != nil {
+		slog.Error("Error closing db", "error", err)
+	}
 }
