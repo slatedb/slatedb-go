@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"io"
 	"path"
 	"slices"
@@ -37,7 +38,7 @@ type TableStore struct {
 
 func NewTableStore(bucket objstore.Bucket, sstConfig sstable.Config, rootPath string) *TableStore {
 	cache, err := otter.MustBuilder[sstable.ID, mo.Option[bloom.Filter]](1000).Build()
-	common.AssertTrue(err == nil, "")
+	assert.True(err == nil, "")
 	return &TableStore{
 		bucket:        bucket,
 		sstConfig:     sstConfig,
@@ -172,7 +173,7 @@ func (ts *TableStore) sstPath(id sstable.ID) string {
 }
 
 func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, error) {
-	common.AssertTrue(path.Ext(filepath) == expectedExt, "invalid wal file")
+	assert.True(path.Ext(filepath) == expectedExt, "invalid wal file")
 
 	base := path.Base(filepath)
 	idStr := strings.Replace(base, expectedExt, "", 1)
@@ -186,7 +187,7 @@ func (ts *TableStore) parseID(filepath string, expectedExt string) (uint64, erro
 
 func (ts *TableStore) Clone() *TableStore {
 	cache, err := otter.MustBuilder[sstable.ID, mo.Option[bloom.Filter]](1000).Build()
-	common.AssertTrue(err == nil, "")
+	assert.True(err == nil, "")
 	return &TableStore{
 		mu:            sync.RWMutex{},
 		bucket:        ts.bucket,

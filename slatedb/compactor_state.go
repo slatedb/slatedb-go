@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"github.com/kapetan-io/tackle/set"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"log/slog"
 	"math"
@@ -142,7 +143,7 @@ func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 	mergedL0s := make([]sstable.Handle, 0)
 
 	for _, writerL0SST := range writerState.l0 {
-		common.AssertTrue(writerL0SST.Id.Type == sstable.Compacted, "unexpected sstable.ID type")
+		assert.True(writerL0SST.Id.Type == sstable.Compacted, "unexpected sstable.ID type")
 		writerL0ID, _ := writerL0SST.Id.CompactedID().Get()
 		// we stop appending to our l0 list if we encounter sstID equal to lastCompactedID
 		lastCompactedL0ID, _ := lastCompactedL0.Get()
@@ -184,7 +185,7 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	dbState := c.dbState.clone()
 	newL0 := make([]sstable.Handle, 0)
 	for _, sst := range dbState.l0 {
-		common.AssertTrue(sst.Id.CompactedID().IsPresent(), "Expected compactedID not present")
+		assert.True(sst.Id.CompactedID().IsPresent(), "Expected compactedID not present")
 		l0ID, _ := sst.Id.CompactedID().Get()
 		_, ok := compactionL0s[l0ID]
 		if !ok {
@@ -209,7 +210,7 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	}
 
 	c.assertCompactedSRsInIDOrder(newCompacted)
-	common.AssertTrue(len(compaction.sources) > 0, "compaction should not be empty")
+	assert.True(len(compaction.sources) > 0, "compaction should not be empty")
 
 	firstSource := compaction.sources[0]
 	if firstSource.sstID().IsPresent() {
@@ -227,7 +228,7 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 func (c *CompactorState) assertCompactedSRsInIDOrder(compacted []SortedRun) {
 	lastSortedRunID := uint32(math.MaxUint32)
 	for _, sr := range compacted {
-		common.AssertTrue(sr.id < lastSortedRunID, "compacted sortedRuns not in decreasing order")
+		assert.True(sr.id < lastSortedRunID, "compacted sortedRuns not in decreasing order")
 		lastSortedRunID = sr.id
 	}
 }

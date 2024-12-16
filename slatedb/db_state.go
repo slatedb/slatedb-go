@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 	"log/slog"
@@ -242,7 +243,7 @@ func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstH
 	defer s.Unlock()
 
 	popped := s.immMemtables.PopBack()
-	common.AssertTrue(popped.LastWalID() == immMemtable.LastWalID(), "")
+	assert.True(popped.LastWalID() == immMemtable.LastWalID(), "")
 
 	s.core.l0 = append([]sstable.Handle{*sstHandle}, s.core.l0...)
 	s.core.lastCompactedWalSSTID.Store(immMemtable.LastWalID())

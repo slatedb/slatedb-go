@@ -110,7 +110,7 @@ func getBlockRange(rng common.Range, sstInfo *Info, index *Index) common.Range {
 
 // ReadBlocks reads the complete data required into a byte slice (dataBytes)
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
-func ReadBlocks(info *Info, index *Index, r common.Range, obj common.ReadOnlyBlob, ) ([]block.Block, error) {
+func ReadBlocks(info *Info, index *Index, r common.Range, obj common.ReadOnlyBlob) ([]block.Block, error) {
 	if r.Start >= r.End {
 		return nil, fmt.Errorf("block start '%d' range cannot be greater than end range '%d'", r.Start, r.End)
 	}

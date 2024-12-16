@@ -17,12 +17,6 @@ type Range struct {
 	End uint64
 }
 
-func AssertTrue(condition bool, errMsg string) {
-	if !condition {
-		panic(errMsg)
-	}
-}
-
 type Cloneable[T any] interface {
 	Clone() T
 }

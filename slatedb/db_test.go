@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -341,7 +342,7 @@ func TestSnapshotState(t *testing.T) {
 }
 
 // TODO(thrawn01): This test flapped once, need to investigate, likely due to race condition
-//  in Iterator.nextBlockIter()
+//   - in Iterator.nextBlockIter()
 func TestShouldReadFromCompactedDB(t *testing.T) {
 	options := testDBOptionsCompactor(
 		0,
@@ -499,7 +500,7 @@ func waitForManifestCondition(
 	start := time.Now()
 	for time.Since(start) < timeout {
 		dbState, err := sm.refresh()
-		common.AssertTrue(err == nil, "")
+		assert2.True(err == nil, "")
 		if cond(dbState) {
 			return dbState.clone()
 		}

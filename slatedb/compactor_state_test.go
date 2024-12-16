@@ -1,8 +1,8 @@
 package slatedb
 
 import (
+	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"
@@ -169,7 +169,7 @@ func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *CoreDBSt
 	startTime := time.Now()
 	for time.Since(startTime) < time.Second*10 {
 		dbState, err := storedManifest.refresh()
-		common.AssertTrue(err == nil, "")
+		assert2.True(err == nil, "")
 		if len(dbState.l0) == size {
 			return dbState.clone()
 		}
@@ -182,7 +182,7 @@ func buildL0Compaction(sstList []sstable.Handle, destination uint32) Compaction 
 	sources := make([]SourceID, 0)
 	for _, sst := range sstList {
 		id, ok := sst.Id.CompactedID().Get()
-		common.AssertTrue(ok, "expected compacted SST ID")
+		assert2.True(ok, "expected compacted SST ID")
 		sources = append(sources, newSourceIDSST(id))
 	}
 	return newCompaction(sources, destination)
@@ -193,7 +193,7 @@ func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(testPath, bucket, option)
-	common.AssertTrue(err == nil, "Could not open db")
+	assert2.True(err == nil, "Could not open db")
 	l0Count := 5
 	for i := 0; i < l0Count; i++ {
 		db.Put(repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48))
@@ -203,8 +203,8 @@ func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
 
 	manifestStore := newManifestStore(testPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
-	common.AssertTrue(err == nil, "Could not load stored manifest")
-	common.AssertTrue(sm.IsPresent(), "Could not find stored manifest")
+	assert2.True(err == nil, "Could not load stored manifest")
+	assert2.True(sm.IsPresent(), "Could not find stored manifest")
 	storedManifest, _ := sm.Get()
 	state := newCompactorState(storedManifest.dbState(), nil)
 	return bucket, storedManifest, state

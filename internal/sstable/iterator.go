@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -133,7 +134,7 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 // SpawnFetches - Each SST has multiple blocks, this method will create goroutines to fetch blocks within a range
 // Range{blocksStart, blocksEnd} for a given SST from object storage
 // TODO(thrawn01): This is called from compaction, we should instead call it from the constructor and it should be
-//  made private to this struct
+//   - made private to this struct
 func (iter *Iterator) SpawnFetches() {
 
 	numBlocks := iter.indexData.BlockMetaLength()
@@ -181,7 +182,7 @@ func (iter *Iterator) nextBlockIter() (mo.Option[*block.Iterator], error) {
 		// TODO(thrawn01): This is a race, we should not expect an empty channel to indicate there are no more
 		//  items to process.
 		if len(iter.fetchTasks) == 0 {
-			common.AssertTrue(int(iter.nextBlockIdxToFetch) == iter.indexData.BlockMetaLength(), "")
+			assert.True(int(iter.nextBlockIdxToFetch) == iter.indexData.BlockMetaLength(), "")
 			fmt.Printf("Iteration Stopped Due To Empty Task Channel\n")
 			return mo.None[*block.Iterator](), nil
 		}

@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"errors"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"log/slog"
@@ -50,7 +51,7 @@ func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, opts DBO
 	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts, compactorMsgCh)
 
 	err := <-errCh
-	common.AssertTrue(err == nil, "Failed to start compactor")
+	assert.True(err == nil, "Failed to start compactor")
 
 	return &Compactor{
 		compactorMsgCh: compactorMsgCh,
@@ -95,13 +96,13 @@ func spawnAndRunCompactorOrchestrator(
 			select {
 			case <-ticker.C:
 				err := orchestrator.loadManifest()
-				common.AssertTrue(err == nil, "Failed to load manifest")
+				assert.True(err == nil, "Failed to load manifest")
 			case msg := <-orchestrator.workerCh:
 				if msg.CompactionError != nil {
 					opts.Log.Error("Error executing compaction", "error", msg.CompactionError)
 				} else if msg.CompactionResult != nil {
 					err := orchestrator.finishCompaction(msg.CompactionResult)
-					common.AssertTrue(err == nil, "Failed to finish compaction")
+					assert.True(err == nil, "Failed to finish compaction")
 				}
 			case <-orchestrator.compactorMsgCh:
 				// we receive Shutdown msg on compactorMsgCh.
@@ -232,13 +233,13 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	sstsByID := make(map[ulid.ULID]sstable.Handle)
 	for _, sst := range dbState.l0 {
 		id, ok := sst.Id.CompactedID().Get()
-		common.AssertTrue(ok, "expected valid compacted ID")
+		assert.True(ok, "expected valid compacted ID")
 		sstsByID[id] = sst
 	}
 	for _, sr := range dbState.compacted {
 		for _, sst := range sr.sstList {
 			id, ok := sst.Id.CompactedID().Get()
-			common.AssertTrue(ok, "expected valid compacted ID")
+			assert.True(ok, "expected valid compacted ID")
 			sstsByID[id] = sst
 		}
 	}
@@ -356,7 +357,7 @@ func newCompactorExecutor(
 // create an iterator for CompactionJob.sstList and another iterator for CompactionJob.sortedRuns
 // Return the merged iterator for the above 2 iterators
 func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIterator, error) {
-	common.AssertTrue(
+	assert.True(
 		!(len(compaction.sstList) == 0 && len(compaction.sortedRuns) == 0),
 		"Compaction sources cannot be empty",
 	)
