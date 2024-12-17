@@ -1,6 +1,8 @@
 package slatedb
 
-import "github.com/slatedb/slatedb-go/slatedb/common"
+import (
+	"github.com/slatedb/slatedb-go/internal/assert"
+)
 
 type SizeTieredCompactionScheduler struct{}
 
@@ -12,7 +14,7 @@ func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorS
 		sources := make([]SourceID, 0)
 		for _, sst := range dbState.l0 {
 			id, ok := sst.Id.CompactedID().Get()
-			common.AssertTrue(ok, "Expected valid compacted ID")
+			assert.True(ok, "Expected valid compacted ID")
 			sources = append(sources, newSourceIDSST(id))
 		}
 

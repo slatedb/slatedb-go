@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kapetan-io/tackle/set"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"log/slog"
@@ -112,7 +113,7 @@ func (db *DB) Put(key []byte, value []byte) {
 }
 
 func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
-	common.AssertTrue(len(key) > 0, "key cannot be empty")
+	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.PutKVToWAL(key, value)
 	if options.AwaitFlush {
@@ -210,7 +211,7 @@ func (db *DB) Delete(key []byte) {
 }
 
 func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
-	common.AssertTrue(len(key) > 0, "key cannot be empty")
+	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.DeleteKVFromWAL(key)
 	if options.AwaitFlush {
@@ -260,7 +261,7 @@ func (db *DB) replayWAL() error {
 		if err != nil {
 			return err
 		}
-		common.AssertTrue(sst.Id.WalID().IsPresent(), "Invalid WAL ID")
+		assert.True(sst.Id.WalID().IsPresent(), "Invalid WAL ID")
 
 		// iterate through kv pairs in sst and populate walReplayBuf
 		iter, err := sstable.NewIterator(sst, db.tableStore.Clone(), 1, 1)
@@ -292,7 +293,7 @@ func (db *DB) replayWAL() error {
 		}
 	}
 
-	common.AssertTrue(lastSSTID+1 == db.state.NextWALID(), "")
+	assert.True(lastSSTID+1 == db.state.NextWALID(), "")
 	return nil
 }
 

@@ -6,10 +6,10 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 // ------------------------------------------------
@@ -148,7 +148,7 @@ func (fb *DBFlatBufferBuilder) sstListToFlatBuf(sstList []sstable.Handle) []*fla
 }
 
 func (fb *DBFlatBufferBuilder) compactedSST(sstID sstable.ID, sstInfo *sstable.Info) *flatbuf.CompactedSsTableT {
-	common.AssertTrue(sstID.Type == sstable.Compacted, "cannot pass WAL SST handle to create compacted sst")
+	assert.True(sstID.Type == sstable.Compacted, "cannot pass WAL SST handle to create compacted sst")
 	id, err := ulid.Parse(sstID.Value)
 	if err != nil {
 		return nil

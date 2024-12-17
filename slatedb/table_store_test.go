@@ -38,7 +38,7 @@ func (b BytesBlob) Read() ([]byte, error) {
 
 func nextBlockToIter(t *testing.T, builder *sstable.Builder, codec compress.Codec) *block.Iterator {
 	blockBytes, ok := builder.NextBlock().Get()
-	common.AssertTrue(ok, "Block should not be empty")
+	assert2.True(ok, "Block should not be empty")
 	var decoded block.Block
 
 	require.NoError(t, block.Decode(&decoded, blockBytes, codec))

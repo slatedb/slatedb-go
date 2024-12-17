@@ -2,11 +2,11 @@ package slatedb
 
 import (
 	"bytes"
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"sort"
 )
 
@@ -21,7 +21,7 @@ type SortedRun struct {
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	index := sort.Search(len(s.sstList), func(i int) bool {
-		common.AssertTrue(len(s.sstList[i].Info.FirstKey) != 0, "sst must have first key")
+		assert.True(len(s.sstList[i].Info.FirstKey) != 0, "sst must have first key")
 		return bytes.Compare(s.sstList[i].Info.FirstKey, key) > 0
 	})
 	if index > 0 {

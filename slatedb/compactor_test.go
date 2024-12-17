@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 )
@@ -128,7 +128,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStore, *DB) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(testPath, bucket, options)
-	common.AssertTrue(err == nil, "Failed to open test database")
+	assert2.True(err == nil, "Failed to open test database")
 	conf := sstable.DefaultConfig()
 	conf.BlockSize = 32
 	conf.MinFilterKeys = 10

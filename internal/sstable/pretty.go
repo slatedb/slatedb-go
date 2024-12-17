@@ -10,46 +10,47 @@ import (
 // PrettyPrint returns a string representation of the SSTable in a human-readable format
 //
 // SSTable Info:
-//          First Key: key1
-//          Index Offset: 147
-//          Index Length: 168
-//          Filter Offset: 140
-//          Filter Length: 7
-//          Compression Codec: None
-//        Bloom Filter:
-//          Number of Probes: 6
-//          Data Length: 5
-//        Blocks:
-//          First Block Offset: 0
-//          End Offset: 140
-//          Block 0:
-//            Offset: 0
-//            FirstKey: []byte("key1")
-//            KeyValues:
-//              Offset: 0
-//                  Key: []byte("key1") - 4 bytes
-//                Value: []byte("value1") - 6 bytes
-//          Block 1:
-//            Offset: 35
-//            FirstKey: []byte("key2")
-//            KeyValues:
-//              Offset: 0
-//                  Key: []byte("key2") - 4 bytes
-//                Value: []byte("value2") - 6 bytes
-//          Block 2:
-//            Offset: 70
-//            FirstKey: []byte("key3")
-//            KeyValues:
-//              Offset: 0
-//                  Key: []byte("key3") - 4 bytes
-//                Value: []byte("value3") - 6 bytes
-//          Block 3:
-//            Offset: 105
-//            FirstKey: []byte("key4")
-//            KeyValues:
-//              Offset: 0
-//                  Key: []byte("key4") - 4 bytes
-//                Value: []byte("value4") - 6 bytes
+//
+//	  First Key: key1
+//	  Index Offset: 147
+//	  Index Length: 168
+//	  Filter Offset: 140
+//	  Filter Length: 7
+//	  Compression Codec: None
+//	Bloom Filter:
+//	  Number of Probes: 6
+//	  Data Length: 5
+//	Blocks:
+//	  First Block Offset: 0
+//	  End Offset: 140
+//	  Block 0:
+//	    Offset: 0
+//	    FirstKey: []byte("key1")
+//	    KeyValues:
+//	      Offset: 0
+//	          Key: []byte("key1") - 4 bytes
+//	        Value: []byte("value1") - 6 bytes
+//	  Block 1:
+//	    Offset: 35
+//	    FirstKey: []byte("key2")
+//	    KeyValues:
+//	      Offset: 0
+//	          Key: []byte("key2") - 4 bytes
+//	        Value: []byte("value2") - 6 bytes
+//	  Block 2:
+//	    Offset: 70
+//	    FirstKey: []byte("key3")
+//	    KeyValues:
+//	      Offset: 0
+//	          Key: []byte("key3") - 4 bytes
+//	        Value: []byte("value3") - 6 bytes
+//	  Block 3:
+//	    Offset: 105
+//	    FirstKey: []byte("key4")
+//	    KeyValues:
+//	      Offset: 0
+//	          Key: []byte("key4") - 4 bytes
+//	        Value: []byte("value4") - 6 bytes
 func PrettyPrint(table *Table) string {
 	var buf bytes.Buffer
 

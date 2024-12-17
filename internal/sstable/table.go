@@ -30,7 +30,7 @@ func NewIDCompacted(id ulid.ULID) ID {
 }
 
 // TODO(thrawn01): If ID can represent both a ulid and uint64 then we
-//  need to handle the error here, instead of just logging the error.
+//   - need to handle the error here, instead of just logging the error.
 func (s *ID) WalID() mo.Option[uint64] {
 	if s.Type != WAL {
 		return mo.None[uint64]()
