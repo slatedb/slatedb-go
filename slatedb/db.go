@@ -116,7 +116,7 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.PutKVToWAL(key, value)
-	if options.AwaitFlush {
+	if options.AwaitDurable {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
 		// because client can read the key from memtable
@@ -214,7 +214,7 @@ func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.DeleteKVFromWAL(key)
-	if options.AwaitFlush {
+	if options.AwaitDurable {
 		currentWAL.Table().AwaitWALFlush()
 	}
 }
