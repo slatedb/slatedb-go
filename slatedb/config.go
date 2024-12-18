@@ -119,12 +119,12 @@ func DefaultReadOptions() ReadOptions {
 type WriteOptions struct {
 	// Whether `put` calls should block until the write has been durably committed
 	// to the DB.
-	AwaitFlush bool
+	AwaitDurable bool
 }
 
 func DefaultWriteOptions() WriteOptions {
 	return WriteOptions{
-		AwaitFlush: true,
+		AwaitDurable: true,
 	}
 }
 

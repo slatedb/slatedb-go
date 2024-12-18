@@ -267,7 +267,7 @@ func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
 	defer db.Close()
 
 	// we do not wait till WAL is flushed to object store and memtable
-	db.PutWithOptions([]byte("foo"), []byte("bar"), WriteOptions{AwaitFlush: false})
+	db.PutWithOptions([]byte("foo"), []byte("bar"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
 	assert.NoError(t, err)
@@ -282,7 +282,7 @@ func TestShouldReadOnlyCommittedData(t *testing.T) {
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
-	db.PutWithOptions([]byte("foo"), []byte("bla"), WriteOptions{AwaitFlush: false})
+	db.PutWithOptions([]byte("foo"), []byte("bla"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get([]byte("foo"))
 	assert.NoError(t, err)
@@ -301,7 +301,7 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
-	db.DeleteWithOptions([]byte("foo"), WriteOptions{AwaitFlush: false})
+	db.DeleteWithOptions([]byte("foo"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get([]byte("foo"))
 	assert.NoError(t, err)

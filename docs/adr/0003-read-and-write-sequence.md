@@ -19,7 +19,7 @@ When the DB is opened, we start 3 background goroutines:
 3. Compactor (compact L0 level to further levels/SortedRuns)
 
 ### Sequence of ops for PUT
-(Assumption AwaitFlush is true i.e. PUT will wait till write is durably committed)
+(Assumption AwaitDurable is true i.e. PUT will wait till write is durably committed)
 
 1. Write KV to WAL
 2. Every FlushInterval duration, a background goroutine WALFLushTask will do the following:
