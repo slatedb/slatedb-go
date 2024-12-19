@@ -61,7 +61,7 @@ func TestGetNonExistingKey(t *testing.T) {
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
-func TestGetWithNonDurableWritesAndFlushWAL(t *testing.T) {
+func TestGetWithNonDurableWritesAndFlushToL0(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, DefaultDBOptions())
 	require.NoError(t, err)
@@ -69,9 +69,9 @@ func TestGetWithNonDurableWritesAndFlushWAL(t *testing.T) {
 
 	db.PutWithOptions([]byte("k1"), []byte("v1"), WriteOptions{AwaitDurable: false})
 	require.NoError(t, db.FlushWAL())
+	require.NoError(t, db.FlushMemtableToL0())
 
 	db.PutWithOptions([]byte("k0"), []byte("v0"), WriteOptions{AwaitDurable: false})
-	require.NoError(t, db.FlushMemtableToL0())
 	require.NoError(t, db.FlushWAL())
 	require.NoError(t, db.FlushMemtableToL0())
 
