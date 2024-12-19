@@ -178,10 +178,6 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 			}
 
 			kv, ok := iter.NextEntry()
-			if !ok {
-				return nil, err
-			}
-
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.Value)
 			}
