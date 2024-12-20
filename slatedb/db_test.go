@@ -6,6 +6,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/stretchr/testify/require"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,23 +23,23 @@ import (
 func TestPutGetDelete(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	key := []byte("key1")
 	value := []byte("value1")
 	db.Put(key, value)
 	val, err := db.Get(key)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, value, val)
 
 	key = []byte("key2")
 	value = []byte("value2")
 	db.Put(key, value)
 	err = db.FlushWAL()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	val, err = db.Get(key)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, value, val)
 
 	db.Delete(key)
@@ -46,16 +47,61 @@ func TestPutGetDelete(t *testing.T) {
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
+func TestGetNonExistingKey(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, DefaultDBOptions())
+	require.NoError(t, err)
+	defer db.Close()
+
+	db.Put([]byte("key1"), []byte("value1"))
+	require.NoError(t, db.FlushWAL())
+	require.NoError(t, db.FlushMemtableToL0())
+
+	_, err = db.Get([]byte("key2"))
+	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+}
+
+func TestGetWithNonDurableWritesAndFlushToL0(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, DefaultDBOptions())
+	require.NoError(t, err)
+	defer db.Close()
+
+	db.PutWithOptions([]byte("k1"), []byte("v1"), WriteOptions{AwaitDurable: false})
+	require.NoError(t, db.FlushWAL())
+	require.NoError(t, db.FlushMemtableToL0())
+
+	db.PutWithOptions([]byte("k0"), []byte("v0"), WriteOptions{AwaitDurable: false})
+	require.NoError(t, db.FlushWAL())
+	require.NoError(t, db.FlushMemtableToL0())
+
+	data, err := db.GetWithOptions([]byte("k1"), ReadOptions{ReadLevel: Committed})
+	assert.Equal(t, "v1", string(data))
+	require.NoError(t, err)
+
+	data, err = db.GetWithOptions([]byte("k1"), ReadOptions{ReadLevel: Uncommitted})
+	assert.Equal(t, "v1", string(data))
+	require.NoError(t, err)
+
+	data, err = db.GetWithOptions([]byte("k0"), ReadOptions{ReadLevel: Committed})
+	assert.Equal(t, "v0", string(data))
+	require.NoError(t, err)
+
+	data, err = db.GetWithOptions([]byte("k0"), ReadOptions{ReadLevel: Uncommitted})
+	assert.Equal(t, "v0", string(data))
+	require.NoError(t, err)
+}
+
 func TestPutFlushesMemtable(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	stored, err := loadStoredManifest(manifestStore)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, stored.IsPresent())
 
 	storedManifest, _ := stored.Get()
@@ -81,13 +127,13 @@ func TestPutFlushesMemtable(t *testing.T) {
 	}
 
 	dbState, err := storedManifest.refresh()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	l0 := dbState.l0
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
 		sst := l0[2-i]
 		iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		kv, ok := iter.Next()
 		assert.True(t, ok)
@@ -112,23 +158,23 @@ func TestPutFlushesMemtable(t *testing.T) {
 func TestPutEmptyValue(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	key := []byte("key1")
 	value := []byte("")
 	db.Put(key, value)
 	err = db.FlushWAL()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	val, err := db.Get(key)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, value, val)
 }
 
 func TestFlushWhileIterating(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions("/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	wal := db.state.WAL()
@@ -139,22 +185,22 @@ func TestFlushWhileIterating(t *testing.T) {
 	iter := wal.Iter()
 
 	next, err := iter.Next()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	kv, _ := next.Get()
 	assert.Equal(t, []byte("abc1111"), kv.Key)
 	assert.Equal(t, []byte("value1111"), kv.Value)
 
 	err = db.FlushWAL()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	next, err = iter.Next()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	kv, _ = next.Get()
 	assert.Equal(t, []byte("abc2222"), kv.Key)
 	assert.Equal(t, []byte("value2222"), kv.Value)
 
 	next, err = iter.Next()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	kv, _ = next.Get()
 	assert.Equal(t, []byte("abc3333"), kv.Key)
 	assert.Equal(t, []byte("value3333"), kv.Value)
@@ -164,7 +210,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, DefaultDBOptions())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	kvPairs := []types.KeyValue{
@@ -178,7 +224,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 		db.Put(kv.Key, kv.Value)
 	}
 	err = db.FlushWAL()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// verify that WAL is empty after FlushWAL() is called
 	assert.Equal(t, int64(0), db.state.WAL().Size())
@@ -191,7 +237,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	}
 
 	err = db.FlushMemtableToL0()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// verify that Memtable is empty after FlushMemtableToL0()
 	assert.Equal(t, int64(0), db.state.Memtable().Size())
@@ -199,7 +245,7 @@ func TestFlushMemtableToL0(t *testing.T) {
 	// verify that we can read keys from Level0
 	for _, kv := range kvPairs {
 		val, err := db.Get(kv.Key)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, bytes.Equal(kv.Value, val))
 	}
 }
@@ -208,7 +254,7 @@ func TestBasicRestore(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// do a few writes that will result in l0 flushes
 	l0Count := 3
@@ -226,32 +272,32 @@ func TestBasicRestore(t *testing.T) {
 	for i := 0; i < sstCount; i++ {
 		db.Put([]byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))
 		err := db.FlushWAL()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	db.Close()
 
 	// recover and validate that sst files are loaded on recovery.
 	dbRestored, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer dbRestored.Close()
 
 	for i := 0; i < l0Count; i++ {
 		val, err := dbRestored.Get(repeatedChar(rune('a'+i), 16))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, repeatedChar(rune('b'+i), 48), val)
 		val, err = dbRestored.Get(repeatedChar(rune('j'+i), 16))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, repeatedChar(rune('k'+i), 48), val)
 	}
 	for i := 0; i < sstCount; i++ {
 		val, err := dbRestored.Get([]byte(strconv.Itoa(i)))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, []byte(strconv.Itoa(i)), val)
 	}
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	stored, err := loadStoredManifest(manifestStore)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, stored.IsPresent())
 
 	storedManifest, _ := stored.Get()
@@ -263,14 +309,14 @@ func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	// we do not wait till WAL is flushed to object store and memtable
 	db.PutWithOptions([]byte("foo"), []byte("bar"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 }
 
@@ -278,18 +324,18 @@ func TestShouldReadOnlyCommittedData(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
 	db.PutWithOptions([]byte("foo"), []byte("bla"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get([]byte("foo"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 
 	value, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []byte("bla"), value)
 }
 
@@ -297,14 +343,14 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 1024))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
 	db.DeleteWithOptions([]byte("foo"), WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get([]byte("foo"))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 
 	_, err = db.GetWithOptions([]byte("foo"), ReadOptions{ReadLevel: Uncommitted})
@@ -315,7 +361,7 @@ func TestSnapshotState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// write a few keys that will result in memtable flushes
 	key1, value1 := repeatedChar('a', 32), repeatedChar('b', 96)
@@ -325,7 +371,7 @@ func TestSnapshotState(t *testing.T) {
 	db.Close()
 
 	db, err = OpenWithOptions(dbPath, bucket, testDBOptions(0, 128))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 	snapshot := db.state.snapshot()
 	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID.Load())
@@ -333,11 +379,11 @@ func TestSnapshotState(t *testing.T) {
 	assert.Equal(t, 2, len(snapshot.core.l0))
 
 	val1, err := db.Get(key1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, value1, val1)
 
 	val2, err := db.Get(key2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, value2, val2)
 }
 
@@ -376,12 +422,12 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, options)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	storedManifest, ok := sm.Get()
 	assert.True(t, ok)
 
@@ -408,27 +454,27 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	db.Put(repeatedChar('m', 32), bytes.Repeat([]byte{129}, 32))
 
 	val, err := db.Get(repeatedChar('a', 32))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, bytes.Repeat([]byte{128}, 32), val)
 	val, err = db.Get(repeatedChar('m', 32))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, bytes.Repeat([]byte{129}, 32), val)
 
 	for i := 1; i < 4; i++ {
 		val, err := db.Get(repeatedChar(rune('a'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(1 + i)}, 32), val)
 		val, err = db.Get(repeatedChar(rune('m'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(13 + i)}, 32), val)
 	}
 
 	for i := 0; i < 4; i++ {
 		val, err := db.Get(repeatedChar(rune('f'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(6 + i)}, 32), val)
 		val, err = db.Get(repeatedChar(rune('s'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(19 + i)}, 32), val)
 	}
 
@@ -441,12 +487,12 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
 	db, err := OpenWithOptions(dbPath, bucket, options)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	manifestStore := newManifestStore(dbPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	storedManifest, ok := sm.Get()
 	assert.True(t, ok)
 
@@ -484,10 +530,10 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 	// verify that new keys added after deleting existing keys are present
 	for i := 0; i < 2; i++ {
 		val, err := db.Get(repeatedChar(rune('f'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(6 + i)}, 32), val)
 		val, err = db.Get(repeatedChar(rune('s'+i), 32))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, bytes.Repeat([]byte{byte(19 + i)}, 32), val)
 	}
 }
