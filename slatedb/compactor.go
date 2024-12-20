@@ -364,25 +364,18 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 
 	l0Iters := make([]iter.KVIterator, 0)
 	for _, sst := range compaction.sstList {
-		sstIter, err := sstable.NewIterator(&sst, e.tableStore.Clone(), 4, 256)
+		sstIter, err := sstable.NewIterator(&sst, e.tableStore.Clone())
 		if err != nil {
 			return nil, err
 		}
-
-		sstIter.SpawnFetches()
 		l0Iters = append(l0Iters, sstIter)
 	}
 
 	srIters := make([]iter.KVIterator, 0)
 	for _, sr := range compaction.sortedRuns {
-		srIter, err := newSortedRunIterator(sr, e.tableStore.Clone(), 16, 256)
+		srIter, err := newSortedRunIterator(sr, e.tableStore.Clone())
 		if err != nil {
 			return nil, err
-		}
-
-		if srIter.currentKVIter.IsPresent() {
-			sstIter, _ := srIter.currentKVIter.Get()
-			sstIter.SpawnFetches()
 		}
 		srIters = append(srIters, srIter)
 	}

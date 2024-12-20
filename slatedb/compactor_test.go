@@ -50,7 +50,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 	assert.Equal(t, 1, len(compactedSSTList))
 
 	sst := compactedSSTList[0]
-	iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
+	iter, err := sstable.NewIterator(&sst, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
 		kv, ok := iter.Next()

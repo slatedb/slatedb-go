@@ -7,6 +7,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/stretchr/testify/require"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -132,7 +133,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
 		sst := l0[2-i]
-		iter, err := sstable.NewIterator(&sst, tableStore, 1, 1)
+		iter, err := sstable.NewIterator(&sst, tableStore)
 		require.NoError(t, err)
 
 		kv, ok := iter.Next()
@@ -387,8 +388,6 @@ func TestSnapshotState(t *testing.T) {
 	assert.Equal(t, value2, val2)
 }
 
-// TODO(thrawn01): This test flapped once, need to investigate, likely due to race condition
-//   - in Iterator.nextBlockIter()
 func TestShouldReadFromCompactedDB(t *testing.T) {
 	options := testDBOptionsCompactor(
 		0,
@@ -402,20 +401,18 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 	doTestDeleteAndWaitForCompaction(t, options)
 }
 
-// TODO(thrawn01): Disabled flapping test, likely due to the race condition
-//  in Iterator.nextBlockIter()
-//func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
-//	opts := testDBOptionsCompactor(
-//		math.MaxUint32,
-//		127,
-//		&CompactorOptions{
-//			PollInterval: 100 * time.Millisecond,
-//			MaxSSTSize:   256,
-//		},
-//	)
-//	doTestShouldReadCompactedDB(t, opts)
-//	doTestDeleteAndWaitForCompaction(t, opts)
-//}
+func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
+	opts := testDBOptionsCompactor(
+		math.MaxUint32,
+		127,
+		&CompactorOptions{
+			PollInterval: 100 * time.Millisecond,
+			MaxSSTSize:   256,
+		},
+	)
+	doTestShouldReadCompactedDB(t, opts)
+	doTestDeleteAndWaitForCompaction(t, opts)
+}
 
 func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	t.Helper()

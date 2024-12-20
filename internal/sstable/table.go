@@ -58,6 +58,9 @@ func (s *ID) CompactedID() mo.Option[ulid.ULID] {
 
 	return mo.Some(val)
 }
+func (s *ID) String() string {
+	return s.Value
+}
 
 func (s *ID) Clone() ID {
 	var sstID ID
@@ -71,8 +74,8 @@ func (s *ID) Clone() ID {
 	return sstID
 }
 
-// Handle represents the SSTable
-// TODO(thrawn01): I think this should merge with sstable.Table
+// Handle is a reference to an SSTable, which does not contain the actual
+// SST data. It can represent both WALs and Compacted SSTs
 type Handle struct {
 	Id   ID
 	Info *Info
