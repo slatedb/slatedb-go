@@ -172,7 +172,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in SSTs in L0
 	for _, sst := range snapshot.core.l0 {
 		if db.sstMayIncludeKey(sst, key) {
-			iter, err := sstable.NewIteratorAtKey(&sst, key, db.tableStore.Clone(), 1, 1)
+			iter, err := sstable.NewIteratorAtKey(&sst, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -187,7 +187,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.core.compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.Clone(), 1, 1)
+			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -260,7 +260,7 @@ func (db *DB) replayWAL() error {
 		assert.True(sst.Id.WalID().IsPresent(), "Invalid WAL ID")
 
 		// iterate through kv pairs in sst and populate walReplayBuf
-		iter, err := sstable.NewIterator(sst, db.tableStore.Clone(), 1, 1)
+		iter, err := sstable.NewIterator(sst, db.tableStore.Clone())
 		if err != nil {
 			return err
 		}

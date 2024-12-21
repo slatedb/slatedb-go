@@ -362,7 +362,7 @@ func TestOneBlockSSTIter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, index.BlockMetaLength())
 
-	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
+	iterator, err := sstable.NewIterator(sstHandle, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -396,7 +396,7 @@ func TestManyBlockSSTIter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, index)
 
-	iterator, err := sstable.NewIterator(sstHandle, tableStore, 1, 1)
+	iterator, err := sstable.NewIterator(sstHandle, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 1000; i++ {
 		key := []byte(fmt.Sprintf("key%d", i))
@@ -432,7 +432,7 @@ func TestIterFromKey(t *testing.T) {
 		expectedValGen := testCaseValGen.Clone()
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
-		kvIter, err := sstable.NewIteratorAtKey(sst, fromKey, tableStore, 1, 1)
+		kvIter, err := sstable.NewIteratorAtKey(sst, fromKey, tableStore)
 		assert.NoError(t, err)
 
 		for j := 0; j < nKeys-i; j++ {
@@ -462,7 +462,7 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	sst, nKeys, err := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore, 1, 1)
+	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("aaaaaaaaaaaaaaaa"), tableStore)
 	assert.NoError(t, err)
 
 	for i := 0; i < nKeys; i++ {
@@ -486,7 +486,7 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 
 	sst, _, err := buildSSTWithNBlocks(2, tableStore, keyGen, valGen)
 	require.NoError(t, err)
-	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 
 	_, ok := kvIter.Next()
@@ -553,7 +553,7 @@ func TestSSTWriter(t *testing.T) {
 	sst, err := writer.Close()
 	assert.NoError(t, err)
 
-	iterator, err := sstable.NewIterator(sst, tableStore, 1, 1)
+	iterator, err := sstable.NewIterator(sst, tableStore)
 	assert.NoError(t, err)
 	assert2.NextEntry(t, iterator, []byte("aaaaaaaaaaaaaaaa"), []byte("1111111111111111"))
 	assert2.NextEntry(t, iterator, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))

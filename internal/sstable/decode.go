@@ -130,7 +130,7 @@ func ReadBlocks(info *Info, index *Index, r common.Range, obj common.ReadOnlyBlo
 	}
 
 	startOffset := rng.Start
-	decodedBlocks := make([]block.Block, 0)
+	var decodedBlocks []block.Block
 	blockMetaList := index.BlockMeta()
 	compressionCodec := info.CompressionCodec
 

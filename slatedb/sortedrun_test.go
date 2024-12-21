@@ -54,7 +54,7 @@ func TestOneSstSRIter(t *testing.T) {
 	assert.NoError(t, err)
 
 	sr := SortedRun{0, []sstable.Handle{*sstHandle}}
-	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
+	iterator, err := newSortedRunIterator(sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -90,7 +90,7 @@ func TestManySstSRIter(t *testing.T) {
 	require.NoError(t, err)
 
 	sr := SortedRun{0, []sstable.Handle{*sstHandle, *sstHandle2}}
-	iterator, err := newSortedRunIterator(sr, tableStore, 1, 1)
+	iterator, err := newSortedRunIterator(sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -124,7 +124,7 @@ func TestSRIterFromKey(t *testing.T) {
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
 
-		kvIter, err := newSortedRunIteratorFromKey(sr, fromKey, tableStore, 1, 1)
+		kvIter, err := newSortedRunIteratorFromKey(sr, fromKey, tableStore)
 		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
@@ -153,7 +153,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore, 1, 1)
+	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore)
 	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
@@ -179,7 +179,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore, 1, 1)
+	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 	next, ok := kvIter.Next()
 	assert.False(t, ok)

@@ -54,46 +54,27 @@ func (s *SortedRun) clone() *SortedRun {
 // ------------------------------------------------
 
 type SortedRunIterator struct {
-	currentKVIter     mo.Option[*sstable.Iterator]
-	sstListIter       *SSTListIterator
-	tableStore        *TableStore
-	numBlocksToFetch  uint64
-	numBlocksToBuffer uint64
-	warn              types.ErrWarn
+	currentKVIter mo.Option[*sstable.Iterator]
+	sstListIter   *SSTListIterator
+	tableStore    *TableStore
+	warn          types.ErrWarn
 }
 
-func newSortedRunIterator(
-	sortedRun SortedRun,
-	tableStore *TableStore,
-	maxFetchTasks uint64,
-	numBlocksToFetch uint64,
-) (*SortedRunIterator, error) {
-	return newSortedRunIter(sortedRun.sstList, tableStore, maxFetchTasks, numBlocksToFetch, mo.None[[]byte]())
+func newSortedRunIterator(sr SortedRun, store *TableStore, ) (*SortedRunIterator, error) {
+	return newSortedRunIter(sr.sstList, store, mo.None[[]byte]())
 }
 
-func newSortedRunIteratorFromKey(
-	sortedRun SortedRun,
-	key []byte,
-	tableStore *TableStore,
-	maxFetchTasks uint64,
-	numBlocksToFetch uint64,
-) (*SortedRunIterator, error) {
-	sstList := sortedRun.sstList
-	idx, ok := sortedRun.indexOfSSTWithKey(key).Get()
+func newSortedRunIteratorFromKey(sr SortedRun, key []byte, store *TableStore) (*SortedRunIterator, error) {
+	sstList := sr.sstList
+	idx, ok := sr.indexOfSSTWithKey(key).Get()
 	if ok {
-		sstList = sortedRun.sstList[idx:]
+		sstList = sr.sstList[idx:]
 	}
 
-	return newSortedRunIter(sstList, tableStore, maxFetchTasks, numBlocksToFetch, mo.Some(key))
+	return newSortedRunIter(sstList, store, mo.Some(key))
 }
 
-func newSortedRunIter(
-	sstList []sstable.Handle,
-	tableStore *TableStore,
-	maxFetchTasks uint64,
-	numBlocksToFetch uint64,
-	fromKey mo.Option[[]byte],
-) (*SortedRunIterator, error) {
+func newSortedRunIter(sstList []sstable.Handle, store *TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*sstable.Iterator]()
@@ -103,12 +84,12 @@ func newSortedRunIter(
 		var err error
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter, err = sstable.NewIteratorAtKey(&sst, key, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = sstable.NewIteratorAtKey(&sst, key, store)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			iter, err = sstable.NewIterator(&sst, tableStore, maxFetchTasks, numBlocksToFetch)
+			iter, err = sstable.NewIterator(&sst, store)
 			if err != nil {
 				return nil, err
 			}
@@ -118,11 +99,9 @@ func newSortedRunIter(
 	}
 
 	return &SortedRunIterator{
-		currentKVIter:     currentKVIter,
-		sstListIter:       sstListIter,
-		tableStore:        tableStore,
-		numBlocksToFetch:  maxFetchTasks,
-		numBlocksToBuffer: numBlocksToFetch,
+		currentKVIter: currentKVIter,
+		sstListIter:   sstListIter,
+		tableStore:    store,
 	}, nil
 }
 
@@ -167,7 +146,7 @@ func (iter *SortedRunIterator) NextEntry() (types.RowEntry, bool) {
 			return types.RowEntry{}, false
 		}
 
-		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore, iter.numBlocksToFetch, iter.numBlocksToBuffer)
+		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore)
 		if err != nil {
 			iter.warn.Add("while creating SSTable iterator: %s", err.Error())
 			return types.RowEntry{}, false
