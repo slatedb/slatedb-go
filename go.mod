@@ -3,6 +3,7 @@ module github.com/slatedb/slatedb-go
 go 1.23.1
 
 require (
+	github.com/agiledragon/gomonkey/v2 v2.12.0
 	github.com/gammazero/deque v0.2.1
 	github.com/golang/snappy v0.0.4
 	github.com/google/flatbuffers v24.3.25+incompatible
