@@ -8,18 +8,23 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/slatedb"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"strconv"
 	"strings"
-	"testing"
+	"sync/atomic"
 	"time"
 )
 
 type Choice struct {
 	Name  string
 	Value interface{}
+}
+
+func (c *Choice) GetName() string {
+	return c.Name
+}
+func (c *Choice) GetValue() interface{} {
+	return c.Value
 }
 
 type Role interface {
@@ -89,12 +94,12 @@ func (r *SlateDbRoleAdapter) GetState() (map[string]interface{}, error) {
 }
 
 func (r *SlateDbRoleAdapter) Put(choices []Choice) (interface{}, error) {
-	key := []byte(choices[0].Value.(string))
-	value := []byte(choices[1].Value.(string))
+	key := []byte(choices[0].GetValue().(string))
+	value := []byte(choices[1].GetValue().(string))
 
 	writeOptions := slatedb.DefaultWriteOptions()
-	writeOptions.AwaitFlush = false
-	if choices[1].Value.(string) == "notfound" {
+	writeOptions.AwaitDurable = false
+	if choices[1].GetValue().(string) == "notfound" {
 		r.db.DeleteWithOptions(key, writeOptions)
 	} else {
 		r.db.PutWithOptions(key, value, writeOptions)
@@ -104,8 +109,8 @@ func (r *SlateDbRoleAdapter) Put(choices []Choice) (interface{}, error) {
 }
 
 func (r *SlateDbRoleAdapter) Get(choices []Choice) (interface{}, error) {
-	key := []byte(choices[0].Value.(string))
-	level := choices[1].Value.(string)
+	key := []byte(choices[0].GetValue().(string))
+	level := choices[1].GetValue().(string)
 	readOptions := slatedb.DefaultReadOptions()
 	if level == "Uncommitted" {
 		readOptions = slatedb.ReadOptions{ReadLevel: slatedb.Uncommitted}
@@ -121,10 +126,12 @@ func (r *SlateDbRoleAdapter) Get(choices []Choice) (interface{}, error) {
 }
 
 func (r *SlateDbRoleAdapter) FlushWal(_ []Choice) (interface{}, error) {
+	//fmt.Println("Calling: db.FlushWal()")
 	return nil, r.db.FlushWAL()
 }
 
 func (r *SlateDbRoleAdapter) FlushMemtable(_ []Choice) (interface{}, error) {
+	//fmt.Println("Calling: db.FlushMemtableToL0()")
 	return nil, r.db.FlushMemtableToL0()
 }
 
@@ -132,7 +139,11 @@ type Model struct {
 	Roles map[string]Role        `json:"roles"`
 	State map[string]interface{} `json:"state"`
 
-	patches *gomonkey.Patches
+	timeMs uint64
+}
+
+func NewModel() any {
+	return &Model{}
 }
 
 func (m *Model) ToJson() string {
@@ -144,13 +155,16 @@ func (m *Model) ToJson() string {
 	return string(bytes)
 }
 
-func (m *Model) Init() {
-	timeMs := uint64(0)
-	m.patches = gomonkey.ApplyFunc(ulid.Make, func() ulid.ULID {
-		timeMs++
-		return ulid.MustNew(timeMs, nil)
-	})
+var ulidTimeMs atomic.Uint64
 
+func init() {
+	gomonkey.ApplyFunc(ulid.Make, func() ulid.ULID {
+		newTimeMs := ulidTimeMs.Add(1)
+		return ulid.MustNew(newTimeMs, nil)
+	})
+}
+func (m *Model) Init() {
+	ulidTimeMs.Store(0)
 	bucket := objstore.NewInMemBucket()
 	dbOptions := slatedb.DefaultDBOptions()
 	dbOptions.FlushInterval = 10 * time.Minute
@@ -164,7 +178,6 @@ func (m *Model) Init() {
 	m.State = make(map[string]interface{})
 	m.State["store"] = store
 	m.State["writer"] = writer
-	m.State["next_ulid"] = func() int { return int(timeMs) + 1 }
 
 	m.Roles = make(map[string]Role)
 	m.Roles["ObjectStore#0"] = store
@@ -172,35 +185,7 @@ func (m *Model) Init() {
 }
 
 func (m *Model) InternalCleanup() {
-	m.patches.Reset()
 	m.State["writer"].(*SlateDbRoleAdapter).db.Close()
-}
-
-func AssertModelEquals(t *testing.T, exp string, model *Model, retVal interface{}) {
-	var node map[string]interface{}
-	if err := json.Unmarshal([]byte(exp), &node); err != nil {
-		panic(err)
-	}
-
-	expectedRolesMap := make(map[string]map[string]interface{})
-	if node["roles"] != nil {
-		expectedRoles := node["roles"].([]interface{})
-		for _, r := range expectedRoles {
-			role := r.(map[string]interface{})
-			expectedRolesMap[role["ref_string"].(string)] = role["fields"].(map[string]interface{})
-		}
-	}
-
-	for roleRef, role := range model.Roles {
-		state, err := role.GetState()
-		if err != nil {
-			panic(err)
-		}
-		e, ok := expectedRolesMap[roleRef]
-
-		require.True(t, ok)
-		assert.Equal(t, e, state)
-	}
 }
 
 // Function to extract base32 string from "compacted/somebase32string.sst"

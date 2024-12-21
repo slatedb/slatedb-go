@@ -3,42 +3,42 @@ package slatedb
 import (
 	"fmt"
 	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/table"
 )
 
 func GetState(db *DB) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
-	wal := db.state.wal.clone()
-	walState, err := getKvTableState(wal.table)
+	snapshot := db.state.snapshot()
+	walState, err := getKvTableStateFromIter(snapshot.wal.Iter())
 	if err != nil {
 		return nil, err
 	}
 	m["wal"] = walState
 
-	memtable := db.state.memtable.clone()
-	memtableState, err := getKvTableState(memtable.table)
+	memtableState, err := getKvTableStateFromIter(db.state.memtable.Iter())
 	if err != nil {
 		return nil, err
 	}
 	m["memtable"] = memtableState
 
-	m["wal_index"] = float64(db.state.state.core.nextWalSstID)
+	m["wal_index"] = float64(db.state.core.nextWalSstID.Load())
 
 	// TODO: implement immutable_wal and immutable_memtable
 	m["immutable_wal"] = make([]interface{}, 0)
 	m["immutable_memtable"] = make(map[string]interface{})
 
 	// get the l0 from core state
-	l0ssts := db.state.state.core.l0
+	l0ssts := db.state.core.l0
 	l0s := make([]interface{}, len(l0ssts))
 	for i, sst := range l0ssts {
-		l0s[i] = fmt.Sprintf("compacted/ulid-%04d.sst", sst.id.compactedID().MustGet().Time())
+		l0s[i] = fmt.Sprintf("compacted/ulid-%04d.sst", sst.Id.CompactedID().MustGet().Time())
 	}
 	m["l0"] = l0s
 	return m, nil
 }
 
-func getKvTableState(table *KVTable) (map[string]interface{}, error) {
-	iter := table.iter()
+func getKvTableStateFromIter(iter *table.KVTableIterator) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
 	for {
 		optionalKv, err := iter.NextEntry()
@@ -50,17 +50,17 @@ func getKvTableState(table *KVTable) (map[string]interface{}, error) {
 		}
 		kv := optionalKv.MustGet()
 		//fmt.Printf("Key: %s, Value: %v\n", kv.Key, kv.ValueDel)
-		if kv.ValueDel.IsTombstone {
+		if kv.Value.IsTombstone() {
 			m[string(kv.Key)] = "notfound"
 		} else {
-			m[string(kv.Key)] = string(kv.ValueDel.Value)
+			m[string(kv.Key)] = string(kv.Value.Value)
 		}
 	}
 	return m, nil
 }
 
 func WalSstToMap(db *DB, sstId uint64) (map[string]interface{}, error) {
-	sst, err := db.tableStore.openSST(newSSTableIDWal(sstId))
+	sst, err := db.tableStore.OpenSST(sstable.NewIDWal(sstId))
 	if err != nil {
 		return nil, err
 	}
@@ -68,35 +68,32 @@ func WalSstToMap(db *DB, sstId uint64) (map[string]interface{}, error) {
 }
 
 func CompactedSstToMap(db *DB, sstId ulid.ULID) (map[string]interface{}, error) {
-	sst, err := db.tableStore.openSST(newSSTableIDCompacted(sstId))
+	sst, err := db.tableStore.OpenSST(sstable.NewIDCompacted(sstId))
 	if err != nil {
 		return nil, err
 	}
 	return KeyValSstToMap(db, sst)
 }
 
-func KeyValSstToMap(db *DB, sst *SSTableHandle) (map[string]interface{}, error) {
-	iter, err := newSSTIterator(sst, db.tableStore.clone(), 1, 1)
+func KeyValSstToMap(db *DB, sst *sstable.Handle) (map[string]interface{}, error) {
+	iter, err := sstable.NewIterator(sst, db.tableStore.Clone())
 	if err != nil {
 		return nil, err
 	}
 	m := make(map[string]interface{})
 	for {
-		entry, err := iter.NextEntry()
-		if err != nil {
-			return nil, err
-		}
-		kvDel, _ := entry.Get()
-		if entry.IsAbsent() {
+		entry, ok := iter.NextEntry()
+		if !ok {
 			break
 		}
-		if string(kvDel.Key) == "placeholder" {
+
+		if string(entry.Key) == "placeholder" {
 			continue
 		}
-		if kvDel.ValueDel.IsTombstone {
-			m[string(kvDel.Key)] = "notfound"
+		if entry.Value.IsTombstone() {
+			m[string(entry.Key)] = "notfound"
 		} else {
-			m[string(kvDel.Key)] = string(kvDel.ValueDel.Value)
+			m[string(entry.Key)] = string(entry.Value.Value)
 		}
 	}
 	return m, nil

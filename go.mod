@@ -3,6 +3,7 @@ module github.com/slatedb/slatedb-go
 go 1.23.1
 
 require (
+	github.com/agiledragon/gomonkey/v2 v2.12.0
 	github.com/gammazero/deque v0.2.1
 	github.com/golang/snappy v0.0.4
 	github.com/google/flatbuffers v24.3.25+incompatible
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.12.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -36,6 +36,6 @@ require (
 	github.com/prometheus/procfs v0.11.1 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	google.golang.org/protobuf v1.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
