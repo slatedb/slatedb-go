@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"context"
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -380,16 +381,17 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 		srIters = append(srIters, srIter)
 	}
 
+	ctx := context.TODO()
 	var l0MergeIter, srMergeIter iter.KVIterator
 	if len(compaction.sortedRuns) == 0 {
-		l0MergeIter = iter.NewMergeSort(l0Iters...)
+		l0MergeIter = iter.NewMergeSort(ctx, l0Iters...)
 		return l0MergeIter, nil
 	} else if len(compaction.sstList) == 0 {
-		srMergeIter = iter.NewMergeSort(srIters...)
+		srMergeIter = iter.NewMergeSort(ctx, srIters...)
 		return srMergeIter, nil
 	}
 
-	it := iter.NewMergeSort(l0MergeIter, srMergeIter)
+	it := iter.NewMergeSort(ctx, l0MergeIter, srMergeIter)
 	return it, nil
 }
 
@@ -404,7 +406,7 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 	currentWriter := e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 	currentSize := 0
 	for {
-		kv, ok := allIter.NextEntry()
+		kv, ok := allIter.NextEntry(context.TODO())
 		if !ok {
 			if w := allIter.Warnings(); w != nil {
 				warn.Merge(w)

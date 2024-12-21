@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/kapetan-io/tackle/set"
@@ -40,11 +41,11 @@ type DB struct {
 	memtableFlushTaskWG *sync.WaitGroup
 }
 
-func Open(path string, bucket objstore.Bucket) (*DB, error) {
-	return OpenWithOptions(path, bucket, DefaultDBOptions())
+func Open(ctx context.Context, path string, bucket objstore.Bucket) (*DB, error) {
+	return OpenWithOptions(ctx, path, bucket, DefaultDBOptions())
 }
 
-func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
+func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
 	conf := sstable.DefaultConfig()
 	conf.BlockSize = BlockSize
 	conf.MinFilterKeys = options.MinFilterKeys
@@ -65,7 +66,7 @@ func OpenWithOptions(path string, bucket objstore.Bucket, options DBOptions) (*D
 		return nil, err
 	}
 
-	db, err := newDB(options, tableStore, state, memtableFlushNotifierCh)
+	db, err := newDB(ctx, options, tableStore, state, memtableFlushNotifierCh)
 	if err != nil {
 		return nil, fmt.Errorf("during db init: %w", err)
 	}
@@ -124,8 +125,8 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 	}
 }
 
-func (db *DB) Get(key []byte) ([]byte, error) {
-	return db.GetWithOptions(key, DefaultReadOptions())
+func (db *DB) Get(ctx context.Context, key []byte) ([]byte, error) {
+	return db.GetWithOptions(ctx, key, DefaultReadOptions())
 }
 
 // GetWithOptions -
@@ -134,7 +135,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 //
 // if readlevel is Committed we start searching key in the following order
 // mutable memtable, immutable memtables, SSTs in L0, compacted Sorted runs
-func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
+func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOptions) ([]byte, error) {
 	snapshot := db.state.snapshot()
 
 	if options.ReadLevel == Uncommitted {
@@ -177,7 +178,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 				return nil, err
 			}
 
-			kv, ok := iter.NextEntry()
+			kv, ok := iter.NextEntry(ctx)
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.Value)
 			}
@@ -192,7 +193,7 @@ func (db *DB) GetWithOptions(key []byte, options ReadOptions) ([]byte, error) {
 				return nil, err
 			}
 
-			kv, ok := iter.NextEntry()
+			kv, ok := iter.NextEntry(ctx)
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.Value)
 			}
@@ -243,7 +244,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 
 // this is to recover from a crash. we read the WALs from object store (considered to be Uncommmitted)
 // and write the kv pairs to memtable
-func (db *DB) replayWAL() error {
+func (db *DB) replayWAL(ctx context.Context) error {
 	walIDLastCompacted := db.state.LastCompactedWALID()
 	walSSTList, err := db.tableStore.getWalSSTList(walIDLastCompacted)
 	if err != nil {
@@ -267,7 +268,7 @@ func (db *DB) replayWAL() error {
 
 		walReplayBuf := make([]types.RowEntry, 0)
 		for {
-			kvDel, ok := iter.NextEntry()
+			kvDel, ok := iter.NextEntry(ctx)
 			if !ok {
 				break
 			}
@@ -341,6 +342,7 @@ func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {
 }
 
 func newDB(
+	ctx context.Context,
 	options DBOptions,
 	tableStore *TableStore,
 	coreDBState *CoreDBState,
@@ -356,7 +358,7 @@ func newDB(
 		walFlushTaskWG:          &sync.WaitGroup{},
 		memtableFlushTaskWG:     &sync.WaitGroup{},
 	}
-	err := db.replayWAL()
+	err := db.replayWAL(ctx)
 	if err != nil {
 		return nil, err
 	}
