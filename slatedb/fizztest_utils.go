@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"context"
 	"fmt"
 	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -82,7 +83,7 @@ func KeyValSstToMap(db *DB, sst *sstable.Handle) (map[string]interface{}, error)
 	}
 	m := make(map[string]interface{})
 	for {
-		entry, ok := iter.NextEntry()
+		entry, ok := iter.NextEntry(context.Background())
 		if !ok {
 			break
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ func (r *SlateDbRoleAdapter) Get(choices []Choice) (interface{}, error) {
 	if level == "Uncommitted" {
 		readOptions = slatedb.ReadOptions{ReadLevel: slatedb.Uncommitted}
 	}
-	val, err := r.db.GetWithOptions(key, readOptions)
+	val, err := r.db.GetWithOptions(context.Background(), key, readOptions)
 	if err != nil {
 		if errors.Is(err, common.ErrKeyNotFound) {
 			return "notfound", nil
@@ -170,7 +171,7 @@ func (m *Model) Init() {
 	dbOptions.FlushInterval = 10 * time.Minute
 	dbOptions.CompactorOptions.PollInterval = 10 * time.Minute
 
-	db, _ := slatedb.OpenWithOptions("", bucket, dbOptions)
+	db, _ := slatedb.OpenWithOptions(context.Background(), "", bucket, dbOptions)
 
 	writer := &SlateDbRoleAdapter{db}
 	store := &ObjectStoreRoleAdapter{bucket: bucket, db: db}
