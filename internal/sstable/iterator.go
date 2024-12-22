@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -54,9 +55,9 @@ func NewIteratorAtKey(handle *Handle, key []byte, store TableStore) (*Iterator, 
 	return iter, nil
 }
 
-func (iter *Iterator) Next() (types.KeyValue, bool) {
+func (iter *Iterator) Next(ctx context.Context) (types.KeyValue, bool) {
 	for {
-		keyVal, ok := iter.NextEntry()
+		keyVal, ok := iter.NextEntry(ctx)
 		if !ok {
 			return types.KeyValue{}, false
 		}
@@ -72,7 +73,7 @@ func (iter *Iterator) Next() (types.KeyValue, bool) {
 	}
 }
 
-func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
+func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.blockIter == nil {
 			it, err := iter.nextBlockIter()
@@ -89,7 +90,7 @@ func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
 			iter.blockIter = it
 		}
 
-		kv, ok := iter.blockIter.NextEntry()
+		kv, ok := iter.blockIter.NextEntry(ctx)
 		if !ok {
 			if warn := iter.blockIter.Warnings(); warn != nil {
 				iter.warn.Merge(warn)

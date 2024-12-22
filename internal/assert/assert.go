@@ -1,6 +1,7 @@
 package assert
 
 import (
+	"context"
 	"fmt"
 	"github.com/slatedb/slatedb-go/internal/iter"
 	assert2 "github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ func True(condition bool, errMsg string, arg ...any) {
 // NextEntry is a test helper to assert the next call to NextEntry() returns the required value
 func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 	t.Helper()
-	entry, ok := iter.NextEntry()
+	entry, ok := iter.NextEntry(context.Background())
 	assert2.True(t, ok)
 	assert2.Equal(t, key, entry.Key)
 	if value == nil {
@@ -31,7 +32,7 @@ func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 // Next is a test helper to assert the next call to Next() returns the required value
 func Next(t *testing.T, iter iter.KVIterator, key []byte, value []byte) bool {
 	t.Helper()
-	kv, _ := iter.Next()
+	kv, _ := iter.Next(context.Background())
 	//assert.True(t, ok)
 	if !assert2.Equal(t, key, kv.Key) {
 		return false

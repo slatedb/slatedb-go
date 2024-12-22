@@ -1,16 +1,17 @@
 package iter
 
 import (
+	"context"
 	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 type KVIterator interface {
 	// Next Returns the next non-deleted key-value pair in the iterator.
-	Next() (types.KeyValue, bool)
+	Next(context.Context) (types.KeyValue, bool)
 
 	// NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 	// a tombstone of a deleted key-value pair.
-	NextEntry() (types.RowEntry, bool)
+	NextEntry(context.Context) (types.RowEntry, bool)
 
 	// Warnings returns any warnings issued during iteration which should be logged by the caller
 	Warnings() *types.ErrWarn
@@ -30,7 +31,7 @@ func NewEntryIterator(entries ...types.RowEntry) *EntryIterator {
 	}
 }
 
-func (k *EntryIterator) Next() (types.KeyValue, bool) {
+func (k *EntryIterator) Next(ctx context.Context) (types.KeyValue, bool) {
 	for k.index < len(k.entries) {
 		entry := k.entries[k.index]
 		k.index++
@@ -41,7 +42,7 @@ func (k *EntryIterator) Next() (types.KeyValue, bool) {
 	return types.KeyValue{}, false
 }
 
-func (k *EntryIterator) NextEntry() (types.RowEntry, bool) {
+func (k *EntryIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	if k.index < len(k.entries) {
 		entry := k.entries[k.index]
 		k.index++

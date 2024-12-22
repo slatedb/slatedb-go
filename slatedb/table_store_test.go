@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/oklog/ulid/v2"
@@ -75,12 +76,12 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 
 	iterator := nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("aaaaaaaa"), []byte("11111111"))
-	_, ok := iterator.NextEntry()
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	iterator = nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("bbbbbbbb"), []byte("22222222"))
-	_, ok = iterator.NextEntry()
+	_, ok = iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	assert.True(t, builder.NextBlock().IsAbsent())
@@ -88,7 +89,7 @@ func TestBuilderShouldMakeBlocksAvailable(t *testing.T) {
 
 	iterator = nextBlockToIter(t, builder, conf.Compression)
 	assert2.NextEntry(t, iterator, []byte("cccccccc"), []byte("33333333"))
-	_, ok = iterator.NextEntry()
+	_, ok = iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	assert.True(t, builder.NextBlock().IsAbsent())
@@ -130,7 +131,7 @@ func TestBuilderShouldReturnUnconsumedBlocks(t *testing.T) {
 		assert.NoError(t, err)
 		iterator := block.NewIterator(blk)
 		assert2.NextEntry(t, iterator, kv.Key, kv.Value)
-		_, ok := iterator.NextEntry()
+		_, ok := iterator.NextEntry(context.Background())
 		assert.False(t, ok)
 	}
 }
@@ -277,12 +278,12 @@ func TestReadBlocks(t *testing.T) {
 	iterator := block.NewIterator(&blocks[0])
 	assert2.NextEntry(t, iterator, []byte("aa"), []byte("11"))
 	assert2.NextEntry(t, iterator, []byte("bb"), []byte("22"))
-	_, ok := iterator.NextEntry()
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[1])
 	assert2.NextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	_, ok = iterator.NextEntry()
+	_, ok = iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 
@@ -324,17 +325,17 @@ func TestReadAllBlocks(t *testing.T) {
 	iterator := block.NewIterator(&blocks[0])
 	assert2.NextEntry(t, iterator, []byte("aa"), []byte("11"))
 	assert2.NextEntry(t, iterator, []byte("bb"), []byte("22"))
-	_, ok := iterator.NextEntry()
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[1])
 	assert2.NextEntry(t, iterator, []byte("cccccccccccccccccccc"), []byte("33333333333333333333"))
-	_, ok = iterator.NextEntry()
+	_, ok = iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 
 	iterator = block.NewIterator(&blocks[2])
 	assert2.NextEntry(t, iterator, []byte("dddddddddddddddddddd"), []byte("44444444444444444444"))
-	_, ok = iterator.NextEntry()
+	_, ok = iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 
@@ -369,7 +370,7 @@ func TestOneBlockSSTIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 	assert2.Next(t, iterator, []byte("key4"), []byte("value4"))
 
-	_, ok := iterator.Next()
+	_, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 }
 
@@ -406,7 +407,7 @@ func TestManyBlockSSTIter(t *testing.T) {
 		}
 	}
 
-	_, ok := iterator.Next()
+	_, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 }
 
@@ -440,7 +441,7 @@ func TestIterFromKey(t *testing.T) {
 				t.FailNow()
 			}
 		}
-		_, ok := kvIter.Next()
+		_, ok := kvIter.Next(context.Background())
 		assert.False(t, ok)
 	}
 }
@@ -468,7 +469,7 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	for i := 0; i < nKeys; i++ {
 		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	_, ok := kvIter.Next()
+	_, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 }
 
@@ -489,7 +490,7 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	kvIter, err := sstable.NewIteratorAtKey(sst, []byte("zzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 
-	_, ok := kvIter.Next()
+	_, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 }
 
@@ -559,6 +560,6 @@ func TestSSTWriter(t *testing.T) {
 	assert2.NextEntry(t, iterator, []byte("bbbbbbbbbbbbbbbb"), []byte("2222222222222222"))
 	assert2.NextEntry(t, iterator, []byte("cccccccccccccccc"), nil)
 	assert2.NextEntry(t, iterator, []byte("dddddddddddddddd"), []byte("4444444444444444"))
-	_, ok := iterator.NextEntry()
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 }

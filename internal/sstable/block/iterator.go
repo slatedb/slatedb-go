@@ -2,6 +2,7 @@ package block
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -79,9 +80,9 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 	}, nil
 }
 
-func (iter *Iterator) Next() (types.KeyValue, bool) {
+func (iter *Iterator) Next(ctx context.Context) (types.KeyValue, bool) {
 	for {
-		entry, ok := iter.NextEntry()
+		entry, ok := iter.NextEntry(ctx)
 		if !ok {
 			return types.KeyValue{}, false
 		}
@@ -95,7 +96,7 @@ func (iter *Iterator) Next() (types.KeyValue, bool) {
 	}
 }
 
-func (iter *Iterator) NextEntry() (types.RowEntry, bool) {
+func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	if iter.offsetIndex >= uint64(len(iter.block.Offsets)) {
 		return types.RowEntry{}, false
 	}

@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"context"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -53,19 +54,19 @@ func TestCompactorCompactsL0(t *testing.T) {
 	iter, err := sstable.NewIterator(&sst, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
-		kv, ok := iter.Next()
+		kv, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('a'+i), 16), kv.Key)
 		assert.Equal(t, repeatedChar(rune('b'+i), 48), kv.Value)
 	}
 	for i := 0; i < 4; i++ {
-		kv, ok := iter.Next()
+		kv, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('j'+i), 16), kv.Key)
 		assert.Equal(t, repeatedChar(rune('k'+i), 48), kv.Value)
 	}
 
-	next, ok := iter.Next()
+	next, ok := iter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.KeyValue{}, next)
 }
@@ -92,7 +93,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 		l0IDsToCompact = append(l0IDsToCompact, newSourceIDSST(id))
 	}
 
-	db, err = OpenWithOptions(testPath, bucket, options)
+	db, err = OpenWithOptions(context.Background(), testPath, bucket, options)
 	assert.NoError(t, err)
 	db.Put(repeatedChar('j', 32), repeatedChar('k', 96))
 	err = db.Close()
@@ -127,7 +128,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStore, *DB) {
 	bucket := objstore.NewInMemBucket()
-	db, err := OpenWithOptions(testPath, bucket, options)
+	db, err := OpenWithOptions(context.Background(), testPath, bucket, options)
 	assert2.True(err == nil, "Failed to open test database")
 	conf := sstable.DefaultConfig()
 	conf.BlockSize = 32
