@@ -1,6 +1,7 @@
 package slatedb
 
 import (
+	"context"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
@@ -60,7 +61,7 @@ func TestOneSstSRIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
-	kv, ok := iterator.Next()
+	kv, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.KeyValue{}, kv)
 }
@@ -96,7 +97,7 @@ func TestManySstSRIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
-	kv, ok := iterator.Next()
+	kv, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.KeyValue{}, kv)
 }
@@ -130,7 +131,7 @@ func TestSRIterFromKey(t *testing.T) {
 		for j := 0; j < 30-i; j++ {
 			assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
-		next, ok := kvIter.Next()
+		next, ok := kvIter.Next(context.Background())
 		assert.False(t, ok)
 		assert.Equal(t, types.KeyValue{}, next)
 	}
@@ -159,7 +160,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	for j := 0; j < 30; j++ {
 		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	next, ok := kvIter.Next()
+	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.KeyValue{}, next)
 }
@@ -181,7 +182,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 
 	kvIter, err := newSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
-	next, ok := kvIter.Next()
+	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.KeyValue{}, next)
 }

@@ -1,9 +1,11 @@
 package slatedb
 
 import (
+	"context"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"testing"
 	"time"
@@ -12,7 +14,7 @@ import (
 var testPath = "/test/db"
 
 func TestShouldRegisterCompactionAsSubmitted(t *testing.T) {
-	_, _, state := buildTestState()
+	_, _, state := buildTestState(t)
 	err := state.submitCompaction(buildL0Compaction(state.dbState.l0, 0))
 	assert.NoError(t, err)
 
@@ -21,7 +23,7 @@ func TestShouldRegisterCompactionAsSubmitted(t *testing.T) {
 }
 
 func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
-	_, _, state := buildTestState()
+	_, _, state := buildTestState(t)
 	beforeCompaction := state.dbState.clone()
 	compaction := buildL0Compaction(beforeCompaction.l0, 0)
 	err := state.submitCompaction(compaction)
@@ -46,7 +48,7 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 }
 
 func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
-	_, _, state := buildTestState()
+	_, _, state := buildTestState(t)
 	beforeCompaction := state.dbState.clone()
 	compaction := buildL0Compaction(beforeCompaction.l0, 0)
 	err := state.submitCompaction(compaction)
@@ -62,10 +64,10 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
-	bucket, sm, state := buildTestState()
+	bucket, sm, state := buildTestState(t)
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
-	db, err := OpenWithOptions(testPath, bucket, option)
+	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -82,7 +84,7 @@ func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectly(t *testing.T) {
-	bucket, sm, state := buildTestState()
+	bucket, sm, state := buildTestState(t)
 	originalL0s := state.dbState.clone().l0
 	compactedID, ok := originalL0s[len(originalL0s)-1].Id.CompactedID().Get()
 	assert.True(t, ok)
@@ -96,7 +98,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
-	db, err := OpenWithOptions(testPath, bucket, option)
+	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -129,7 +131,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
-	bucket, sm, state := buildTestState()
+	bucket, sm, state := buildTestState(t)
 	originalL0s := state.dbState.clone().l0
 
 	sourceIDs := make([]SourceID, 0)
@@ -149,7 +151,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
-	db, err := OpenWithOptions(testPath, bucket, option)
+	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
 	defer db.Close()
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
@@ -188,11 +190,13 @@ func buildL0Compaction(sstList []sstable.Handle, destination uint32) Compaction 
 	return newCompaction(sources, destination)
 }
 
-func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
+func buildTestState(t *testing.T) (objstore.Bucket, StoredManifest, *CompactorState) {
+	t.Helper()
+
 	bucket := objstore.NewInMemBucket()
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
-	db, err := OpenWithOptions(testPath, bucket, option)
+	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert2.True(err == nil, "Could not open db")
 	l0Count := 5
 	for i := 0; i < l0Count; i++ {
@@ -203,8 +207,11 @@ func buildTestState() (objstore.Bucket, StoredManifest, *CompactorState) {
 
 	manifestStore := newManifestStore(testPath, bucket)
 	sm, err := loadStoredManifest(manifestStore)
-	assert2.True(err == nil, "Could not load stored manifest")
-	assert2.True(sm.IsPresent(), "Could not find stored manifest")
+	require.NoError(t, err)
+	require.NotNil(t, sm)
+
+	assert.True(t, err == nil, "Could not load stored manifest")
+	assert.True(t, sm.IsPresent(), "Could not find stored manifest")
 	storedManifest, _ := sm.Get()
 	state := newCompactorState(storedManifest.dbState(), nil)
 	return bucket, storedManifest, state

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"container/heap"
+	"context"
 	"github.com/slatedb/slatedb-go/internal/types"
 )
 
@@ -25,7 +26,7 @@ type MergeSort struct {
 // Given an iterator in the list at index 0 which has key 'a'
 // and an iterator in the list at index 1 which also has key 'a'
 // the key value from the iterator at index 0 will be used.
-func NewMergeSort(iterators ...KVIterator) *MergeSort {
+func NewMergeSort(ctx context.Context, iterators ...KVIterator) *MergeSort {
 	ms := &MergeSort{
 		iterators: iterators,
 		heap:      make(minHeap, 0, len(iterators)),
@@ -33,7 +34,7 @@ func NewMergeSort(iterators ...KVIterator) *MergeSort {
 
 	// Initialize the heap with the first element from each iterator
 	for i, iter := range iterators {
-		if kv, ok := iter.NextEntry(); ok {
+		if kv, ok := iter.NextEntry(ctx); ok {
 			heap.Push(&ms.heap, heapItem{kv: kv, index: i})
 		}
 
@@ -46,9 +47,9 @@ func NewMergeSort(iterators ...KVIterator) *MergeSort {
 	return ms
 }
 
-func (m *MergeSort) Next() (types.KeyValue, bool) {
+func (m *MergeSort) Next(ctx context.Context) (types.KeyValue, bool) {
 	for {
-		entry, ok := m.NextEntry()
+		entry, ok := m.NextEntry(ctx)
 		if !ok {
 			return types.KeyValue{}, false
 		}
@@ -60,13 +61,13 @@ func (m *MergeSort) Next() (types.KeyValue, bool) {
 
 // NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 // a tombstone of a deleted key-value pair.
-func (m *MergeSort) NextEntry() (types.RowEntry, bool) {
+func (m *MergeSort) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for m.heap.Len() > 0 {
 		item := heap.Pop(&m.heap).(heapItem)
 		result := item.kv
 
 		// Push the next item from the same iterator
-		if nextKV, ok := m.iterators[item.index].NextEntry(); ok {
+		if nextKV, ok := m.iterators[item.index].NextEntry(ctx); ok {
 			heap.Push(&m.heap, heapItem{kv: nextKV, index: item.index})
 		} else {
 			m.warn.Merge(m.iterators[item.index].Warnings())

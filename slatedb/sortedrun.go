@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"bytes"
+	"context"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -105,9 +106,9 @@ func newSortedRunIter(sstList []sstable.Handle, store *TableStore, fromKey mo.Op
 	}, nil
 }
 
-func (iter *SortedRunIterator) Next() (types.KeyValue, bool) {
+func (iter *SortedRunIterator) Next(ctx context.Context) (types.KeyValue, bool) {
 	for {
-		keyVal, ok := iter.NextEntry()
+		keyVal, ok := iter.NextEntry(ctx)
 		if !ok {
 			return types.KeyValue{}, false
 		}
@@ -122,14 +123,14 @@ func (iter *SortedRunIterator) Next() (types.KeyValue, bool) {
 	}
 }
 
-func (iter *SortedRunIterator) NextEntry() (types.RowEntry, bool) {
+func (iter *SortedRunIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
 			return types.RowEntry{}, false
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
-		kv, ok := kvIter.NextEntry()
+		kv, ok := kvIter.NextEntry(ctx)
 		if ok {
 			return kv, true
 		} else {
