@@ -7,6 +7,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/stretchr/testify/require"
 	"math"
 	"strconv"
@@ -111,7 +112,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	storedManifest, _ := stored.Get()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 10
-	tableStore := NewTableStore(bucket, conf, dbPath)
+	tableStore := store.NewTableStore(bucket, conf, dbPath)
 
 	lastCompacted := uint64(0)
 	for i := 0; i < 3; i++ {

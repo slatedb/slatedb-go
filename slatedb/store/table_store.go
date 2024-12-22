@@ -1,4 +1,4 @@
-package slatedb
+package store
 
 import (
 	"bytes"
@@ -50,7 +50,7 @@ func NewTableStore(bucket objstore.Bucket, sstConfig sstable.Config, rootPath st
 }
 
 // Get list of WALs from object store that are not compacted (walID greater than walIDLastCompacted)
-func (ts *TableStore) getWalSSTList(walIDLastCompacted uint64) ([]uint64, error) {
+func (ts *TableStore) GetWalSSTList(walIDLastCompacted uint64) ([]uint64, error) {
 	walList := make([]uint64, 0)
 	walPath := path.Join(ts.rootPath, ts.walPath)
 

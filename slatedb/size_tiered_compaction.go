@@ -20,7 +20,7 @@ func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorS
 
 		nextSortedRunID := uint32(0)
 		if len(dbState.compacted) > 0 {
-			nextSortedRunID = dbState.compacted[0].id + 1
+			nextSortedRunID = dbState.compacted[0].ID + 1
 		}
 
 		compactions = append(compactions, newCompaction(sources, nextSortedRunID))

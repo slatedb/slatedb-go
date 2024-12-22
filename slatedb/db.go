@@ -9,6 +9,8 @@ import (
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/levels"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
 	"math"
 	"sync"
@@ -21,7 +23,7 @@ const BlockSize = 4096
 
 type DB struct {
 	manifest   *FenceableManifest
-	tableStore *TableStore
+	tableStore *store.TableStore
 	compactor  *Compactor
 	opts       DBOptions
 	state      *DBState
@@ -52,7 +54,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	conf.Compression = options.CompressionCodec
 	set.Default(&options.Log, slog.Default())
 
-	tableStore := NewTableStore(bucket, conf, path)
+	tableStore := store.NewTableStore(bucket, conf, path)
 	manifestStore := newManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
 
@@ -188,7 +190,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.core.compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter, err := newSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
+			iter, err := levels.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -228,8 +230,8 @@ func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
 	return true
 }
 
-func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
-	sstOption := sr.sstWithKey(key)
+func (db *DB) srMayIncludeKey(sr levels.SortedRun, key []byte) bool {
+	sstOption := sr.SstWithKey(key)
 	if sstOption.IsAbsent() {
 		return false
 	}
@@ -246,7 +248,7 @@ func (db *DB) srMayIncludeKey(sr SortedRun, key []byte) bool {
 // and write the kv pairs to memtable
 func (db *DB) replayWAL(ctx context.Context) error {
 	walIDLastCompacted := db.state.LastCompactedWALID()
-	walSSTList, err := db.tableStore.getWalSSTList(walIDLastCompacted)
+	walSSTList, err := db.tableStore.GetWalSSTList(walIDLastCompacted)
 	if err != nil {
 		return err
 	}
@@ -344,7 +346,7 @@ func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {
 func newDB(
 	ctx context.Context,
 	options DBOptions,
-	tableStore *TableStore,
+	tableStore *store.TableStore,
 	coreDBState *CoreDBState,
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg,
 ) (*DB, error) {

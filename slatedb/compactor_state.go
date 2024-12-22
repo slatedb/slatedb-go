@@ -4,6 +4,7 @@ import (
 	"github.com/kapetan-io/tackle/set"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/levels"
 	"log/slog"
 	"math"
 	"strconv"
@@ -111,7 +112,7 @@ func (c *CompactorState) submitCompaction(compaction Compaction) error {
 	}
 
 	for _, sr := range c.dbState.compacted {
-		if sr.id == compaction.destination {
+		if sr.ID == compaction.destination {
 			if !c.oneOfTheSourceSRMatchesDestination(compaction) {
 				// the compaction overwrites an existing sr but doesn't include the sr
 				return common.ErrInvalidCompaction
@@ -162,8 +163,8 @@ func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 
 // update dbState by removing L0 SSTs and compacted SortedRuns that are present
 // in Compaction.sources
-func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
-	compaction, ok := c.compactions[outputSR.id]
+func (c *CompactorState) finishCompaction(outputSR *levels.SortedRun) {
+	compaction, ok := c.compactions[outputSR.ID]
 	if !ok {
 		return
 	}
@@ -193,14 +194,14 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 		}
 	}
 
-	newCompacted := make([]SortedRun, 0)
+	newCompacted := make([]levels.SortedRun, 0)
 	inserted := false
 	for _, sr := range dbState.compacted {
-		if !inserted && outputSR.id >= sr.id {
+		if !inserted && outputSR.ID >= sr.ID {
 			newCompacted = append(newCompacted, *outputSR)
 			inserted = true
 		}
-		_, ok := compactionSRs[sr.id]
+		_, ok := compactionSRs[sr.ID]
 		if !ok {
 			newCompacted = append(newCompacted, sr)
 		}
@@ -221,14 +222,14 @@ func (c *CompactorState) finishCompaction(outputSR *SortedRun) {
 	dbState.l0 = newL0
 	dbState.compacted = newCompacted
 	c.dbState = dbState
-	delete(c.compactions, outputSR.id)
+	delete(c.compactions, outputSR.ID)
 }
 
 // sortedRun list should have IDs in decreasing order
-func (c *CompactorState) assertCompactedSRsInIDOrder(compacted []SortedRun) {
+func (c *CompactorState) assertCompactedSRsInIDOrder(compacted []levels.SortedRun) {
 	lastSortedRunID := uint32(math.MaxUint32)
 	for _, sr := range compacted {
-		assert.True(sr.id < lastSortedRunID, "compacted sortedRuns not in decreasing order")
-		lastSortedRunID = sr.id
+		assert.True(sr.ID < lastSortedRunID, "compacted sortedRuns not in decreasing order")
+		lastSortedRunID = sr.ID
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
 	"math"
 	"slices"
@@ -47,7 +48,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 	assert.True(t, state.l0LastCompacted.IsPresent())
 	assert.Equal(t, 1, len(state.compacted))
 
-	compactedSSTList := state.compacted[0].sstList
+	compactedSSTList := state.compacted[0].SSTList
 	assert.Equal(t, 1, len(compactedSSTList))
 
 	sst := compactedSSTList[0]
@@ -117,7 +118,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	l0ID, ok := dbState.l0[0].Id.CompactedID().Get()
 	assert.True(t, ok)
 	compactedSSTIDs := make([]ulid.ULID, 0)
-	for _, sst := range dbState.compacted[0].sstList {
+	for _, sst := range dbState.compacted[0].SSTList {
 		id, ok := sst.Id.CompactedID().Get()
 		assert.True(t, ok)
 		compactedSSTIDs = append(compactedSSTIDs, id)
@@ -126,7 +127,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	assert.Equal(t, l0IDsToCompact[0].sstID(), dbState.l0LastCompacted)
 }
 
-func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStore, *DB) {
+func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *store.TableStore, *DB) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, options)
 	assert2.True(err == nil, "Failed to open test database")
@@ -135,7 +136,7 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *TableStor
 	conf.MinFilterKeys = 10
 	conf.Compression = options.CompressionCodec
 	manifestStore := newManifestStore(testPath, bucket)
-	tableStore := NewTableStore(bucket, conf, testPath)
+	tableStore := store.NewTableStore(bucket, conf, testPath)
 	return bucket, manifestStore, tableStore, db
 }
 
