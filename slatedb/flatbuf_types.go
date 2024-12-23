@@ -11,6 +11,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/levels"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
 // ------------------------------------------------
@@ -33,22 +34,22 @@ func (f FlatBufferManifestCodec) decode(data []byte) (*Manifest, error) {
 }
 
 func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manifest {
-	core := &CoreDBState{
-		l0:        f.parseFlatBufSSTList(manifest.L0),
-		compacted: f.parseFlatBufSortedRuns(manifest.Compacted),
+	core := &state.CoreStateSnapshot{
+		L0:        f.parseFlatBufSSTList(manifest.L0),
+		Compacted: f.parseFlatBufSortedRuns(manifest.Compacted),
 	}
-	core.nextWalSstID.Store(manifest.WalIdLastSeen + 1)
-	core.lastCompactedWalSSTID.Store(manifest.WalIdLastCompacted)
+	core.NextWalSstID.Store(manifest.WalIdLastSeen + 1)
+	core.LastCompactedWalSSTID.Store(manifest.WalIdLastCompacted)
 
 	l0LastCompacted := f.parseFlatBufSSTId(manifest.L0LastCompacted)
 	if l0LastCompacted == ulid.Zero {
-		core.l0LastCompacted = mo.None[ulid.ULID]()
+		core.L0LastCompacted = mo.None[ulid.ULID]()
 	} else {
-		core.l0LastCompacted = mo.Some(l0LastCompacted)
+		core.L0LastCompacted = mo.Some(l0LastCompacted)
 	}
 
 	m := &Manifest{}
-	m.core = core
+	m.core = core.ToCoreState()
 	m.writerEpoch.Store(manifest.WriterEpoch)
 	m.compactorEpoch.Store(manifest.CompactorEpoch)
 	return m
@@ -115,21 +116,21 @@ func NewDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 }
 
 func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
-	core := manifest.core
-	l0 := fb.sstListToFlatBuf(core.l0)
+	core := manifest.core.Snapshot()
+	l0 := fb.sstListToFlatBuf(core.L0)
 	var l0LastCompacted *flatbuf.CompactedSstIdT
-	if core.l0LastCompacted.IsPresent() {
-		id, _ := core.l0LastCompacted.Get()
+	if core.L0LastCompacted.IsPresent() {
+		id, _ := core.L0LastCompacted.Get()
 		l0LastCompacted = fb.compactedSSTID(id)
 	}
-	compacted := fb.sortedRunsToFlatBuf(core.compacted)
+	compacted := fb.sortedRunsToFlatBuf(core.Compacted)
 
 	manifestV1 := flatbuf.ManifestV1T{
 		ManifestId:         0,
 		WriterEpoch:        manifest.writerEpoch.Load(),
 		CompactorEpoch:     manifest.compactorEpoch.Load(),
-		WalIdLastCompacted: core.lastCompactedWalSSTID.Load(),
-		WalIdLastSeen:      core.nextWalSstID.Load() - 1,
+		WalIdLastCompacted: core.LastCompactedWalSSTID.Load(),
+		WalIdLastSeen:      core.NextWalSstID.Load() - 1,
 		L0LastCompacted:    l0LastCompacted,
 		L0:                 l0,
 		Compacted:          compacted,

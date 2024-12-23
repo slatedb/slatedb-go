@@ -1,9 +1,12 @@
 package slatedb
 
-import "sync/atomic"
+import (
+	"github.com/slatedb/slatedb-go/slatedb/state"
+	"sync/atomic"
+)
 
 type Manifest struct {
-	core           *CoreDBState
+	core           *state.CoreDBState
 	writerEpoch    atomic.Uint64
 	compactorEpoch atomic.Uint64
 }

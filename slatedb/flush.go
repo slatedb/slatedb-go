@@ -38,7 +38,7 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 // 1. Convert mutable WAL to Immutable WAL
 // 2. Flush each Immutable WAL to object store and then to memtable
 func (db *DB) FlushWAL() error {
-	db.state.freezeWAL()
+	db.state.FreezeWAL()
 	err := db.flushImmWALs()
 	if err != nil {
 		return err
@@ -53,7 +53,7 @@ func (db *DB) FlushWAL() error {
 // Notify any client(with AwaitDurable set to true) that flush has happened
 func (db *DB) flushImmWALs() error {
 	for {
-		oldestWal := db.state.oldestImmWAL()
+		oldestWal := db.state.OldestImmWAL()
 		if oldestWal.IsAbsent() {
 			break
 		}
@@ -64,7 +64,7 @@ func (db *DB) flushImmWALs() error {
 		if err != nil {
 			return err
 		}
-		db.state.popImmWAL()
+		db.state.PopImmWAL()
 
 		// flush to the memtable before notifying so that data is available for reads
 		db.flushImmWALToMemtable(immWal, db.state.Memtable())
@@ -194,12 +194,12 @@ func (m *MemtableFlusher) loadManifest() error {
 	if err != nil {
 		return err
 	}
-	m.db.state.refreshDBState(currentManifest)
+	m.db.state.RefreshDBState(currentManifest)
 	return nil
 }
 
 func (m *MemtableFlusher) writeManifest() error {
-	core := m.db.state.coreStateClone()
+	core := m.db.state.CoreStateSnapshot()
 	return m.manifest.updateDBState(core)
 }
 
@@ -223,7 +223,7 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 
 func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 	for {
-		immMemtable := m.db.state.oldestImmMemtable()
+		immMemtable := m.db.state.OldestImmMemtable()
 		if immMemtable.IsAbsent() {
 			break
 		}
@@ -234,7 +234,7 @@ func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 			return err
 		}
 
-		m.db.state.moveImmMemtableToL0(immMemtable.MustGet(), sstHandle)
+		m.db.state.MoveImmMemtableToL0(immMemtable.MustGet(), sstHandle)
 		err = m.writeManifestSafely()
 		if err != nil {
 			return err

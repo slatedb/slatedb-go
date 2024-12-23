@@ -185,7 +185,7 @@ func loadState(manifest *FenceableManifest) (*CompactorState, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newCompactorState(dbState.clone(), nil), nil
+	return newCompactorState(dbState.Clone(), nil), nil
 }
 
 func loadCompactionScheduler() CompactionScheduler {
@@ -234,12 +234,12 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	dbState := o.state.dbState
 
 	sstsByID := make(map[ulid.ULID]sstable.Handle)
-	for _, sst := range dbState.l0 {
+	for _, sst := range dbState.L0 {
 		id, ok := sst.Id.CompactedID().Get()
 		assert.True(ok, "expected valid compacted ID")
 		sstsByID[id] = sst
 	}
-	for _, sr := range dbState.compacted {
+	for _, sr := range dbState.Compacted {
 		for _, sst := range sr.SSTList {
 			id, ok := sst.Id.CompactedID().Get()
 			assert.True(ok, "expected valid compacted ID")
@@ -248,7 +248,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	}
 
 	srsByID := make(map[uint32]levels.SortedRun)
-	for _, sr := range dbState.compacted {
+	for _, sr := range dbState.Compacted {
 		srsByID[sr.ID] = sr
 	}
 
@@ -297,7 +297,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 			return err
 		}
 
-		core := o.state.dbState.clone()
+		core := o.state.dbState.Clone()
 		err = o.manifest.updateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
 			o.log.Warn("conflicting manifest version. retry write", "error", err)
