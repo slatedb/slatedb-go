@@ -1,4 +1,4 @@
-package levels
+package compacted
 
 import (
 	"bytes"

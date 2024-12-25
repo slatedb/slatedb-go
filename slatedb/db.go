@@ -9,7 +9,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/levels"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
@@ -191,7 +191,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.Core.Compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter, err := levels.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
+			iter, err := compacted.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -231,7 +231,7 @@ func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
 	return true
 }
 
-func (db *DB) srMayIncludeKey(sr levels.SortedRun, key []byte) bool {
+func (db *DB) srMayIncludeKey(sr compacted.SortedRun, key []byte) bool {
 	sstOption := sr.SstWithKey(key)
 	if sstOption.IsAbsent() {
 		return false

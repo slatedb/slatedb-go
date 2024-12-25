@@ -4,7 +4,7 @@ import (
 	"context"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/levels"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
 
-	sr := levels.SortedRun{
+	sr := compacted.SortedRun{
 		ID:      0,
 		SSTList: beforeCompaction.L0,
 	}
@@ -56,7 +56,7 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
 
-	sr := levels.SortedRun{
+	sr := compacted.SortedRun{
 		ID:      0,
 		SSTList: beforeCompaction.L0,
 	}
@@ -93,7 +93,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	compaction := newCompaction([]SourceID{newSourceIDSST(compactedID)}, 0)
 	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
-	compactorState.finishCompaction(&levels.SortedRun{
+	compactorState.finishCompaction(&compacted.SortedRun{
 		ID:      0,
 		SSTList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
 	})
@@ -145,7 +145,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	compaction := newCompaction(sourceIDs, 0)
 	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
-	compactorState.finishCompaction(&levels.SortedRun{
+	compactorState.finishCompaction(&compacted.SortedRun{
 		ID:      0,
 		SSTList: originalL0s,
 	})
