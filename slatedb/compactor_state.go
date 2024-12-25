@@ -4,7 +4,7 @@ import (
 	"github.com/kapetan-io/tackle/set"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/levels"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"log/slog"
 	"math"
 	"strconv"
@@ -163,7 +163,7 @@ func (c *CompactorState) refreshDBState(writerState *CoreDBState) {
 
 // update dbState by removing L0 SSTs and compacted SortedRuns that are present
 // in Compaction.sources
-func (c *CompactorState) finishCompaction(outputSR *levels.SortedRun) {
+func (c *CompactorState) finishCompaction(outputSR *compacted.SortedRun) {
 	compaction, ok := c.compactions[outputSR.ID]
 	if !ok {
 		return
@@ -194,7 +194,7 @@ func (c *CompactorState) finishCompaction(outputSR *levels.SortedRun) {
 		}
 	}
 
-	newCompacted := make([]levels.SortedRun, 0)
+	newCompacted := make([]compacted.SortedRun, 0)
 	inserted := false
 	for _, sr := range dbState.compacted {
 		if !inserted && outputSR.ID >= sr.ID {
@@ -226,7 +226,7 @@ func (c *CompactorState) finishCompaction(outputSR *levels.SortedRun) {
 }
 
 // sortedRun list should have IDs in decreasing order
-func (c *CompactorState) assertCompactedSRsInIDOrder(compacted []levels.SortedRun) {
+func (c *CompactorState) assertCompactedSRsInIDOrder(compacted []compacted.SortedRun) {
 	lastSortedRunID := uint32(math.MaxUint32)
 	for _, sr := range compacted {
 		assert.True(sr.ID < lastSortedRunID, "compacted sortedRuns not in decreasing order")
