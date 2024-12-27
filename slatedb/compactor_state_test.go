@@ -5,6 +5,7 @@ import (
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -15,57 +16,57 @@ import (
 var testPath = "/test/db"
 
 func TestShouldRegisterCompactionAsSubmitted(t *testing.T) {
-	_, _, state := buildTestState(t)
-	err := state.submitCompaction(buildL0Compaction(state.dbState.l0, 0))
+	_, _, compactorState := buildTestState(t)
+	err := compactorState.submitCompaction(buildL0Compaction(compactorState.dbState.L0, 0))
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(state.compactions))
-	assert.Equal(t, Submitted, state.compactions[0].status)
+	assert.Equal(t, 1, len(compactorState.compactions))
+	assert.Equal(t, Submitted, compactorState.compactions[0].status)
 }
 
 func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
-	_, _, state := buildTestState(t)
-	beforeCompaction := state.dbState.clone()
-	compaction := buildL0Compaction(beforeCompaction.l0, 0)
-	err := state.submitCompaction(compaction)
+	_, _, compactorState := buildTestState(t)
+	beforeCompaction := compactorState.dbState.Clone()
+	compaction := buildL0Compaction(beforeCompaction.L0, 0)
+	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
 
 	sr := compaction2.SortedRun{
 		ID:      0,
-		SSTList: beforeCompaction.l0,
+		SSTList: beforeCompaction.L0,
 	}
-	state.finishCompaction(sr.Clone())
+	compactorState.finishCompaction(sr.Clone())
 
-	compactedID, _ := beforeCompaction.l0[0].Id.CompactedID().Get()
-	l0LastCompacted, _ := state.dbState.l0LastCompacted.Get()
+	compactedID, _ := beforeCompaction.L0[0].Id.CompactedID().Get()
+	l0LastCompacted, _ := compactorState.dbState.L0LastCompacted.Get()
 	assert.Equal(t, compactedID, l0LastCompacted)
-	assert.Equal(t, 0, len(state.dbState.l0))
-	assert.Equal(t, 1, len(state.dbState.compacted))
-	assert.Equal(t, sr.ID, state.dbState.compacted[0].ID)
-	compactedSR := state.dbState.compacted[0]
+	assert.Equal(t, 0, len(compactorState.dbState.L0))
+	assert.Equal(t, 1, len(compactorState.dbState.Compacted))
+	assert.Equal(t, sr.ID, compactorState.dbState.Compacted[0].ID)
+	compactedSR := compactorState.dbState.Compacted[0]
 	for i := 0; i < len(sr.SSTList); i++ {
 		assert.Equal(t, sr.SSTList[i].Id, compactedSR.SSTList[i].Id)
 	}
 }
 
 func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
-	_, _, state := buildTestState(t)
-	beforeCompaction := state.dbState.clone()
-	compaction := buildL0Compaction(beforeCompaction.l0, 0)
-	err := state.submitCompaction(compaction)
+	_, _, compactorState := buildTestState(t)
+	beforeCompaction := compactorState.dbState.Clone()
+	compaction := buildL0Compaction(beforeCompaction.L0, 0)
+	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
 
 	sr := compaction2.SortedRun{
 		ID:      0,
-		SSTList: beforeCompaction.l0,
+		SSTList: beforeCompaction.L0,
 	}
-	state.finishCompaction(sr.Clone())
+	compactorState.finishCompaction(sr.Clone())
 
-	assert.Equal(t, 0, len(state.compactions))
+	assert.Equal(t, 0, len(compactorState.compactions))
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
-	bucket, sm, state := buildTestState(t)
+	bucket, sm, compactorState := buildTestState(t)
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
@@ -74,25 +75,25 @@ func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 
-	writerDBState := waitForManifestWithL0Len(sm, len(state.dbState.l0)+1)
+	writerDBState := waitForManifestWithL0Len(sm, len(compactorState.dbState.L0)+1)
 
-	state.refreshDBState(writerDBState)
+	compactorState.refreshDBState(writerDBState)
 
-	assert.True(t, state.dbState.l0LastCompacted.IsAbsent())
-	for i := 0; i < len(writerDBState.l0); i++ {
-		assert.Equal(t, writerDBState.l0[i].Id.CompactedID(), state.dbState.l0[i].Id.CompactedID())
+	assert.True(t, compactorState.dbState.L0LastCompacted.IsAbsent())
+	for i := 0; i < len(writerDBState.L0); i++ {
+		assert.Equal(t, writerDBState.L0[i].Id.CompactedID(), compactorState.dbState.L0[i].Id.CompactedID())
 	}
 }
 
 func TestShouldRefreshDBStateCorrectly(t *testing.T) {
-	bucket, sm, state := buildTestState(t)
-	originalL0s := state.dbState.clone().l0
+	bucket, sm, compactorState := buildTestState(t)
+	originalL0s := compactorState.dbState.Clone().L0
 	compactedID, ok := originalL0s[len(originalL0s)-1].Id.CompactedID().Get()
 	assert.True(t, ok)
 	compaction := newCompaction([]SourceID{newSourceIDSST(compactedID)}, 0)
-	err := state.submitCompaction(compaction)
+	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(&compaction2.SortedRun{
+	compactorState.finishCompaction(&compaction2.SortedRun{
 		ID:      0,
 		SSTList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
 	})
@@ -105,35 +106,35 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)
-	dbStateBeforeMerge := state.dbState.clone()
+	dbStateBeforeMerge := compactorState.dbState.Clone()
 
-	state.refreshDBState(writerDBState)
+	compactorState.refreshDBState(writerDBState)
 
-	dbState := state.dbState
+	dbState := compactorState.dbState
 	// last sst was removed during compaction
 	expectedMergedL0s := originalL0s[:len(originalL0s)-1]
 	// new sst got added during db.Put() call above
-	expectedMergedL0s = append([]sstable.Handle{writerDBState.l0[0]}, expectedMergedL0s...)
+	expectedMergedL0s = append([]sstable.Handle{writerDBState.L0[0]}, expectedMergedL0s...)
 	for i := 0; i < len(expectedMergedL0s); i++ {
 		expected, _ := expectedMergedL0s[i].Id.CompactedID().Get()
-		actual, _ := dbState.l0[i].Id.CompactedID().Get()
+		actual, _ := dbState.L0[i].Id.CompactedID().Get()
 		assert.Equal(t, expected, actual)
 	}
-	for i := 0; i < len(dbStateBeforeMerge.compacted); i++ {
-		srBefore := dbStateBeforeMerge.compacted[i]
-		srAfter := dbState.compacted[i]
+	for i := 0; i < len(dbStateBeforeMerge.Compacted); i++ {
+		srBefore := dbStateBeforeMerge.Compacted[i]
+		srAfter := dbState.Compacted[i]
 		assert.Equal(t, srBefore.ID, srAfter.ID)
 		for j := 0; j < len(srBefore.SSTList); j++ {
 			assert.Equal(t, srBefore.SSTList[j].Id, srAfter.SSTList[j].Id)
 		}
 	}
-	assert.Equal(t, writerDBState.lastCompactedWalSSTID.Load(), dbState.lastCompactedWalSSTID.Load())
-	assert.Equal(t, writerDBState.nextWalSstID.Load(), dbState.nextWalSstID.Load())
+	assert.Equal(t, writerDBState.LastCompactedWalSSTID.Load(), dbState.LastCompactedWalSSTID.Load())
+	assert.Equal(t, writerDBState.NextWalSstID.Load(), dbState.NextWalSstID.Load())
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
-	bucket, sm, state := buildTestState(t)
-	originalL0s := state.dbState.clone().l0
+	bucket, sm, compactorState := buildTestState(t)
+	originalL0s := compactorState.dbState.Clone().L0
 
 	sourceIDs := make([]SourceID, 0)
 	for _, sst := range originalL0s {
@@ -142,13 +143,13 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 		sourceIDs = append(sourceIDs, newSourceIDSST(id))
 	}
 	compaction := newCompaction(sourceIDs, 0)
-	err := state.submitCompaction(compaction)
+	err := compactorState.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(&compaction2.SortedRun{
+	compactorState.finishCompaction(&compaction2.SortedRun{
 		ID:      0,
 		SSTList: originalL0s,
 	})
-	assert.Equal(t, 0, len(state.dbState.l0))
+	assert.Equal(t, 0, len(compactorState.dbState.L0))
 
 	option := DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
@@ -159,22 +160,22 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)
 
-	state.refreshDBState(writerDBState)
+	compactorState.refreshDBState(writerDBState)
 
-	dbState := state.dbState
-	assert.Equal(t, 1, len(dbState.l0))
-	expectedID, _ := writerDBState.l0[0].Id.CompactedID().Get()
-	actualID, _ := dbState.l0[0].Id.CompactedID().Get()
+	dbState := compactorState.dbState
+	assert.Equal(t, 1, len(dbState.L0))
+	expectedID, _ := writerDBState.L0[0].Id.CompactedID().Get()
+	actualID, _ := dbState.L0[0].Id.CompactedID().Get()
 	assert.Equal(t, expectedID, actualID)
 }
 
-func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *CoreDBState {
+func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *state.CoreStateSnapshot {
 	startTime := time.Now()
 	for time.Since(startTime) < time.Second*10 {
 		dbState, err := storedManifest.refresh()
 		assert2.True(err == nil, "")
-		if len(dbState.l0) == size {
-			return dbState.clone()
+		if len(dbState.L0) == size {
+			return dbState.Clone()
 		}
 		time.Sleep(time.Millisecond * 50)
 	}
@@ -214,6 +215,6 @@ func buildTestState(t *testing.T) (objstore.Bucket, StoredManifest, *CompactorSt
 	assert.True(t, err == nil, "Could not load stored manifest")
 	assert.True(t, sm.IsPresent(), "Could not find stored manifest")
 	storedManifest, _ := sm.Get()
-	state := newCompactorState(storedManifest.dbState(), nil)
-	return bucket, storedManifest, state
+	compactorState := newCompactorState(storedManifest.dbState(), nil)
+	return bucket, storedManifest, compactorState
 }

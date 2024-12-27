@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/thanos-io/objstore"
 	"path"
 	"slices"
@@ -69,7 +70,7 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 	return fm, nil
 }
 
-func (f *FenceableManifest) dbState() (*CoreDBState, error) {
+func (f *FenceableManifest) dbState() (*state.CoreStateSnapshot, error) {
 	err := f.checkEpoch()
 	if err != nil {
 		return nil, err
@@ -77,7 +78,7 @@ func (f *FenceableManifest) dbState() (*CoreDBState, error) {
 	return f.storedManifest.dbState(), nil
 }
 
-func (f *FenceableManifest) updateDBState(dbState *CoreDBState) error {
+func (f *FenceableManifest) updateDBState(dbState *state.CoreStateSnapshot) error {
 	err := f.checkEpoch()
 	if err != nil {
 		return err
@@ -85,7 +86,7 @@ func (f *FenceableManifest) updateDBState(dbState *CoreDBState) error {
 	return f.storedManifest.updateDBState(dbState)
 }
 
-func (f *FenceableManifest) refresh() (*CoreDBState, error) {
+func (f *FenceableManifest) refresh() (*state.CoreStateSnapshot, error) {
 	_, err := f.storedManifest.refresh()
 	if err != nil {
 		return nil, err
@@ -128,7 +129,7 @@ type StoredManifest struct {
 	manifestStore *ManifestStore
 }
 
-func newStoredManifest(store *ManifestStore, core *CoreDBState) (*StoredManifest, error) {
+func newStoredManifest(store *ManifestStore, core *state.CoreDBState) (*StoredManifest, error) {
 	manifest := &Manifest{
 		core: core,
 	}
@@ -161,14 +162,14 @@ func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error)
 	}), nil
 }
 
-func (s *StoredManifest) dbState() *CoreDBState {
-	return s.manifest.core
+func (s *StoredManifest) dbState() *state.CoreStateSnapshot {
+	return s.manifest.core.Snapshot()
 }
 
 // write Manifest with updated DB state to object store and update StoredManifest with the new manifest
-func (s *StoredManifest) updateDBState(core *CoreDBState) error {
+func (s *StoredManifest) updateDBState(coreSnapshot *state.CoreStateSnapshot) error {
 	manifest := &Manifest{
-		core: core,
+		core: coreSnapshot.ToCoreState(),
 	}
 	manifest.writerEpoch.Store(s.manifest.writerEpoch.Load())
 	manifest.compactorEpoch.Store(s.manifest.compactorEpoch.Load())
@@ -188,7 +189,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 }
 
 // read latest manifest from object store and update StoredManifest with the latest manifest.
-func (s *StoredManifest) refresh() (*CoreDBState, error) {
+func (s *StoredManifest) refresh() (*state.CoreStateSnapshot, error) {
 	stored, err := s.manifestStore.readLatestManifest()
 	if err != nil {
 		return nil, err
@@ -200,7 +201,7 @@ func (s *StoredManifest) refresh() (*CoreDBState, error) {
 	storedInfo, _ := stored.Get()
 	s.manifest = storedInfo.manifest
 	s.id = storedInfo.id
-	return s.manifest.core, nil
+	return s.dbState(), nil
 }
 
 // ------------------------------------------------

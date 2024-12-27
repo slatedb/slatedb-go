@@ -10,6 +10,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
 	"math"
@@ -26,7 +27,7 @@ type DB struct {
 	tableStore *store.TableStore
 	compactor  *Compactor
 	opts       DBOptions
-	state      *DBState
+	state      *state.DBState
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
 	// and the goroutine running the walFlush task reads this channel and shuts down
@@ -63,12 +64,12 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	}
 
 	memtableFlushNotifierCh := make(chan MemtableFlushThreadMsg, math.MaxUint8)
-	state, err := manifest.dbState()
+	dbState, err := manifest.dbState()
 	if err != nil {
 		return nil, err
 	}
 
-	db, err := newDB(ctx, options, tableStore, state, memtableFlushNotifierCh)
+	db, err := newDB(ctx, options, tableStore, dbState.ToCoreState(), memtableFlushNotifierCh)
 	if err != nil {
 		return nil, fmt.Errorf("during db init: %w", err)
 	}
@@ -138,16 +139,16 @@ func (db *DB) Get(ctx context.Context, key []byte) ([]byte, error) {
 // if readlevel is Committed we start searching key in the following order
 // mutable memtable, immutable memtables, SSTs in L0, compacted Sorted runs
 func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOptions) ([]byte, error) {
-	snapshot := db.state.snapshot()
+	snapshot := db.state.Snapshot()
 
 	if options.ReadLevel == Uncommitted {
 		// search for key in mutable WAL
-		val, ok := snapshot.wal.Get(key).Get()
+		val, ok := snapshot.Wal.Get(key).Get()
 		if ok { // key is present or tombstoned
 			return checkValue(val)
 		}
 		// search for key in ImmutableWALs
-		immWALList := snapshot.immWALs
+		immWALList := snapshot.ImmWALs
 		for i := 0; i < immWALList.Len(); i++ {
 			immWAL := immWALList.At(i)
 			val, ok := immWAL.Get(key).Get()
@@ -158,12 +159,12 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 	}
 
 	// search for key in mutable memtable
-	val, ok := snapshot.memtable.Get(key).Get()
+	val, ok := snapshot.Memtable.Get(key).Get()
 	if ok { // key is present or tombstoned
 		return checkValue(val)
 	}
 	// search for key in Immutable memtables
-	immMemtables := snapshot.immMemtables
+	immMemtables := snapshot.ImmMemtables
 	for i := 0; i < immMemtables.Len(); i++ {
 		immTable := immMemtables.At(i)
 		val, ok := immTable.Get(key).Get()
@@ -173,7 +174,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 	}
 
 	// search for key in SSTs in L0
-	for _, sst := range snapshot.core.l0 {
+	for _, sst := range snapshot.Core.L0 {
 		if db.sstMayIncludeKey(sst, key) {
 			iter, err := sstable.NewIteratorAtKey(&sst, key, db.tableStore.Clone())
 			if err != nil {
@@ -188,7 +189,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 	}
 
 	// search for key in compacted Sorted runs
-	for _, sr := range snapshot.core.compacted {
+	for _, sr := range snapshot.Core.Compacted {
 		if db.srMayIncludeKey(sr, key) {
 			iter, err := compaction.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
 			if err != nil {
@@ -288,7 +289,7 @@ func (db *DB) replayWAL(ctx context.Context) error {
 
 		db.maybeFreezeMemtable(db.state, sstID)
 		if db.state.NextWALID() == sstID {
-			db.state.incrementNextWALID()
+			db.state.IncrementNextWALID()
 		}
 	}
 
@@ -296,11 +297,11 @@ func (db *DB) replayWAL(ctx context.Context) error {
 	return nil
 }
 
-func (db *DB) maybeFreezeMemtable(state *DBState, walID uint64) {
-	if state.Memtable().Size() < int64(db.opts.L0SSTSizeBytes) {
+func (db *DB) maybeFreezeMemtable(dbState *state.DBState, walID uint64) {
+	if dbState.Memtable().Size() < int64(db.opts.L0SSTSizeBytes) {
 		return
 	}
-	state.freezeMemtable(walID)
+	dbState.FreezeMemtable(walID)
 	db.memtableFlushNotifierCh <- FlushImmutableMemtables
 }
 
@@ -313,7 +314,7 @@ func (db *DB) FlushMemtableToL0() error {
 	}
 
 	walID, _ := lastWalID.Get()
-	db.state.freezeMemtable(walID)
+	db.state.FreezeMemtable(walID)
 
 	flusher := MemtableFlusher{
 		db:       db,
@@ -334,7 +335,7 @@ func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {
 	if ok {
 		storedManifest = &sm
 	} else {
-		storedManifest, err = newStoredManifest(manifestStore, newCoreDBState())
+		storedManifest, err = newStoredManifest(manifestStore, state.NewCoreDBState())
 		if err != nil {
 			return nil, err
 		}
@@ -347,13 +348,13 @@ func newDB(
 	ctx context.Context,
 	options DBOptions,
 	tableStore *store.TableStore,
-	coreDBState *CoreDBState,
+	coreDBState *state.CoreDBState,
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg,
 ) (*DB, error) {
 
-	state := newDBState(coreDBState)
+	dbState := state.NewDBState(coreDBState)
 	db := &DB{
-		state:                   state,
+		state:                   dbState,
 		opts:                    options,
 		tableStore:              tableStore,
 		memtableFlushNotifierCh: memtableFlushNotifierCh,
