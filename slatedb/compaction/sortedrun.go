@@ -1,4 +1,4 @@
-package compacted
+package compaction
 
 import (
 	"bytes"
