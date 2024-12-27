@@ -6,6 +6,8 @@ import (
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
 	"math"
 	"sync"
@@ -28,7 +30,7 @@ const (
 )
 
 type WorkerToOrchestratorMsg struct {
-	CompactionResult *SortedRun
+	CompactionResult *compaction2.SortedRun
 	CompactionError  error
 }
 
@@ -46,7 +48,7 @@ type Compactor struct {
 	compactorWG *sync.WaitGroup
 }
 
-func newCompactor(manifestStore *ManifestStore, tableStore *TableStore, opts DBOptions) (*Compactor, error) {
+func newCompactor(manifestStore *ManifestStore, tableStore *store.TableStore, opts DBOptions) (*Compactor, error) {
 	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
 
 	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts, compactorMsgCh)
@@ -71,7 +73,7 @@ func (c *Compactor) close() {
 
 func spawnAndRunCompactorOrchestrator(
 	manifestStore *ManifestStore,
-	tableStore *TableStore,
+	tableStore *store.TableStore,
 	opts DBOptions,
 	compactorMsgCh <-chan CompactorMainMsg,
 ) (*sync.WaitGroup, chan error) {
@@ -139,7 +141,7 @@ type CompactorOrchestrator struct {
 func newCompactorOrchestrator(
 	opts DBOptions,
 	manifestStore *ManifestStore,
-	tableStore *TableStore,
+	tableStore *store.TableStore,
 	compactorMsgCh <-chan CompactorMainMsg,
 ) (*CompactorOrchestrator, error) {
 	sm, err := loadStoredManifest(manifestStore)
@@ -238,16 +240,16 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 		sstsByID[id] = sst
 	}
 	for _, sr := range dbState.compacted {
-		for _, sst := range sr.sstList {
+		for _, sst := range sr.SSTList {
 			id, ok := sst.Id.CompactedID().Get()
 			assert.True(ok, "expected valid compacted ID")
 			sstsByID[id] = sst
 		}
 	}
 
-	srsByID := make(map[uint32]SortedRun)
+	srsByID := make(map[uint32]compaction2.SortedRun)
 	for _, sr := range dbState.compacted {
-		srsByID[sr.id] = sr
+		srsByID[sr.ID] = sr
 	}
 
 	ssts := make([]sstable.Handle, 0)
@@ -258,7 +260,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 		}
 	}
 
-	sortedRuns := make([]SortedRun, 0)
+	sortedRuns := make([]compaction2.SortedRun, 0)
 	for _, sID := range compaction.sources {
 		srID, ok := sID.sortedRunID().Get()
 		if ok {
@@ -273,7 +275,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	})
 }
 
-func (o *CompactorOrchestrator) finishCompaction(outputSR *SortedRun) error {
+func (o *CompactorOrchestrator) finishCompaction(outputSR *compaction2.SortedRun) error {
 	o.state.finishCompaction(outputSR)
 	o.logCompactionState()
 	err := o.writeManifest()
@@ -329,12 +331,12 @@ func (o *CompactorOrchestrator) logCompactionState() {
 type CompactionJob struct {
 	destination uint32
 	sstList     []sstable.Handle
-	sortedRuns  []SortedRun
+	sortedRuns  []compaction2.SortedRun
 }
 
 type CompactionExecutor struct {
 	options    *CompactorOptions
-	tableStore *TableStore
+	tableStore *store.TableStore
 
 	workerCh chan<- WorkerToOrchestratorMsg
 	tasksWG  sync.WaitGroup
@@ -345,7 +347,7 @@ type CompactionExecutor struct {
 func newCompactorExecutor(
 	options *CompactorOptions,
 	workerCh chan<- WorkerToOrchestratorMsg,
-	tableStore *TableStore,
+	tableStore *store.TableStore,
 ) *CompactionExecutor {
 	return &CompactionExecutor{
 		options:    options,
@@ -374,7 +376,7 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 
 	srIters := make([]iter.KVIterator, 0)
 	for _, sr := range compaction.sortedRuns {
-		srIter, err := newSortedRunIterator(sr, e.tableStore.Clone())
+		srIter, err := compaction2.NewSortedRunIterator(sr, e.tableStore.Clone())
 		if err != nil {
 			return nil, err
 		}
@@ -395,7 +397,7 @@ func (e *CompactionExecutor) loadIterators(compaction CompactionJob) (iter.KVIte
 	return it, nil
 }
 
-func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*SortedRun, error) {
+func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*compaction2.SortedRun, error) {
 	allIter, err := e.loadIterators(compaction)
 	if err != nil {
 		return nil, err
@@ -444,9 +446,9 @@ func (e *CompactionExecutor) executeCompaction(compaction CompactionJob) (*Sorte
 		}
 		outputSSTs = append(outputSSTs, *sst)
 	}
-	return &SortedRun{
-		id:      compaction.destination,
-		sstList: outputSSTs,
+	return &compaction2.SortedRun{
+		ID:      compaction.destination,
+		SSTList: outputSSTs,
 	}, warn.If()
 }
 

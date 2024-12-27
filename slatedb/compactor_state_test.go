@@ -4,6 +4,7 @@ import (
 	"context"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -29,21 +30,21 @@ func TestShouldUpdateDBStateWhenCompactionFinished(t *testing.T) {
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
 
-	sr := SortedRun{
-		id:      0,
-		sstList: beforeCompaction.l0,
+	sr := compaction2.SortedRun{
+		ID:      0,
+		SSTList: beforeCompaction.l0,
 	}
-	state.finishCompaction(sr.clone())
+	state.finishCompaction(sr.Clone())
 
 	compactedID, _ := beforeCompaction.l0[0].Id.CompactedID().Get()
 	l0LastCompacted, _ := state.dbState.l0LastCompacted.Get()
 	assert.Equal(t, compactedID, l0LastCompacted)
 	assert.Equal(t, 0, len(state.dbState.l0))
 	assert.Equal(t, 1, len(state.dbState.compacted))
-	assert.Equal(t, sr.id, state.dbState.compacted[0].id)
+	assert.Equal(t, sr.ID, state.dbState.compacted[0].ID)
 	compactedSR := state.dbState.compacted[0]
-	for i := 0; i < len(sr.sstList); i++ {
-		assert.Equal(t, sr.sstList[i].Id, compactedSR.sstList[i].Id)
+	for i := 0; i < len(sr.SSTList); i++ {
+		assert.Equal(t, sr.SSTList[i].Id, compactedSR.SSTList[i].Id)
 	}
 }
 
@@ -54,11 +55,11 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
 
-	sr := SortedRun{
-		id:      0,
-		sstList: beforeCompaction.l0,
+	sr := compaction2.SortedRun{
+		ID:      0,
+		SSTList: beforeCompaction.l0,
 	}
-	state.finishCompaction(sr.clone())
+	state.finishCompaction(sr.Clone())
 
 	assert.Equal(t, 0, len(state.compactions))
 }
@@ -91,9 +92,9 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	compaction := newCompaction([]SourceID{newSourceIDSST(compactedID)}, 0)
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(&SortedRun{
-		id:      0,
-		sstList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
+	state.finishCompaction(&compaction2.SortedRun{
+		ID:      0,
+		SSTList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
 	})
 
 	option := DefaultDBOptions()
@@ -121,9 +122,9 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	for i := 0; i < len(dbStateBeforeMerge.compacted); i++ {
 		srBefore := dbStateBeforeMerge.compacted[i]
 		srAfter := dbState.compacted[i]
-		assert.Equal(t, srBefore.id, srAfter.id)
-		for j := 0; j < len(srBefore.sstList); j++ {
-			assert.Equal(t, srBefore.sstList[j].Id, srAfter.sstList[j].Id)
+		assert.Equal(t, srBefore.ID, srAfter.ID)
+		for j := 0; j < len(srBefore.SSTList); j++ {
+			assert.Equal(t, srBefore.SSTList[j].Id, srAfter.SSTList[j].Id)
 		}
 	}
 	assert.Equal(t, writerDBState.lastCompactedWalSSTID.Load(), dbState.lastCompactedWalSSTID.Load())
@@ -143,9 +144,9 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	compaction := newCompaction(sourceIDs, 0)
 	err := state.submitCompaction(compaction)
 	assert.NoError(t, err)
-	state.finishCompaction(&SortedRun{
-		id:      0,
-		sstList: originalL0s,
+	state.finishCompaction(&compaction2.SortedRun{
+		ID:      0,
+		SSTList: originalL0s,
 	})
 	assert.Equal(t, 0, len(state.dbState.l0))
 

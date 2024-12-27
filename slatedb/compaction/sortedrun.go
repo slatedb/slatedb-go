@@ -1,4 +1,4 @@
-package slatedb
+package compaction
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 
 	"github.com/samber/mo"
 	"sort"
@@ -16,14 +17,14 @@ import (
 // ------------------------------------------------
 
 type SortedRun struct {
-	id      uint32
-	sstList []sstable.Handle
+	ID      uint32
+	SSTList []sstable.Handle
 }
 
 func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
-	index := sort.Search(len(s.sstList), func(i int) bool {
-		assert.True(len(s.sstList[i].Info.FirstKey) != 0, "sst must have first key")
-		return bytes.Compare(s.sstList[i].Info.FirstKey, key) > 0
+	index := sort.Search(len(s.SSTList), func(i int) bool {
+		assert.True(len(s.SSTList[i].Info.FirstKey) != 0, "sst must have first key")
+		return bytes.Compare(s.SSTList[i].Info.FirstKey, key) > 0
 	})
 	if index > 0 {
 		return mo.Some(index - 1)
@@ -31,22 +32,22 @@ func (s *SortedRun) indexOfSSTWithKey(key []byte) mo.Option[int] {
 	return mo.None[int]()
 }
 
-func (s *SortedRun) sstWithKey(key []byte) mo.Option[sstable.Handle] {
+func (s *SortedRun) SstWithKey(key []byte) mo.Option[sstable.Handle] {
 	index, ok := s.indexOfSSTWithKey(key).Get()
 	if ok {
-		return mo.Some(s.sstList[index])
+		return mo.Some(s.SSTList[index])
 	}
 	return mo.None[sstable.Handle]()
 }
 
-func (s *SortedRun) clone() *SortedRun {
-	sstList := make([]sstable.Handle, 0, len(s.sstList))
-	for _, sst := range s.sstList {
+func (s *SortedRun) Clone() *SortedRun {
+	sstList := make([]sstable.Handle, 0, len(s.SSTList))
+	for _, sst := range s.SSTList {
 		sstList = append(sstList, *sst.Clone())
 	}
 	return &SortedRun{
-		id:      s.id,
-		sstList: sstList,
+		ID:      s.ID,
+		SSTList: sstList,
 	}
 }
 
@@ -57,25 +58,25 @@ func (s *SortedRun) clone() *SortedRun {
 type SortedRunIterator struct {
 	currentKVIter mo.Option[*sstable.Iterator]
 	sstListIter   *SSTListIterator
-	tableStore    *TableStore
+	tableStore    *store.TableStore
 	warn          types.ErrWarn
 }
 
-func newSortedRunIterator(sr SortedRun, store *TableStore, ) (*SortedRunIterator, error) {
-	return newSortedRunIter(sr.sstList, store, mo.None[[]byte]())
+func NewSortedRunIterator(sr SortedRun, store *store.TableStore) (*SortedRunIterator, error) {
+	return newSortedRunIter(sr.SSTList, store, mo.None[[]byte]())
 }
 
-func newSortedRunIteratorFromKey(sr SortedRun, key []byte, store *TableStore) (*SortedRunIterator, error) {
-	sstList := sr.sstList
+func NewSortedRunIteratorFromKey(sr SortedRun, key []byte, store *store.TableStore) (*SortedRunIterator, error) {
+	sstList := sr.SSTList
 	idx, ok := sr.indexOfSSTWithKey(key).Get()
 	if ok {
-		sstList = sr.sstList[idx:]
+		sstList = sr.SSTList[idx:]
 	}
 
 	return newSortedRunIter(sstList, store, mo.Some(key))
 }
 
-func newSortedRunIter(sstList []sstable.Handle, store *TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
+func newSortedRunIter(sstList []sstable.Handle, store *store.TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*sstable.Iterator]()
