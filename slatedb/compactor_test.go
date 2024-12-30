@@ -81,7 +81,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	err = db.Close()
 	assert.NoError(t, err)
 
-	orchestrator, err := newCompactorOrchestrator(compactorOptions(), manifestStore, tableStore)
+	orchestrator, err := newCompactionOrchestrator(compactorOptions(), manifestStore, tableStore)
 	assert.NoError(t, err)
 
 	l0IDsToCompact := make([]SourceID, 0)
