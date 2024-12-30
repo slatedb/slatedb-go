@@ -99,8 +99,8 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 	err = orchestrator.submitCompaction(newCompaction(l0IDsToCompact, 0))
 	assert.NoError(t, err)
-	orchestrator.executor.waitForTasksCompletion()
-	msg, ok := orchestrator.executor.compactionResult()
+	orchestrator.executor.waitForTasksToComplete()
+	msg, ok := orchestrator.executor.nextCompactionResult()
 	assert.True(t, ok)
 	assert.NotNil(t, msg.SortedRun)
 	sr := msg.SortedRun

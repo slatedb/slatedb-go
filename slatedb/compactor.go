@@ -63,7 +63,6 @@ func spawnAndRunCompactorOrchestrator(
 	tableStore *store.TableStore,
 	opts DBOptions,
 ) (*CompactorOrchestrator, error) {
-
 	orchestrator, err := newCompactorOrchestrator(opts, manifestStore, tableStore)
 	if err != nil {
 		return nil, err
@@ -158,8 +157,7 @@ func (o *CompactorOrchestrator) spawnLoop(opts DBOptions) {
 				assert.True(err == nil, "Failed to load manifest")
 			case <-o.compactorMsgCh:
 				// we receive Shutdown msg on compactorMsgCh. Stop the executor.
-				// Don't return and let the loop continue until `orchestrator.processCompactionResult`
-				// has no more compaction results to process
+				// Don't return and let the loop continue until there are no more compaction results to process
 				o.executor.stop()
 				ticker.Stop()
 			default:
@@ -257,7 +255,7 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 }
 
 func (o *CompactorOrchestrator) processCompactionResult(log *slog.Logger) bool {
-	result, resultPresent := o.executor.compactionResult()
+	result, resultPresent := o.executor.nextCompactionResult()
 	if resultPresent {
 		if result.Error != nil {
 			log.Error("Error executing compaction", "error", result.Error)
@@ -348,7 +346,7 @@ func newCompactorExecutor(
 	}
 }
 
-func (e *CompactionExecutor) compactionResult() (CompactionResult, bool) {
+func (e *CompactionExecutor) nextCompactionResult() (CompactionResult, bool) {
 	select {
 	case result := <-e.resultCh:
 		return result, true
@@ -479,10 +477,10 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 
 func (e *CompactionExecutor) stop() {
 	e.stopped.Store(true)
-	e.waitForTasksCompletion()
+	e.waitForTasksToComplete()
 }
 
-func (e *CompactionExecutor) waitForTasksCompletion() {
+func (e *CompactionExecutor) waitForTasksToComplete() {
 	e.tasksWG.Wait()
 }
 
