@@ -101,9 +101,11 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 	err = orchestrator.submitCompaction(newCompaction(l0IDsToCompact, 0))
 	assert.NoError(t, err)
-	msg := <-orchestrator.workerCh
-	assert.NotNil(t, msg.CompactionResult)
-	sr := msg.CompactionResult
+	orchestrator.executor.waitForTasksCompletion()
+	msg, ok := orchestrator.executor.compactionResult()
+	assert.True(t, ok)
+	assert.NotNil(t, msg.SortedRun)
+	sr := msg.SortedRun
 
 	err = orchestrator.finishCompaction(sr)
 	assert.NoError(t, err)
