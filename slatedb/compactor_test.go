@@ -9,7 +9,6 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
-	"math"
 	"slices"
 	"testing"
 	"time"
@@ -82,8 +81,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	err = db.Close()
 	assert.NoError(t, err)
 
-	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
-	orchestrator, err := newCompactorOrchestrator(compactorOptions(), manifestStore, tableStore, compactorMsgCh)
+	orchestrator, err := newCompactorOrchestrator(compactorOptions(), manifestStore, tableStore)
 	assert.NoError(t, err)
 
 	l0IDsToCompact := make([]SourceID, 0)

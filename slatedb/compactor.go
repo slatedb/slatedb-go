@@ -3,20 +3,18 @@ package slatedb
 import (
 	"context"
 	"errors"
+	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/oklog/ulid/v2"
-	"github.com/slatedb/slatedb-go/internal/iter"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type CompactionScheduler interface {
@@ -34,36 +32,26 @@ type CompactionResult struct {
 	Error     error
 }
 
-// Compactor creates one goroutine for CompactorOrchestrator. The CompactionExecutor can create multiple goroutines
-// for running the actual compaction.
-// When Compactor.close is called, we wait till all the goroutines/workers started by CompactionExecutor stop running
+// Compactor - The CompactorOrchestrator checks with the CompactionScheduler if Level0 needs to be compacted.
+// If compaction is needed, the CompactorOrchestrator gives CompactionJobs to the CompactionExecutor.
+// The CompactionExecutor creates new goroutine for each CompactionJob and the results are written to a channel.
 type Compactor struct {
-	// compactorMsgCh - When Compactor.close is called we write CompactorShutdown message to this channel
-	// CompactorOrchestrator which runs in a different goroutine reads this channel and shuts down
-	compactorMsgCh chan<- CompactorMainMsg
-
-	// compactorWG - When Compactor.close is called then wait till goroutine running CompactorOrchestrator
-	// is completed
-	compactorWG *sync.WaitGroup
+	orchestrator *CompactorOrchestrator
 }
 
 func newCompactor(manifestStore *ManifestStore, tableStore *store.TableStore, opts DBOptions) (*Compactor, error) {
-	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
-
-	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts, compactorMsgCh)
-
-	err := <-errCh
-	assert.True(err == nil, "Failed to start compactor")
+	orchestrator, err := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Compactor{
-		compactorMsgCh: compactorMsgCh,
-		compactorWG:    compactorWG,
+		orchestrator: orchestrator,
 	}, nil
 }
 
 func (c *Compactor) close() {
-	c.compactorMsgCh <- CompactorShutdown
-	c.compactorWG.Wait()
+	c.orchestrator.shutdown()
 }
 
 // ------------------------------------------------
@@ -74,47 +62,15 @@ func spawnAndRunCompactorOrchestrator(
 	manifestStore *ManifestStore,
 	tableStore *store.TableStore,
 	opts DBOptions,
-	compactorMsgCh <-chan CompactorMainMsg,
-) (*sync.WaitGroup, chan error) {
+) (*CompactorOrchestrator, error) {
 
-	errCh := make(chan error)
-	compactorWG := &sync.WaitGroup{}
-	compactorWG.Add(1)
+	orchestrator, err := newCompactorOrchestrator(opts, manifestStore, tableStore)
+	if err != nil {
+		return nil, err
+	}
 
-	go func() {
-		defer compactorWG.Done()
-		orchestrator, err := newCompactorOrchestrator(opts, manifestStore, tableStore, compactorMsgCh)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-
-		ticker := time.NewTicker(opts.CompactorOptions.PollInterval)
-		defer ticker.Stop()
-
-		for {
-			resultPresent := orchestrator.processCompactionResult(opts.Log)
-			if !resultPresent && orchestrator.executor.isStopped() {
-				break
-			}
-
-			select {
-			case <-ticker.C:
-				err := orchestrator.loadManifest()
-				assert.True(err == nil, "Failed to load manifest")
-			case <-orchestrator.compactorMsgCh:
-				// we receive Shutdown msg on compactorMsgCh. Stop the executor.
-				// Don't return and let the loop continue until `orchestrator.processCompactionResult`
-				// has no more compaction results to process
-				orchestrator.executor.stop()
-				ticker.Stop()
-			default:
-			}
-		}
-	}()
-
-	return compactorWG, errCh
+	orchestrator.spawnLoop(opts)
+	return orchestrator, nil
 }
 
 type CompactorOrchestrator struct {
@@ -126,7 +82,8 @@ type CompactorOrchestrator struct {
 
 	// compactorMsgCh - When CompactorOrchestrator receives a CompactorShutdown message on this channel,
 	// it calls executor.stop
-	compactorMsgCh <-chan CompactorMainMsg
+	compactorMsgCh chan CompactorMainMsg
+	waitGroup      sync.WaitGroup
 	log            *slog.Logger
 }
 
@@ -134,7 +91,6 @@ func newCompactorOrchestrator(
 	opts DBOptions,
 	manifestStore *ManifestStore,
 	tableStore *store.TableStore,
-	compactorMsgCh <-chan CompactorMainMsg,
 ) (*CompactorOrchestrator, error) {
 	sm, err := loadStoredManifest(manifestStore)
 	if err != nil {
@@ -164,7 +120,7 @@ func newCompactorOrchestrator(
 		state:          state,
 		scheduler:      scheduler,
 		executor:       executor,
-		compactorMsgCh: compactorMsgCh,
+		compactorMsgCh: make(chan CompactorMainMsg, 1),
 		log:            opts.Log,
 	}
 	return &o, nil
@@ -180,6 +136,41 @@ func loadState(manifest *FenceableManifest) (*CompactorState, error) {
 
 func loadCompactionScheduler() CompactionScheduler {
 	return SizeTieredCompactionScheduler{}
+}
+
+func (o *CompactorOrchestrator) spawnLoop(opts DBOptions) {
+	o.waitGroup.Add(1)
+	go func() {
+		defer o.waitGroup.Done()
+
+		ticker := time.NewTicker(opts.CompactorOptions.PollInterval)
+		defer ticker.Stop()
+
+		for {
+			resultPresent := o.processCompactionResult(opts.Log)
+			if !resultPresent && o.executor.isStopped() {
+				break
+			}
+
+			select {
+			case <-ticker.C:
+				err := o.loadManifest()
+				assert.True(err == nil, "Failed to load manifest")
+			case <-o.compactorMsgCh:
+				// we receive Shutdown msg on compactorMsgCh. Stop the executor.
+				// Don't return and let the loop continue until `orchestrator.processCompactionResult`
+				// has no more compaction results to process
+				o.executor.stop()
+				ticker.Stop()
+			default:
+			}
+		}
+	}()
+}
+
+func (o *CompactorOrchestrator) shutdown() {
+	o.compactorMsgCh <- CompactorShutdown
+	o.waitGroup.Wait()
 }
 
 func (o *CompactorOrchestrator) loadManifest() error {
