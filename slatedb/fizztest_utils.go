@@ -10,27 +10,27 @@ import (
 
 func GetState(db *DB) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
-	snapshot := db.state.snapshot()
-	walState, err := getKvTableStateFromIter(snapshot.wal.Iter())
+	snapshot := db.state.Snapshot()
+	walState, err := getKvTableStateFromIter(snapshot.Wal.Iter())
 	if err != nil {
 		return nil, err
 	}
 	m["wal"] = walState
 
-	memtableState, err := getKvTableStateFromIter(db.state.memtable.Iter())
+	memtableState, err := getKvTableStateFromIter(snapshot.Memtable.Iter())
 	if err != nil {
 		return nil, err
 	}
 	m["memtable"] = memtableState
 
-	m["wal_index"] = float64(db.state.core.nextWalSstID.Load())
+	m["wal_index"] = float64(snapshot.Core.NextWalSstID.Load())
 
 	// TODO: implement immutable_wal and immutable_memtable
 	m["immutable_wal"] = make([]interface{}, 0)
 	m["immutable_memtable"] = make(map[string]interface{})
 
 	// get the l0 from core state
-	l0ssts := db.state.core.l0
+	l0ssts := snapshot.Core.L0
 	l0s := make([]interface{}, len(l0ssts))
 	for i, sst := range l0ssts {
 		l0s[i] = fmt.Sprintf("compacted/ulid-%04d.sst", sst.Id.CompactedID().MustGet().Time())
