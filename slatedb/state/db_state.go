@@ -1,8 +1,9 @@
-package slatedb
+package state
 
 import (
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 	"log/slog"
 	"sync"
@@ -22,7 +23,7 @@ import (
 type CoreDBState struct {
 	l0LastCompacted mo.Option[ulid.ULID]
 	l0              []sstable.Handle
-	compacted       []SortedRun
+	compacted       []compaction.SortedRun
 
 	// nextWalSstID is used as the ID of new ImmutableWAL created during WAL flush process
 	// It is initialized to 1 and keeps getting incremented by 1 for new ImmutableWALs
@@ -34,33 +35,72 @@ type CoreDBState struct {
 	lastCompactedWalSSTID atomic.Uint64
 }
 
-func newCoreDBState() *CoreDBState {
+type CoreStateSnapshot struct {
+	L0LastCompacted       mo.Option[ulid.ULID]
+	L0                    []sstable.Handle
+	Compacted             []compaction.SortedRun
+	NextWalSstID          atomic.Uint64
+	LastCompactedWalSSTID atomic.Uint64
+}
+
+func (s *CoreStateSnapshot) ToCoreState() *CoreDBState {
+	snapshot := s.Clone()
+	coreState := &CoreDBState{
+		l0LastCompacted: snapshot.L0LastCompacted,
+		l0:              snapshot.L0,
+		compacted:       snapshot.Compacted,
+	}
+	coreState.nextWalSstID.Store(s.NextWalSstID.Load())
+	coreState.lastCompactedWalSSTID.Store(s.LastCompactedWalSSTID.Load())
+	return coreState
+}
+
+func (s *CoreStateSnapshot) Clone() *CoreStateSnapshot {
+	l0 := make([]sstable.Handle, 0, len(s.L0))
+	for _, sst := range s.L0 {
+		l0 = append(l0, *sst.Clone())
+	}
+	compacted := make([]compaction.SortedRun, 0, len(s.Compacted))
+	for _, sr := range s.Compacted {
+		compacted = append(compacted, *sr.Clone())
+	}
+	snapshot := &CoreStateSnapshot{
+		L0LastCompacted: s.L0LastCompacted,
+		L0:              l0,
+		Compacted:       compacted,
+	}
+	snapshot.NextWalSstID.Store(s.NextWalSstID.Load())
+	snapshot.LastCompactedWalSSTID.Store(s.LastCompactedWalSSTID.Load())
+	return snapshot
+}
+
+func NewCoreDBState() *CoreDBState {
 	coreState := &CoreDBState{
 		l0LastCompacted: mo.None[ulid.ULID](),
 		l0:              make([]sstable.Handle, 0),
-		compacted:       []SortedRun{},
+		compacted:       []compaction.SortedRun{},
 	}
 	coreState.nextWalSstID.Store(1)
 	coreState.lastCompactedWalSSTID.Store(0)
 	return coreState
 }
 
-func (c *CoreDBState) clone() *CoreDBState {
+func (c *CoreDBState) Snapshot() *CoreStateSnapshot {
 	l0 := make([]sstable.Handle, 0, len(c.l0))
 	for _, sst := range c.l0 {
 		l0 = append(l0, *sst.Clone())
 	}
-	compacted := make([]SortedRun, 0, len(c.compacted))
+	compacted := make([]compaction.SortedRun, 0, len(c.compacted))
 	for _, sr := range c.compacted {
-		compacted = append(compacted, *sr.clone())
+		compacted = append(compacted, *sr.Clone())
 	}
-	coreState := &CoreDBState{
-		l0LastCompacted: c.l0LastCompacted,
-		l0:              l0,
-		compacted:       compacted,
+	coreState := &CoreStateSnapshot{
+		L0LastCompacted: c.l0LastCompacted,
+		L0:              l0,
+		Compacted:       compacted,
 	}
-	coreState.nextWalSstID.Store(c.nextWalSstID.Load())
-	coreState.lastCompactedWalSSTID.Store(c.lastCompactedWalSSTID.Load())
+	coreState.NextWalSstID.Store(c.nextWalSstID.Load())
+	coreState.LastCompactedWalSSTID.Store(c.lastCompactedWalSSTID.Load())
 	return coreState
 }
 
@@ -74,11 +114,11 @@ func LogState(log *slog.Logger, c *CoreDBState) {
 
 // DBStateSnapshot contains state required for read methods (eg. GET)
 type DBStateSnapshot struct {
-	wal          *table.WAL
-	memtable     *table.Memtable
-	immWALs      *deque.Deque[*table.ImmutableWAL]
-	immMemtables *deque.Deque[*table.ImmutableMemtable]
-	core         *CoreDBState
+	Wal          *table.WAL
+	Memtable     *table.Memtable
+	ImmWALs      *deque.Deque[*table.ImmutableWAL]
+	ImmMemtables *deque.Deque[*table.ImmutableMemtable]
+	Core         *CoreStateSnapshot
 }
 
 type DBState struct {
@@ -90,7 +130,7 @@ type DBState struct {
 	core         *CoreDBState
 }
 
-func newDBState(coreDBState *CoreDBState) *DBState {
+func NewDBState(coreDBState *CoreDBState) *DBState {
 	return &DBState{
 		wal:          table.NewWAL(),
 		memtable:     table.NewMemtable(),
@@ -164,26 +204,26 @@ func (s *DBState) DeleteKVFromMemtable(key []byte) {
 	s.memtable.Delete(key)
 }
 
-func (s *DBState) coreStateClone() *CoreDBState {
+func (s *DBState) CoreStateSnapshot() *CoreStateSnapshot {
 	s.RLock()
 	defer s.RUnlock()
-	return s.core.clone()
+	return s.core.Snapshot()
 }
 
-func (s *DBState) snapshot() *DBStateSnapshot {
+func (s *DBState) Snapshot() *DBStateSnapshot {
 	s.RLock()
 	defer s.RUnlock()
 
 	return &DBStateSnapshot{
-		wal:          s.wal.Clone(),
-		memtable:     s.memtable.Clone(),
-		immWALs:      common.CopyDeque(s.immWALs),
-		immMemtables: common.CopyDeque(s.immMemtables),
-		core:         s.core.clone(),
+		Wal:          s.wal.Clone(),
+		Memtable:     s.memtable.Clone(),
+		ImmWALs:      common.CopyDeque(s.immWALs),
+		ImmMemtables: common.CopyDeque(s.immMemtables),
+		Core:         s.core.Snapshot(),
 	}
 }
 
-func (s *DBState) freezeMemtable(walID uint64) {
+func (s *DBState) FreezeMemtable(walID uint64) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -194,7 +234,7 @@ func (s *DBState) freezeMemtable(walID uint64) {
 	s.immMemtables.PushFront(immMemtable)
 }
 
-func (s *DBState) freezeWAL() mo.Option[uint64] {
+func (s *DBState) FreezeWAL() mo.Option[uint64] {
 	s.Lock()
 	defer s.Unlock()
 
@@ -211,14 +251,14 @@ func (s *DBState) freezeWAL() mo.Option[uint64] {
 	return mo.Some(immWAL.ID())
 }
 
-func (s *DBState) popImmWAL() {
+func (s *DBState) PopImmWAL() {
 	s.Lock()
 	defer s.Unlock()
 
 	s.immWALs.PopBack()
 }
 
-func (s *DBState) oldestImmWAL() mo.Option[*table.ImmutableWAL] {
+func (s *DBState) OldestImmWAL() mo.Option[*table.ImmutableWAL] {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -228,7 +268,7 @@ func (s *DBState) oldestImmWAL() mo.Option[*table.ImmutableWAL] {
 	return mo.Some(s.immWALs.Back())
 }
 
-func (s *DBState) oldestImmMemtable() mo.Option[*table.ImmutableMemtable] {
+func (s *DBState) OldestImmMemtable() mo.Option[*table.ImmutableMemtable] {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -238,7 +278,7 @@ func (s *DBState) oldestImmMemtable() mo.Option[*table.ImmutableMemtable] {
 	return mo.Some(s.immMemtables.Back())
 }
 
-func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstHandle *sstable.Handle) {
+func (s *DBState) MoveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstHandle *sstable.Handle) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -249,16 +289,16 @@ func (s *DBState) moveImmMemtableToL0(immMemtable *table.ImmutableMemtable, sstH
 	s.core.lastCompactedWalSSTID.Store(immMemtable.LastWalID())
 }
 
-func (s *DBState) incrementNextWALID() {
+func (s *DBState) IncrementNextWALID() {
 	s.core.nextWalSstID.Add(1)
 }
 
-func (s *DBState) refreshDBState(compactorState *CoreDBState) {
+func (s *DBState) RefreshDBState(compactorState *CoreStateSnapshot) {
 	s.Lock()
 	defer s.Unlock()
 
 	// copy over L0 up to l0LastCompacted
-	l0LastCompacted := compactorState.l0LastCompacted
+	l0LastCompacted := compactorState.L0LastCompacted
 	newL0 := make([]sstable.Handle, 0)
 	for i := 0; i < len(s.core.l0); i++ {
 		sst := s.core.l0[i]
@@ -273,5 +313,5 @@ func (s *DBState) refreshDBState(compactorState *CoreDBState) {
 
 	s.core.l0LastCompacted = l0LastCompacted
 	s.core.l0 = newL0
-	s.core.compacted = compactorState.compacted
+	s.core.compacted = compactorState.Compacted
 }

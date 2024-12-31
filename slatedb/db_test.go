@@ -7,6 +7,8 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/state"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/stretchr/testify/require"
 	"math"
 	"strconv"
@@ -111,7 +113,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 	storedManifest, _ := stored.Get()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 10
-	tableStore := NewTableStore(bucket, conf, dbPath)
+	tableStore := store.NewTableStore(bucket, conf, dbPath)
 
 	lastCompacted := uint64(0)
 	for i := 0; i < 3; i++ {
@@ -123,16 +125,16 @@ func TestPutFlushesMemtable(t *testing.T) {
 		value = repeatedChar(rune('k'+i), 50)
 		db.Put(key, value)
 
-		dbState := waitForManifestCondition(storedManifest, time.Second*30, func(state *CoreDBState) bool {
-			return state.lastCompactedWalSSTID.Load() > lastCompacted
+		dbState := waitForManifestCondition(storedManifest, time.Second*30, func(state *state.CoreStateSnapshot) bool {
+			return state.LastCompactedWalSSTID.Load() > lastCompacted
 		})
-		assert.Equal(t, uint64(i*2+2), dbState.lastCompactedWalSSTID.Load())
-		lastCompacted = dbState.lastCompactedWalSSTID.Load()
+		assert.Equal(t, uint64(i*2+2), dbState.LastCompactedWalSSTID.Load())
+		lastCompacted = dbState.LastCompactedWalSSTID.Load()
 	}
 
 	dbState, err := storedManifest.refresh()
 	require.NoError(t, err)
-	l0 := dbState.l0
+	l0 := dbState.L0
 	ctx := context.Background()
 	assert.Equal(t, 3, len(l0))
 	for i := 0; i < 3; i++ {
@@ -307,7 +309,7 @@ func TestBasicRestore(t *testing.T) {
 
 	storedManifest, _ := stored.Get()
 	dbState := storedManifest.dbState()
-	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.nextWalSstID.Load())
+	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.NextWalSstID.Load())
 }
 
 func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
@@ -378,10 +380,10 @@ func TestSnapshotState(t *testing.T) {
 	db, err = OpenWithOptions(context.Background(), dbPath, bucket, testDBOptions(0, 128))
 	require.NoError(t, err)
 	defer db.Close()
-	snapshot := db.state.snapshot()
-	assert.Equal(t, uint64(2), snapshot.core.lastCompactedWalSSTID.Load())
-	assert.Equal(t, uint64(3), snapshot.core.nextWalSstID.Load())
-	assert.Equal(t, 2, len(snapshot.core.l0))
+	snapshot := db.state.Snapshot()
+	assert.Equal(t, uint64(2), snapshot.Core.LastCompactedWalSSTID.Load())
+	assert.Equal(t, uint64(3), snapshot.Core.NextWalSstID.Load())
+	assert.Equal(t, 2, len(snapshot.Core.L0))
 
 	val1, err := db.Get(context.Background(), key1)
 	require.NoError(t, err)
@@ -437,8 +439,8 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 		db.Put(repeatedChar(rune('a'+i), 32), bytes.Repeat([]byte{byte(1 + i)}, 32))
 		db.Put(repeatedChar(rune('m'+i), 32), bytes.Repeat([]byte{byte(13 + i)}, 32))
 	}
-	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
-		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *state.CoreStateSnapshot) bool {
+		return state.L0LastCompacted.IsPresent() && len(state.L0) == 0
 	})
 
 	// write more l0s and wait for compaction
@@ -446,8 +448,8 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 		db.Put(repeatedChar(rune('f'+i), 32), bytes.Repeat([]byte{byte(6 + i)}, 32))
 		db.Put(repeatedChar(rune('s'+i), 32), bytes.Repeat([]byte{byte(19 + i)}, 32))
 	}
-	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
-		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *state.CoreStateSnapshot) bool {
+		return state.L0LastCompacted.IsPresent() && len(state.L0) == 0
 	})
 
 	// write another l0
@@ -502,8 +504,8 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 		db.Put(repeatedChar(rune('a'+i), 32), bytes.Repeat([]byte{byte(1 + i)}, 32))
 		db.Put(repeatedChar(rune('m'+i), 32), bytes.Repeat([]byte{byte(13 + i)}, 32))
 	}
-	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
-		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *state.CoreStateSnapshot) bool {
+		return state.L0LastCompacted.IsPresent() && len(state.L0) == 0
 	})
 
 	// Delete existing keys
@@ -516,8 +518,8 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 		db.Put(repeatedChar(rune('f'+i), 32), bytes.Repeat([]byte{byte(6 + i)}, 32))
 		db.Put(repeatedChar(rune('s'+i), 32), bytes.Repeat([]byte{byte(19 + i)}, 32))
 	}
-	waitForManifestCondition(storedManifest, time.Second*10, func(state *CoreDBState) bool {
-		return state.l0LastCompacted.IsPresent() && len(state.l0) == 0
+	waitForManifestCondition(storedManifest, time.Second*10, func(state *state.CoreStateSnapshot) bool {
+		return state.L0LastCompacted.IsPresent() && len(state.L0) == 0
 	})
 
 	// verify that keys are deleted
@@ -542,14 +544,14 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 func waitForManifestCondition(
 	sm StoredManifest,
 	timeout time.Duration,
-	cond func(state *CoreDBState) bool,
-) *CoreDBState {
+	cond func(state *state.CoreStateSnapshot) bool,
+) *state.CoreStateSnapshot {
 	start := time.Now()
 	for time.Since(start) < timeout {
 		dbState, err := sm.refresh()
 		assert2.True(err == nil, "")
 		if cond(dbState) {
-			return dbState.clone()
+			return dbState.Clone()
 		}
 		time.Sleep(time.Millisecond * 10)
 	}

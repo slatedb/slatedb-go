@@ -2,6 +2,7 @@ package slatedb
 
 import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
 	"testing"
@@ -10,9 +11,9 @@ import (
 func TestShouldFailWriteOnVersionConflict(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	storedManifest, err := loadStoredManifest(manifestStore)
@@ -20,22 +21,22 @@ func TestShouldFailWriteOnVersionConflict(t *testing.T) {
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
 
-	err = sm.updateDBState(state)
+	err = sm.updateDBState(coreState.Snapshot())
 	assert.NoError(t, err)
 
-	err = sm2.updateDBState(state)
+	err = sm2.updateDBState(coreState.Snapshot())
 	assert.ErrorIs(t, err, common.ErrManifestVersionExists)
 }
 
 func TestShouldWriteWithNewVersion(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
-	err = sm.updateDBState(state)
+	err = sm.updateDBState(coreState.Snapshot())
 	assert.NoError(t, err)
 
 	info, err := manifestStore.readLatestManifest()
@@ -49,23 +50,24 @@ func TestShouldWriteWithNewVersion(t *testing.T) {
 func TestShouldUpdateLocalStateOnWrite(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
-	state.nextWalSstID.Store(123)
-	err = sm.updateDBState(state)
+	core := coreState.Snapshot()
+	core.NextWalSstID.Store(123)
+	err = sm.updateDBState(core)
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID.Load())
+	assert.Equal(t, uint64(123), sm.dbState().NextWalSstID.Load())
 }
 
 func TestShouldRefresh(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	storedManifest, err := loadStoredManifest(manifestStore)
@@ -73,22 +75,23 @@ func TestShouldRefresh(t *testing.T) {
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
 
-	state.nextWalSstID.Store(123)
-	err = sm.updateDBState(state)
+	core := coreState.Snapshot()
+	core.NextWalSstID.Store(123)
+	err = sm.updateDBState(core)
 	assert.NoError(t, err)
 
 	refreshed, err := sm2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(123), refreshed.nextWalSstID.Load())
-	assert.Equal(t, uint64(123), sm.dbState().nextWalSstID.Load())
+	assert.Equal(t, uint64(123), refreshed.NextWalSstID.Load())
+	assert.Equal(t, uint64(123), sm.dbState().NextWalSstID.Load())
 }
 
 func TestShouldBumpWriterEpoch(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	_, err := newStoredManifest(manifestStore, state)
+	_, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	for i := 1; i <= 5; i++ {
@@ -111,9 +114,9 @@ func TestShouldBumpWriterEpoch(t *testing.T) {
 func TestShouldFailOnWriterFenced(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 	writer1, err := initFenceableManifestWriter(sm)
 	assert.NoError(t, err)
@@ -127,21 +130,22 @@ func TestShouldFailOnWriterFenced(t *testing.T) {
 
 	_, err = writer1.refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
-	state.nextWalSstID.Store(123)
-	err = writer1.updateDBState(state)
+	core := coreState.Snapshot()
+	core.NextWalSstID.Store(123)
+	err = writer1.updateDBState(core)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
 	refreshed, err := writer2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), refreshed.nextWalSstID.Load())
+	assert.Equal(t, uint64(1), refreshed.NextWalSstID.Load())
 }
 
 func TestShouldBumpCompactorEpoch(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	_, err := newStoredManifest(manifestStore, state)
+	_, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	for i := 1; i <= 5; i++ {
@@ -164,9 +168,9 @@ func TestShouldBumpCompactorEpoch(t *testing.T) {
 func TestShouldFailOnCompactorFenced(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	manifestStore := newManifestStore(rootPath, bucket)
-	state := newCoreDBState()
+	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, state)
+	sm, err := newStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 	compactor1, err := initFenceableManifestCompactor(sm)
 	assert.NoError(t, err)
@@ -180,11 +184,12 @@ func TestShouldFailOnCompactorFenced(t *testing.T) {
 
 	_, err = compactor1.refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
-	state.nextWalSstID.Store(123)
-	err = compactor1.updateDBState(state)
+	core := coreState.Snapshot()
+	core.NextWalSstID.Store(123)
+	err = compactor1.updateDBState(core)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
 	refreshed, err := compactor2.refresh()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), refreshed.nextWalSstID.Load())
+	assert.Equal(t, uint64(1), refreshed.NextWalSstID.Load())
 }

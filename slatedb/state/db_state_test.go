@@ -1,4 +1,4 @@
-package slatedb
+package state
 
 import (
 	"github.com/oklog/ulid/v2"
@@ -19,51 +19,51 @@ func addL0sToDBState(dbState *DBState, n uint32) {
 	}
 
 	for i := 0; i < int(n); i++ {
-		dbState.freezeMemtable(uint64(i))
-		immMemtable := dbState.oldestImmMemtable()
+		dbState.FreezeMemtable(uint64(i))
+		immMemtable := dbState.OldestImmMemtable()
 		if immMemtable.IsAbsent() {
 			break
 		}
 		sst := sstable.NewHandle(sstable.NewIDCompacted(ulid.Make()), sstInfo)
-		dbState.moveImmMemtableToL0(immMemtable.MustGet(), sst)
+		dbState.MoveImmMemtableToL0(immMemtable.MustGet(), sst)
 	}
 }
 
 func TestRefreshDBStateWithL0sUptoLastCompacted(t *testing.T) {
-	dbState := newDBState(newCoreDBState())
+	dbState := NewDBState(NewCoreDBState())
 	addL0sToDBState(dbState, 4)
 
 	// prepare compactorState indicating that the last SST in L0 gets compacted
-	compactorState := dbState.coreStateClone()
-	size := len(compactorState.l0)
-	lastCompacted := compactorState.l0[size-1]
-	compactorState.l0 = compactorState.l0[:size-1]
+	compactorState := dbState.CoreStateSnapshot()
+	size := len(compactorState.L0)
+	lastCompacted := compactorState.L0[size-1]
+	compactorState.L0 = compactorState.L0[:size-1]
 	assert.Equal(t, sstable.Compacted, lastCompacted.Id.Type)
 
 	id, err := ulid.Parse(lastCompacted.Id.Value)
 	assert.NoError(t, err)
-	compactorState.l0LastCompacted = mo.Some(id)
+	compactorState.L0LastCompacted = mo.Some(id)
 
 	// when refreshDBState is called with the compactorState
-	dbState.refreshDBState(compactorState)
+	dbState.RefreshDBState(compactorState)
 
 	// then verify that the dbState.core is modified to match the given compactorState
-	assert.Equal(t, len(compactorState.l0), len(dbState.L0()))
-	for i := 0; i < len(compactorState.l0); i++ {
-		expected := compactorState.l0[i]
+	assert.Equal(t, len(compactorState.L0), len(dbState.L0()))
+	for i := 0; i < len(compactorState.L0); i++ {
+		expected := compactorState.L0[i]
 		actual := dbState.L0()[i]
 		assert.Equal(t, expected, actual)
 	}
-	assert.Equal(t, compactorState.l0LastCompacted, dbState.L0LastCompacted())
+	assert.Equal(t, compactorState.L0LastCompacted, dbState.L0LastCompacted())
 }
 
 func TestRefreshDBStateWithAllL0sIfNoneCompacted(t *testing.T) {
-	dbState := newDBState(newCoreDBState())
+	dbState := NewDBState(NewCoreDBState())
 	addL0sToDBState(dbState, 4)
-	l0SSTList := dbState.coreStateClone().l0
+	l0SSTList := dbState.CoreStateSnapshot().L0
 
 	// when refreshDBState is called with no compaction
-	dbState.refreshDBState(newCoreDBState())
+	dbState.RefreshDBState(NewCoreDBState().Snapshot())
 
 	// then verify there is no change in dbState L0
 	assert.Equal(t, len(l0SSTList), len(dbState.L0()))
