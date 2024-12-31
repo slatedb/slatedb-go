@@ -139,8 +139,6 @@ func (r *SlateDbRoleAdapter) FlushMemtable(_ []Choice) (interface{}, error) {
 type Model struct {
 	Roles map[string]Role        `json:"roles"`
 	State map[string]interface{} `json:"state"`
-
-	timeMs uint64
 }
 
 func NewModel() any {

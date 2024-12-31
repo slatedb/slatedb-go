@@ -61,7 +61,7 @@ type SortedRunIterator struct {
 	warn          types.ErrWarn
 }
 
-func newSortedRunIterator(sr SortedRun, store *TableStore, ) (*SortedRunIterator, error) {
+func newSortedRunIterator(sr SortedRun, store *TableStore) (*SortedRunIterator, error) {
 	return newSortedRunIter(sr.sstList, store, mo.None[[]byte]())
 }
 
