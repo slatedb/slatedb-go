@@ -3,20 +3,18 @@ package slatedb
 import (
 	"context"
 	"errors"
+	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/oklog/ulid/v2"
-	"github.com/slatedb/slatedb-go/internal/iter"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type CompactionScheduler interface {
@@ -29,121 +27,70 @@ const (
 	CompactorShutdown CompactorMainMsg = iota + 1
 )
 
-type WorkerToOrchestratorMsg struct {
-	CompactionResult *compaction2.SortedRun
-	CompactionError  error
+type CompactionResult struct {
+	SortedRun *compaction2.SortedRun
+	Error     error
 }
 
-// Compactor creates one goroutine for CompactorOrchestrator. The CompactorOrchestrator can create multiple goroutines
-// for running the actual compaction. The result of the compaction are shared back to the CompactorOrchestrator through
-// CompactorOrchestrator.workerCh channel.
-// When Compactor.close is called, we wait till all the goroutines/workers started by CompactorOrchestrator stop running
+// Compactor - The CompactionOrchestrator checks with the CompactionScheduler if Level0 needs to be compacted.
+// If compaction is needed, the CompactionOrchestrator gives CompactionJobs to the CompactionExecutor.
+// The CompactionExecutor creates new goroutine for each CompactionJob and the results are written to a channel.
 type Compactor struct {
-	// compactorMsgCh - When Compactor.close is called we write CompactorShutdown message to this channel
-	// CompactorOrchestrator which runs in a different goroutine reads this channel and shuts down
-	compactorMsgCh chan<- CompactorMainMsg
-
-	// compactorWG - When Compactor.close is called then wait till goroutine running CompactorOrchestrator
-	// is completed
-	compactorWG *sync.WaitGroup
+	orchestrator *CompactionOrchestrator
 }
 
 func newCompactor(manifestStore *ManifestStore, tableStore *store.TableStore, opts DBOptions) (*Compactor, error) {
-	compactorMsgCh := make(chan CompactorMainMsg, math.MaxUint8)
-
-	compactorWG, errCh := spawnAndRunCompactorOrchestrator(manifestStore, tableStore, opts, compactorMsgCh)
-
-	err := <-errCh
-	assert.True(err == nil, "Failed to start compactor")
+	orchestrator, err := spawnAndRunCompactionOrchestrator(manifestStore, tableStore, opts)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Compactor{
-		compactorMsgCh: compactorMsgCh,
-		compactorWG:    compactorWG,
+		orchestrator: orchestrator,
 	}, nil
 }
 
 func (c *Compactor) close() {
-	c.compactorMsgCh <- CompactorShutdown
-	c.compactorWG.Wait()
+	c.orchestrator.shutdown()
 }
 
 // ------------------------------------------------
-// CompactorOrchestrator
+// CompactionOrchestrator
 // ------------------------------------------------
 
-func spawnAndRunCompactorOrchestrator(
+func spawnAndRunCompactionOrchestrator(
 	manifestStore *ManifestStore,
 	tableStore *store.TableStore,
 	opts DBOptions,
-	compactorMsgCh <-chan CompactorMainMsg,
-) (*sync.WaitGroup, chan error) {
+) (*CompactionOrchestrator, error) {
+	orchestrator, err := newCompactionOrchestrator(opts, manifestStore, tableStore)
+	if err != nil {
+		return nil, err
+	}
 
-	errCh := make(chan error)
-	compactorWG := &sync.WaitGroup{}
-	compactorWG.Add(1)
-
-	go func() {
-		defer compactorWG.Done()
-		orchestrator, err := newCompactorOrchestrator(opts, manifestStore, tableStore, compactorMsgCh)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-
-		ticker := time.NewTicker(opts.CompactorOptions.PollInterval)
-		defer ticker.Stop()
-
-		// TODO(thrawn01): Race, cannot know if no more work is coming by checking length of the channel
-		for !(orchestrator.executor.isStopped() && len(orchestrator.workerCh) == 0) {
-			select {
-			case <-ticker.C:
-				err := orchestrator.loadManifest()
-				assert.True(err == nil, "Failed to load manifest")
-			case msg := <-orchestrator.workerCh:
-				if msg.CompactionError != nil {
-					opts.Log.Error("Error executing compaction", "error", msg.CompactionError)
-				} else if msg.CompactionResult != nil {
-					err := orchestrator.finishCompaction(msg.CompactionResult)
-					assert.True(err == nil, "Failed to finish compaction")
-				}
-			case <-orchestrator.compactorMsgCh:
-				// we receive Shutdown msg on compactorMsgCh.
-				// Stop the executor. Don't return because there might
-				// still be messages in `orchestrator.workerCh`. Let the loop continue
-				// to drain them until empty.
-				orchestrator.executor.stop()
-				ticker.Stop()
-			}
-		}
-	}()
-
-	return compactorWG, errCh
+	orchestrator.spawnLoop(opts)
+	return orchestrator, nil
 }
 
-type CompactorOrchestrator struct {
+type CompactionOrchestrator struct {
 	options   *CompactorOptions
 	manifest  *FenceableManifest
 	state     *CompactorState
 	scheduler CompactionScheduler
 	executor  *CompactionExecutor
 
-	// compactorMsgCh - When CompactorOrchestrator receives a CompactorShutdown message on this channel,
+	// compactorMsgCh - When CompactionOrchestrator receives a CompactorShutdown message on this channel,
 	// it calls executor.stop
-	compactorMsgCh <-chan CompactorMainMsg
-
-	// workerCh - CompactionExecutor sends a CompactionFinished message to this channel once compaction is done.
-	// The CompactorOrchestrator loops through each item in this channel and calls finishCompaction
-	workerCh <-chan WorkerToOrchestratorMsg
-	log      *slog.Logger
+	compactorMsgCh chan CompactorMainMsg
+	waitGroup      sync.WaitGroup
+	log            *slog.Logger
 }
 
-func newCompactorOrchestrator(
+func newCompactionOrchestrator(
 	opts DBOptions,
 	manifestStore *ManifestStore,
 	tableStore *store.TableStore,
-	compactorMsgCh <-chan CompactorMainMsg,
-) (*CompactorOrchestrator, error) {
+) (*CompactionOrchestrator, error) {
 	sm, err := loadStoredManifest(manifestStore)
 	if err != nil {
 		return nil, err
@@ -164,17 +111,15 @@ func newCompactorOrchestrator(
 	}
 
 	scheduler := loadCompactionScheduler()
-	workerCh := make(chan WorkerToOrchestratorMsg, 1)
-	executor := newCompactorExecutor(opts.CompactorOptions, workerCh, tableStore)
+	executor := newCompactorExecutor(opts.CompactorOptions, tableStore)
 
-	o := CompactorOrchestrator{
+	o := CompactionOrchestrator{
 		options:        opts.CompactorOptions,
 		manifest:       manifest,
 		state:          state,
 		scheduler:      scheduler,
 		executor:       executor,
-		compactorMsgCh: compactorMsgCh,
-		workerCh:       workerCh,
+		compactorMsgCh: make(chan CompactorMainMsg, 1),
 		log:            opts.Log,
 	}
 	return &o, nil
@@ -192,7 +137,41 @@ func loadCompactionScheduler() CompactionScheduler {
 	return SizeTieredCompactionScheduler{}
 }
 
-func (o *CompactorOrchestrator) loadManifest() error {
+func (o *CompactionOrchestrator) spawnLoop(opts DBOptions) {
+	o.waitGroup.Add(1)
+	go func() {
+		defer o.waitGroup.Done()
+
+		ticker := time.NewTicker(opts.CompactorOptions.PollInterval)
+		defer ticker.Stop()
+
+		for {
+			resultPresent := o.processCompactionResult(opts.Log)
+			if !resultPresent && o.executor.isStopped() {
+				break
+			}
+
+			select {
+			case <-ticker.C:
+				err := o.loadManifest()
+				assert.True(err == nil, "Failed to load manifest")
+			case <-o.compactorMsgCh:
+				// we receive Shutdown msg on compactorMsgCh. Stop the executor.
+				// Don't return and let the loop continue until there are no more compaction results to process
+				o.executor.stop()
+				ticker.Stop()
+			default:
+			}
+		}
+	}()
+}
+
+func (o *CompactionOrchestrator) shutdown() {
+	o.compactorMsgCh <- CompactorShutdown
+	o.waitGroup.Wait()
+}
+
+func (o *CompactionOrchestrator) loadManifest() error {
 	_, err := o.manifest.refresh()
 	if err != nil {
 		return err
@@ -204,7 +183,7 @@ func (o *CompactorOrchestrator) loadManifest() error {
 	return nil
 }
 
-func (o *CompactorOrchestrator) refreshDBState() error {
+func (o *CompactionOrchestrator) refreshDBState() error {
 	state, err := o.manifest.dbState()
 	if err != nil {
 		return err
@@ -218,7 +197,7 @@ func (o *CompactorOrchestrator) refreshDBState() error {
 	return nil
 }
 
-func (o *CompactorOrchestrator) maybeScheduleCompactions() error {
+func (o *CompactionOrchestrator) maybeScheduleCompactions() error {
 	compactions := o.scheduler.maybeScheduleCompaction(o.state)
 	for _, compaction := range compactions {
 		err := o.submitCompaction(compaction)
@@ -229,7 +208,7 @@ func (o *CompactorOrchestrator) maybeScheduleCompactions() error {
 	return nil
 }
 
-func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
+func (o *CompactionOrchestrator) startCompaction(compaction Compaction) {
 	o.logCompactionState()
 	dbState := o.state.dbState
 
@@ -275,7 +254,20 @@ func (o *CompactorOrchestrator) startCompaction(compaction Compaction) {
 	})
 }
 
-func (o *CompactorOrchestrator) finishCompaction(outputSR *compaction2.SortedRun) error {
+func (o *CompactionOrchestrator) processCompactionResult(log *slog.Logger) bool {
+	result, resultPresent := o.executor.nextCompactionResult()
+	if resultPresent {
+		if result.Error != nil {
+			log.Error("Error executing compaction", "error", result.Error)
+		} else if result.SortedRun != nil {
+			err := o.finishCompaction(result.SortedRun)
+			assert.True(err == nil, "Failed to finish compaction")
+		}
+	}
+	return resultPresent
+}
+
+func (o *CompactionOrchestrator) finishCompaction(outputSR *compaction2.SortedRun) error {
 	o.state.finishCompaction(outputSR)
 	o.logCompactionState()
 	err := o.writeManifest()
@@ -290,7 +282,7 @@ func (o *CompactorOrchestrator) finishCompaction(outputSR *compaction2.SortedRun
 	return nil
 }
 
-func (o *CompactorOrchestrator) writeManifest() error {
+func (o *CompactionOrchestrator) writeManifest() error {
 	for {
 		err := o.loadManifest()
 		if err != nil {
@@ -307,7 +299,7 @@ func (o *CompactorOrchestrator) writeManifest() error {
 	}
 }
 
-func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
+func (o *CompactionOrchestrator) submitCompaction(compaction Compaction) error {
 	err := o.state.submitCompaction(compaction)
 	if err != nil {
 		o.log.Warn("invalid compaction", "error", err)
@@ -317,7 +309,7 @@ func (o *CompactorOrchestrator) submitCompaction(compaction Compaction) error {
 	return nil
 }
 
-func (o *CompactorOrchestrator) logCompactionState() {
+func (o *CompactionOrchestrator) logCompactionState() {
 	// LogState(o.log, o.state.dbState)
 	for _, compaction := range o.state.compactions {
 		o.log.Info("in-flight compaction", "compaction", compaction)
@@ -338,22 +330,28 @@ type CompactionExecutor struct {
 	options    *CompactorOptions
 	tableStore *store.TableStore
 
-	workerCh chan<- WorkerToOrchestratorMsg
+	resultCh chan CompactionResult
 	tasksWG  sync.WaitGroup
-	abortCh  chan bool
 	stopped  atomic.Bool
 }
 
 func newCompactorExecutor(
 	options *CompactorOptions,
-	workerCh chan<- WorkerToOrchestratorMsg,
 	tableStore *store.TableStore,
 ) *CompactionExecutor {
 	return &CompactionExecutor{
 		options:    options,
 		tableStore: tableStore,
-		workerCh:   workerCh,
-		abortCh:    make(chan bool),
+		resultCh:   make(chan CompactionResult, 1),
+	}
+}
+
+func (e *CompactionExecutor) nextCompactionResult() (CompactionResult, bool) {
+	select {
+	case result := <-e.resultCh:
+		return result, true
+	default:
+		return CompactionResult{}, false
 	}
 }
 
@@ -456,40 +454,34 @@ func (e *CompactionExecutor) startCompaction(compaction CompactionJob) {
 	if e.isStopped() {
 		return
 	}
+
 	e.tasksWG.Add(1)
 	go func() {
 		defer e.tasksWG.Done()
-		for {
-			select {
-			case <-e.abortCh:
-				return
-			default:
-				sortedRun, err := e.executeCompaction(compaction)
-				var msg WorkerToOrchestratorMsg
-				if err != nil {
-					// TODO(thrawn01): log the error somewhere.
-					msg = WorkerToOrchestratorMsg{CompactionError: err}
-				} else if sortedRun != nil {
-					msg = WorkerToOrchestratorMsg{CompactionResult: sortedRun}
-				}
 
-				// wait till we can send msg to workerCh or abort is called
-				for {
-					select {
-					case <-e.abortCh:
-						return
-					case e.workerCh <- msg:
-					}
-				}
-			}
+		if e.isStopped() {
+			return
 		}
+
+		var result CompactionResult
+		sortedRun, err := e.executeCompaction(compaction)
+		if err != nil {
+			// TODO(thrawn01): log the error somewhere.
+			result = CompactionResult{Error: err}
+		} else if sortedRun != nil {
+			result = CompactionResult{SortedRun: sortedRun}
+		}
+		e.resultCh <- result
 	}()
 }
 
 func (e *CompactionExecutor) stop() {
-	close(e.abortCh)
-	e.tasksWG.Wait()
 	e.stopped.Store(true)
+	e.waitForTasksToComplete()
+}
+
+func (e *CompactionExecutor) waitForTasksToComplete() {
+	e.tasksWG.Wait()
 }
 
 func (e *CompactionExecutor) isStopped() bool {
