@@ -1,4 +1,4 @@
-package slatedb
+package store
 
 import (
 	"cmp"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/manifest"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/thanos-io/objstore"
 	"path"
@@ -38,9 +39,9 @@ type FenceableManifest struct {
 	epochType      EpochType
 }
 
-func initFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableManifest, error) {
+func InitFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	manifest.writerEpoch.Add(1)
+	manifest.WriterEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
@@ -50,13 +51,13 @@ func initFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableMani
 		storedManifest: storedManifest,
 		epochType:      WriterEpoch,
 	}
-	fm.localEpoch.Store(manifest.writerEpoch.Load())
+	fm.localEpoch.Store(manifest.WriterEpoch.Load())
 	return fm, nil
 }
 
-func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableManifest, error) {
+func InitFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
-	manifest.compactorEpoch.Add(1)
+	manifest.CompactorEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)
 	if err != nil {
 		return nil, err
@@ -66,19 +67,19 @@ func initFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableM
 		storedManifest: storedManifest,
 		epochType:      CompactorEpoch,
 	}
-	fm.localEpoch.Store(manifest.compactorEpoch.Load())
+	fm.localEpoch.Store(manifest.CompactorEpoch.Load())
 	return fm, nil
 }
 
-func (f *FenceableManifest) dbState() (*state.CoreStateSnapshot, error) {
+func (f *FenceableManifest) DbState() (*state.CoreStateSnapshot, error) {
 	err := f.checkEpoch()
 	if err != nil {
 		return nil, err
 	}
-	return f.storedManifest.dbState(), nil
+	return f.storedManifest.DbState(), nil
 }
 
-func (f *FenceableManifest) updateDBState(dbState *state.CoreStateSnapshot) error {
+func (f *FenceableManifest) UpdateDBState(dbState *state.CoreStateSnapshot) error {
 	err := f.checkEpoch()
 	if err != nil {
 		return err
@@ -86,19 +87,19 @@ func (f *FenceableManifest) updateDBState(dbState *state.CoreStateSnapshot) erro
 	return f.storedManifest.updateDBState(dbState)
 }
 
-func (f *FenceableManifest) refresh() (*state.CoreStateSnapshot, error) {
-	_, err := f.storedManifest.refresh()
+func (f *FenceableManifest) Refresh() (*state.CoreStateSnapshot, error) {
+	_, err := f.storedManifest.Refresh()
 	if err != nil {
 		return nil, err
 	}
-	return f.dbState()
+	return f.DbState()
 }
 
 func (f *FenceableManifest) storedEpoch() uint64 {
 	if f.epochType == WriterEpoch {
-		return f.storedManifest.manifest.writerEpoch.Load()
+		return f.storedManifest.manifest.WriterEpoch.Load()
 	} else {
-		return f.storedManifest.manifest.compactorEpoch.Load()
+		return f.storedManifest.manifest.CompactorEpoch.Load()
 	}
 }
 
@@ -125,13 +126,13 @@ func (f *FenceableManifest) checkEpoch() error {
 // manifest stored in the object store.
 type StoredManifest struct {
 	id            uint64
-	manifest      *Manifest
+	manifest      *manifest.Manifest
 	manifestStore *ManifestStore
 }
 
-func newStoredManifest(store *ManifestStore, core *state.CoreDBState) (*StoredManifest, error) {
-	manifest := &Manifest{
-		core: core,
+func NewStoredManifest(store *ManifestStore, core *state.CoreDBState) (*StoredManifest, error) {
+	manifest := &manifest.Manifest{
+		Core: core,
 	}
 	err := store.writeManifest(1, manifest)
 	if err != nil {
@@ -145,7 +146,7 @@ func newStoredManifest(store *ManifestStore, core *state.CoreDBState) (*StoredMa
 	}, nil
 }
 
-func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error) {
+func LoadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error) {
 	stored, err := store.readLatestManifest()
 	if err != nil {
 		return mo.None[StoredManifest](), err
@@ -162,22 +163,22 @@ func loadStoredManifest(store *ManifestStore) (mo.Option[StoredManifest], error)
 	}), nil
 }
 
-func (s *StoredManifest) dbState() *state.CoreStateSnapshot {
-	return s.manifest.core.Snapshot()
+func (s *StoredManifest) DbState() *state.CoreStateSnapshot {
+	return s.manifest.Core.Snapshot()
 }
 
 // write Manifest with updated DB state to object store and update StoredManifest with the new manifest
 func (s *StoredManifest) updateDBState(coreSnapshot *state.CoreStateSnapshot) error {
-	manifest := &Manifest{
-		core: coreSnapshot.ToCoreState(),
+	manifest := &manifest.Manifest{
+		Core: coreSnapshot.ToCoreState(),
 	}
-	manifest.writerEpoch.Store(s.manifest.writerEpoch.Load())
-	manifest.compactorEpoch.Store(s.manifest.compactorEpoch.Load())
+	manifest.WriterEpoch.Store(s.manifest.WriterEpoch.Load())
+	manifest.CompactorEpoch.Store(s.manifest.CompactorEpoch.Load())
 	return s.updateManifest(manifest)
 }
 
 // write given manifest to object store and update StoredManifest with given manifest
-func (s *StoredManifest) updateManifest(manifest *Manifest) error {
+func (s *StoredManifest) updateManifest(manifest *manifest.Manifest) error {
 	newID := s.id + 1
 	err := s.manifestStore.writeManifest(newID, manifest)
 	if err != nil {
@@ -189,7 +190,7 @@ func (s *StoredManifest) updateManifest(manifest *Manifest) error {
 }
 
 // read latest manifest from object store and update StoredManifest with the latest manifest.
-func (s *StoredManifest) refresh() (*state.CoreStateSnapshot, error) {
+func (s *StoredManifest) Refresh() (*state.CoreStateSnapshot, error) {
 	stored, err := s.manifestStore.readLatestManifest()
 	if err != nil {
 		return nil, err
@@ -201,7 +202,7 @@ func (s *StoredManifest) refresh() (*state.CoreStateSnapshot, error) {
 	storedInfo, _ := stored.Get()
 	s.manifest = storedInfo.manifest
 	s.id = storedInfo.id
-	return s.dbState(), nil
+	return s.DbState(), nil
 }
 
 // ------------------------------------------------
@@ -220,20 +221,20 @@ type ManifestFileMetadata struct {
 
 type manifestInfo struct {
 	id       uint64
-	manifest *Manifest
+	manifest *manifest.Manifest
 }
 
 // ManifestStore has helper methods to read and write manifest to object store
 type ManifestStore struct {
 	objectStore    ObjectStore
-	codec          ManifestCodec
+	codec          manifest.Codec
 	manifestSuffix string
 }
 
-func newManifestStore(rootPath string, bucket objstore.Bucket) *ManifestStore {
+func NewManifestStore(rootPath string, bucket objstore.Bucket) *ManifestStore {
 	return &ManifestStore{
 		objectStore:    newDelegatingObjectStore(rootPath, bucket),
-		codec:          FlatBufferManifestCodec{},
+		codec:          manifest.FlatBufferManifestCodec{},
 		manifestSuffix: "manifest",
 	}
 }
@@ -242,9 +243,9 @@ func (s *ManifestStore) manifestPath(filename string) string {
 	return path.Join(manifestDir, filename)
 }
 
-func (s *ManifestStore) writeManifest(id uint64, manifest *Manifest) error {
+func (s *ManifestStore) writeManifest(id uint64, manifest *manifest.Manifest) error {
 	filepath := s.manifestPath(fmt.Sprintf("%020d.%s", id, s.manifestSuffix))
-	err := s.objectStore.putIfNotExists(filepath, s.codec.encode(manifest))
+	err := s.objectStore.putIfNotExists(filepath, s.codec.Encode(manifest))
 	if err != nil {
 		if errors.Is(err, common.ErrObjectExists) {
 			return common.ErrManifestVersionExists
@@ -298,7 +299,7 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 		return mo.None[manifestInfo](), err
 	}
 
-	manifest, err := s.codec.decode(manifestBytes)
+	manifest, err := s.codec.Decode(manifestBytes)
 	if err != nil {
 		return mo.None[manifestInfo](), err
 	}

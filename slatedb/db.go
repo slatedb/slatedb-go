@@ -10,6 +10,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
@@ -23,10 +24,10 @@ import (
 const BlockSize = 4096
 
 type DB struct {
-	manifest   *FenceableManifest
+	manifest   *store.FenceableManifest
 	tableStore *store.TableStore
 	compactor  *Compactor
-	opts       DBOptions
+	opts       config.DBOptions
 	state      *state.DBState
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
@@ -45,10 +46,10 @@ type DB struct {
 }
 
 func Open(ctx context.Context, path string, bucket objstore.Bucket) (*DB, error) {
-	return OpenWithOptions(ctx, path, bucket, DefaultDBOptions())
+	return OpenWithOptions(ctx, path, bucket, config.DefaultDBOptions())
 }
 
-func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, options DBOptions) (*DB, error) {
+func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, options config.DBOptions) (*DB, error) {
 	conf := sstable.DefaultConfig()
 	conf.BlockSize = BlockSize
 	conf.MinFilterKeys = options.MinFilterKeys
@@ -56,7 +57,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	set.Default(&options.Log, slog.Default())
 
 	tableStore := store.NewTableStore(bucket, conf, path)
-	manifestStore := newManifestStore(path, bucket)
+	manifestStore := store.NewManifestStore(path, bucket)
 	manifest, err := getManifest(manifestStore)
 
 	if err != nil {
@@ -64,7 +65,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	}
 
 	memtableFlushNotifierCh := make(chan MemtableFlushThreadMsg, math.MaxUint8)
-	dbState, err := manifest.dbState()
+	dbState, err := manifest.DbState()
 	if err != nil {
 		return nil, err
 	}
@@ -113,10 +114,10 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) Put(key []byte, value []byte) {
-	db.PutWithOptions(key, value, DefaultWriteOptions())
+	db.PutWithOptions(key, value, config.DefaultWriteOptions())
 }
 
-func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
+func (db *DB) PutWithOptions(key []byte, value []byte, options config.WriteOptions) {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.PutKVToWAL(key, value)
@@ -129,7 +130,7 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options WriteOptions) {
 }
 
 func (db *DB) Get(ctx context.Context, key []byte) ([]byte, error) {
-	return db.GetWithOptions(ctx, key, DefaultReadOptions())
+	return db.GetWithOptions(ctx, key, config.DefaultReadOptions())
 }
 
 // GetWithOptions -
@@ -138,10 +139,10 @@ func (db *DB) Get(ctx context.Context, key []byte) ([]byte, error) {
 //
 // if readlevel is Committed we start searching key in the following order
 // mutable memtable, immutable memtables, SSTs in L0, compacted Sorted runs
-func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOptions) ([]byte, error) {
+func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.ReadOptions) ([]byte, error) {
 	snapshot := db.state.Snapshot()
 
-	if options.ReadLevel == Uncommitted {
+	if options.ReadLevel == config.Uncommitted {
 		// search for key in mutable WAL
 		val, ok := snapshot.Wal.Get(key).Get()
 		if ok { // key is present or tombstoned
@@ -207,10 +208,10 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options ReadOption
 }
 
 func (db *DB) Delete(key []byte) {
-	db.DeleteWithOptions(key, DefaultWriteOptions())
+	db.DeleteWithOptions(key, config.DefaultWriteOptions())
 }
 
-func (db *DB) DeleteWithOptions(key []byte, options WriteOptions) {
+func (db *DB) DeleteWithOptions(key []byte, options config.WriteOptions) {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.DeleteKVFromWAL(key)
@@ -324,29 +325,29 @@ func (db *DB) FlushMemtableToL0() error {
 	return flusher.flushImmMemtablesToL0()
 }
 
-func getManifest(manifestStore *ManifestStore) (*FenceableManifest, error) {
-	stored, err := loadStoredManifest(manifestStore)
+func getManifest(manifestStore *store.ManifestStore) (*store.FenceableManifest, error) {
+	stored, err := store.LoadStoredManifest(manifestStore)
 	if err != nil {
 		return nil, err
 	}
 
-	var storedManifest *StoredManifest
+	var storedManifest *store.StoredManifest
 	sm, ok := stored.Get()
 	if ok {
 		storedManifest = &sm
 	} else {
-		storedManifest, err = newStoredManifest(manifestStore, state.NewCoreDBState())
+		storedManifest, err = store.NewStoredManifest(manifestStore, state.NewCoreDBState())
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return initFenceableManifestWriter(storedManifest)
+	return store.InitFenceableManifestWriter(storedManifest)
 }
 
 func newDB(
 	ctx context.Context,
-	options DBOptions,
+	options config.DBOptions,
 	tableStore *store.TableStore,
 	coreDBState *state.CoreDBState,
 	memtableFlushNotifierCh chan<- MemtableFlushThreadMsg,

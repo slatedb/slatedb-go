@@ -1,4 +1,4 @@
-package slatedb
+package config
 
 import (
 	"github.com/slatedb/slatedb-go/internal/compress"

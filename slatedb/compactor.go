@@ -10,6 +10,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
 	"sync"
@@ -39,7 +40,7 @@ type Compactor struct {
 	orchestrator *CompactionOrchestrator
 }
 
-func newCompactor(manifestStore *ManifestStore, tableStore *store.TableStore, opts DBOptions) (*Compactor, error) {
+func newCompactor(manifestStore *store.ManifestStore, tableStore *store.TableStore, opts config.DBOptions) (*Compactor, error) {
 	orchestrator, err := spawnAndRunCompactionOrchestrator(manifestStore, tableStore, opts)
 	if err != nil {
 		return nil, err
@@ -59,9 +60,9 @@ func (c *Compactor) close() {
 // ------------------------------------------------
 
 func spawnAndRunCompactionOrchestrator(
-	manifestStore *ManifestStore,
+	manifestStore *store.ManifestStore,
 	tableStore *store.TableStore,
-	opts DBOptions,
+	opts config.DBOptions,
 ) (*CompactionOrchestrator, error) {
 	orchestrator, err := newCompactionOrchestrator(opts, manifestStore, tableStore)
 	if err != nil {
@@ -73,8 +74,8 @@ func spawnAndRunCompactionOrchestrator(
 }
 
 type CompactionOrchestrator struct {
-	options   *CompactorOptions
-	manifest  *FenceableManifest
+	options   *config.CompactorOptions
+	manifest  *store.FenceableManifest
 	state     *CompactorState
 	scheduler CompactionScheduler
 	executor  *CompactionExecutor
@@ -87,11 +88,11 @@ type CompactionOrchestrator struct {
 }
 
 func newCompactionOrchestrator(
-	opts DBOptions,
-	manifestStore *ManifestStore,
+	opts config.DBOptions,
+	manifestStore *store.ManifestStore,
 	tableStore *store.TableStore,
 ) (*CompactionOrchestrator, error) {
-	sm, err := loadStoredManifest(manifestStore)
+	sm, err := store.LoadStoredManifest(manifestStore)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,7 @@ func newCompactionOrchestrator(
 	}
 	storedManifest, _ := sm.Get()
 
-	manifest, err := initFenceableManifestCompactor(&storedManifest)
+	manifest, err := store.InitFenceableManifestCompactor(&storedManifest)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +126,8 @@ func newCompactionOrchestrator(
 	return &o, nil
 }
 
-func loadState(manifest *FenceableManifest) (*CompactorState, error) {
-	dbState, err := manifest.dbState()
+func loadState(manifest *store.FenceableManifest) (*CompactorState, error) {
+	dbState, err := manifest.DbState()
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +138,7 @@ func loadCompactionScheduler() CompactionScheduler {
 	return SizeTieredCompactionScheduler{}
 }
 
-func (o *CompactionOrchestrator) spawnLoop(opts DBOptions) {
+func (o *CompactionOrchestrator) spawnLoop(opts config.DBOptions) {
 	o.waitGroup.Add(1)
 	go func() {
 		defer o.waitGroup.Done()
@@ -172,7 +173,7 @@ func (o *CompactionOrchestrator) shutdown() {
 }
 
 func (o *CompactionOrchestrator) loadManifest() error {
-	_, err := o.manifest.refresh()
+	_, err := o.manifest.Refresh()
 	if err != nil {
 		return err
 	}
@@ -184,7 +185,7 @@ func (o *CompactionOrchestrator) loadManifest() error {
 }
 
 func (o *CompactionOrchestrator) refreshDBState() error {
-	state, err := o.manifest.dbState()
+	state, err := o.manifest.DbState()
 	if err != nil {
 		return err
 	}
@@ -290,7 +291,7 @@ func (o *CompactionOrchestrator) writeManifest() error {
 		}
 
 		core := o.state.dbState.Clone()
-		err = o.manifest.updateDBState(core)
+		err = o.manifest.UpdateDBState(core)
 		if errors.Is(err, common.ErrManifestVersionExists) {
 			o.log.Warn("conflicting manifest version. retry write", "error", err)
 			continue
@@ -327,7 +328,7 @@ type CompactionJob struct {
 }
 
 type CompactionExecutor struct {
-	options    *CompactorOptions
+	options    *config.CompactorOptions
 	tableStore *store.TableStore
 
 	resultCh chan CompactionResult
@@ -336,7 +337,7 @@ type CompactionExecutor struct {
 }
 
 func newCompactorExecutor(
-	options *CompactorOptions,
+	options *config.CompactorOptions,
 	tableStore *store.TableStore,
 ) *CompactionExecutor {
 	return &CompactionExecutor{
