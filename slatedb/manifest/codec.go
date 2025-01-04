@@ -24,7 +24,7 @@ type FlatBufferManifestCodec struct{}
 
 func (f FlatBufferManifestCodec) Encode(manifest *Manifest) []byte {
 	builder := flatbuffers.NewBuilder(0)
-	dbFlatBufBuilder := NewDBFlatBufferBuilder(builder)
+	dbFlatBufBuilder := newDBFlatBufferBuilder(builder)
 	return dbFlatBufBuilder.createManifest(manifest)
 }
 
@@ -111,7 +111,7 @@ type DBFlatBufferBuilder struct {
 	builder *flatbuffers.Builder
 }
 
-func NewDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
+func newDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 	return DBFlatBufferBuilder{builder}
 }
 
