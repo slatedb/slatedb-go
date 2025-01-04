@@ -39,7 +39,7 @@ type FenceableManifest struct {
 	epochType      EpochType
 }
 
-func InitFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableManifest, error) {
+func NewWriterFenceableManifest(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
 	manifest.WriterEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)
@@ -55,7 +55,7 @@ func InitFenceableManifestWriter(storedManifest *StoredManifest) (*FenceableMani
 	return fm, nil
 }
 
-func InitFenceableManifestCompactor(storedManifest *StoredManifest) (*FenceableManifest, error) {
+func NewCompactorFenceableManifest(storedManifest *StoredManifest) (*FenceableManifest, error) {
 	manifest := storedManifest.manifest
 	manifest.CompactorEpoch.Add(1)
 	err := storedManifest.updateManifest(manifest)

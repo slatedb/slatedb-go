@@ -100,7 +100,7 @@ func TestShouldBumpWriterEpoch(t *testing.T) {
 		sm, ok := storedManifest.Get()
 		assert.True(t, ok)
 
-		_, err = InitFenceableManifestWriter(&sm)
+		_, err = NewWriterFenceableManifest(&sm)
 		assert.NoError(t, err)
 
 		info, err := manifestStore.readLatestManifest()
@@ -118,14 +118,14 @@ func TestShouldFailOnWriterFenced(t *testing.T) {
 
 	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
-	writer1, err := InitFenceableManifestWriter(sm)
+	writer1, err := NewWriterFenceableManifest(sm)
 	assert.NoError(t, err)
 
 	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
-	writer2, err := InitFenceableManifestWriter(&sm2)
+	writer2, err := NewWriterFenceableManifest(&sm2)
 	assert.NoError(t, err)
 
 	_, err = writer1.Refresh()
@@ -154,7 +154,7 @@ func TestShouldBumpCompactorEpoch(t *testing.T) {
 		sm, ok := storedManifest.Get()
 		assert.True(t, ok)
 
-		_, err = InitFenceableManifestCompactor(&sm)
+		_, err = NewCompactorFenceableManifest(&sm)
 		assert.NoError(t, err)
 
 		info, err := manifestStore.readLatestManifest()
@@ -172,14 +172,14 @@ func TestShouldFailOnCompactorFenced(t *testing.T) {
 
 	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
-	compactor1, err := InitFenceableManifestCompactor(sm)
+	compactor1, err := NewCompactorFenceableManifest(sm)
 	assert.NoError(t, err)
 
 	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
-	compactor2, err := InitFenceableManifestCompactor(&sm2)
+	compactor2, err := NewCompactorFenceableManifest(&sm2)
 	assert.NoError(t, err)
 
 	_, err = compactor1.Refresh()

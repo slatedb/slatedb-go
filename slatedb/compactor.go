@@ -101,7 +101,7 @@ func newCompactionOrchestrator(
 	}
 	storedManifest, _ := sm.Get()
 
-	manifest, err := store.InitFenceableManifestCompactor(&storedManifest)
+	manifest, err := store.NewCompactorFenceableManifest(&storedManifest)
 	if err != nil {
 		return nil, err
 	}

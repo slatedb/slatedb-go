@@ -342,7 +342,7 @@ func getManifest(manifestStore *store.ManifestStore) (*store.FenceableManifest, 
 		}
 	}
 
-	return store.InitFenceableManifestWriter(storedManifest)
+	return store.NewWriterFenceableManifest(storedManifest)
 }
 
 func newDB(
