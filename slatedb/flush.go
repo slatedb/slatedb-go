@@ -3,6 +3,7 @@ package slatedb
 import (
 	"errors"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 	"log/slog"
 	"sync"
@@ -132,7 +133,7 @@ func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstabl
 // ------------------------------------------------
 
 func (db *DB) spawnMemtableFlushTask(
-	manifest *FenceableManifest,
+	manifest *store.FenceableManifest,
 	memtableFlushNotifierCh <-chan MemtableFlushThreadMsg,
 	memtableFlushTaskWG *sync.WaitGroup,
 ) {
@@ -185,12 +186,12 @@ const (
 
 type MemtableFlusher struct {
 	db       *DB
-	manifest *FenceableManifest
+	manifest *store.FenceableManifest
 	log      *slog.Logger
 }
 
 func (m *MemtableFlusher) loadManifest() error {
-	currentManifest, err := m.manifest.refresh()
+	currentManifest, err := m.manifest.Refresh()
 	if err != nil {
 		return err
 	}
@@ -200,7 +201,7 @@ func (m *MemtableFlusher) loadManifest() error {
 
 func (m *MemtableFlusher) writeManifest() error {
 	core := m.db.state.CoreStateSnapshot()
-	return m.manifest.updateDBState(core)
+	return m.manifest.UpdateDBState(core)
 }
 
 func (m *MemtableFlusher) writeManifestSafely() error {

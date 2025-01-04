@@ -1,4 +1,4 @@
-package slatedb
+package manifest
 
 import (
 	"bytes"
@@ -18,17 +18,17 @@ import (
 // FlatBufferManifestCodec
 // ------------------------------------------------
 
-// FlatBufferManifestCodec implements ManifestCodec and defines how we
-// encode Manifest to byte slice and decode byte slice back to Manifest
+// FlatBufferManifestCodec implements Codec and defines how we
+// Encode Manifest to byte slice and Decode byte slice back to Manifest
 type FlatBufferManifestCodec struct{}
 
-func (f FlatBufferManifestCodec) encode(manifest *Manifest) []byte {
+func (f FlatBufferManifestCodec) Encode(manifest *Manifest) []byte {
 	builder := flatbuffers.NewBuilder(0)
 	dbFlatBufBuilder := NewDBFlatBufferBuilder(builder)
 	return dbFlatBufBuilder.createManifest(manifest)
 }
 
-func (f FlatBufferManifestCodec) decode(data []byte) (*Manifest, error) {
+func (f FlatBufferManifestCodec) Decode(data []byte) (*Manifest, error) {
 	manifestV1 := flatbuf.GetRootAsManifestV1(data, 0)
 	return f.manifest(manifestV1.UnPack()), nil
 }
@@ -49,9 +49,9 @@ func (f FlatBufferManifestCodec) manifest(manifest *flatbuf.ManifestV1T) *Manife
 	}
 
 	m := &Manifest{}
-	m.core = core.ToCoreState()
-	m.writerEpoch.Store(manifest.WriterEpoch)
-	m.compactorEpoch.Store(manifest.CompactorEpoch)
+	m.Core = core.ToCoreState()
+	m.WriterEpoch.Store(manifest.WriterEpoch)
+	m.CompactorEpoch.Store(manifest.CompactorEpoch)
 	return m
 }
 
@@ -116,7 +116,7 @@ func NewDBFlatBufferBuilder(builder *flatbuffers.Builder) DBFlatBufferBuilder {
 }
 
 func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
-	core := manifest.core.Snapshot()
+	core := manifest.Core.Snapshot()
 	l0 := fb.sstListToFlatBuf(core.L0)
 	var l0LastCompacted *flatbuf.CompactedSstIdT
 	if core.L0LastCompacted.IsPresent() {
@@ -127,8 +127,8 @@ func (fb *DBFlatBufferBuilder) createManifest(manifest *Manifest) []byte {
 
 	manifestV1 := flatbuf.ManifestV1T{
 		ManifestId:         0,
-		WriterEpoch:        manifest.writerEpoch.Load(),
-		CompactorEpoch:     manifest.compactorEpoch.Load(),
+		WriterEpoch:        manifest.WriterEpoch.Load(),
+		CompactorEpoch:     manifest.CompactorEpoch.Load(),
 		WalIdLastCompacted: core.LastCompactedWalSSTID.Load(),
 		WalIdLastSeen:      core.NextWalSstID.Load() - 1,
 		L0LastCompacted:    l0LastCompacted,

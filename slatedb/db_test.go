@@ -7,6 +7,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func TestPutGetDelete(t *testing.T) {
 func TestGetNonExistingKey(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
-	db, err := OpenWithOptions(ctx, "/tmp/test_kv_store", bucket, DefaultDBOptions())
+	db, err := OpenWithOptions(ctx, "/tmp/test_kv_store", bucket, config.DefaultDBOptions())
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -69,31 +70,31 @@ func TestGetNonExistingKey(t *testing.T) {
 
 func TestGetWithNonDurableWritesAndFlushToL0(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	db, err := OpenWithOptions(context.Background(), "/tmp/test_kv_store", bucket, DefaultDBOptions())
+	db, err := OpenWithOptions(context.Background(), "/tmp/test_kv_store", bucket, config.DefaultDBOptions())
 	require.NoError(t, err)
 	defer db.Close()
 
-	db.PutWithOptions([]byte("k1"), []byte("v1"), WriteOptions{AwaitDurable: false})
+	db.PutWithOptions([]byte("k1"), []byte("v1"), config.WriteOptions{AwaitDurable: false})
 	require.NoError(t, db.FlushWAL())
 	require.NoError(t, db.FlushMemtableToL0())
 
-	db.PutWithOptions([]byte("k0"), []byte("v0"), WriteOptions{AwaitDurable: false})
+	db.PutWithOptions([]byte("k0"), []byte("v0"), config.WriteOptions{AwaitDurable: false})
 	require.NoError(t, db.FlushWAL())
 	require.NoError(t, db.FlushMemtableToL0())
 
-	data, err := db.GetWithOptions(context.Background(), []byte("k1"), ReadOptions{ReadLevel: Committed})
+	data, err := db.GetWithOptions(context.Background(), []byte("k1"), config.ReadOptions{ReadLevel: config.Committed})
 	assert.Equal(t, "v1", string(data))
 	require.NoError(t, err)
 
-	data, err = db.GetWithOptions(context.Background(), []byte("k1"), ReadOptions{ReadLevel: Uncommitted})
+	data, err = db.GetWithOptions(context.Background(), []byte("k1"), config.ReadOptions{ReadLevel: config.Uncommitted})
 	assert.Equal(t, "v1", string(data))
 	require.NoError(t, err)
 
-	data, err = db.GetWithOptions(context.Background(), []byte("k0"), ReadOptions{ReadLevel: Committed})
+	data, err = db.GetWithOptions(context.Background(), []byte("k0"), config.ReadOptions{ReadLevel: config.Committed})
 	assert.Equal(t, "v0", string(data))
 	require.NoError(t, err)
 
-	data, err = db.GetWithOptions(context.Background(), []byte("k0"), ReadOptions{ReadLevel: Uncommitted})
+	data, err = db.GetWithOptions(context.Background(), []byte("k0"), config.ReadOptions{ReadLevel: config.Uncommitted})
 	assert.Equal(t, "v0", string(data))
 	require.NoError(t, err)
 }
@@ -105,8 +106,8 @@ func TestPutFlushesMemtable(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	manifestStore := newManifestStore(dbPath, bucket)
-	stored, err := loadStoredManifest(manifestStore)
+	manifestStore := store.NewManifestStore(dbPath, bucket)
+	stored, err := store.LoadStoredManifest(manifestStore)
 	require.NoError(t, err)
 	assert.True(t, stored.IsPresent())
 
@@ -132,7 +133,7 @@ func TestPutFlushesMemtable(t *testing.T) {
 		lastCompacted = dbState.LastCompactedWalSSTID.Load()
 	}
 
-	dbState, err := storedManifest.refresh()
+	dbState, err := storedManifest.Refresh()
 	require.NoError(t, err)
 	l0 := dbState.L0
 	ctx := context.Background()
@@ -216,7 +217,7 @@ func TestFlushWhileIterating(t *testing.T) {
 func TestFlushMemtableToL0(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
-	db, err := OpenWithOptions(context.Background(), dbPath, bucket, DefaultDBOptions())
+	db, err := OpenWithOptions(context.Background(), dbPath, bucket, config.DefaultDBOptions())
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -302,13 +303,13 @@ func TestBasicRestore(t *testing.T) {
 		assert.Equal(t, []byte(strconv.Itoa(i)), val)
 	}
 
-	manifestStore := newManifestStore(dbPath, bucket)
-	stored, err := loadStoredManifest(manifestStore)
+	manifestStore := store.NewManifestStore(dbPath, bucket)
+	stored, err := store.LoadStoredManifest(manifestStore)
 	require.NoError(t, err)
 	assert.True(t, stored.IsPresent())
 
 	storedManifest, _ := stored.Get()
-	dbState := storedManifest.dbState()
+	dbState := storedManifest.DbState()
 	assert.Equal(t, uint64(sstCount+2*l0Count+1), dbState.NextWalSstID.Load())
 }
 
@@ -320,9 +321,9 @@ func TestShouldReadUncommittedIfReadLevelUncommitted(t *testing.T) {
 	defer db.Close()
 
 	// we do not wait till WAL is flushed to object store and memtable
-	db.PutWithOptions([]byte("foo"), []byte("bar"), WriteOptions{AwaitDurable: false})
+	db.PutWithOptions([]byte("foo"), []byte("bar"), config.WriteOptions{AwaitDurable: false})
 
-	value, err := db.GetWithOptions(context.Background(), []byte("foo"), ReadOptions{ReadLevel: Uncommitted})
+	value, err := db.GetWithOptions(context.Background(), []byte("foo"), config.ReadOptions{ReadLevel: config.Uncommitted})
 	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 }
@@ -335,13 +336,13 @@ func TestShouldReadOnlyCommittedData(t *testing.T) {
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
-	db.PutWithOptions([]byte("foo"), []byte("bla"), WriteOptions{AwaitDurable: false})
+	db.PutWithOptions([]byte("foo"), []byte("bla"), config.WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get(context.Background(), []byte("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 
-	value, err = db.GetWithOptions(context.Background(), []byte("foo"), ReadOptions{ReadLevel: Uncommitted})
+	value, err = db.GetWithOptions(context.Background(), []byte("foo"), config.ReadOptions{ReadLevel: config.Uncommitted})
 	require.NoError(t, err)
 	assert.Equal(t, []byte("bla"), value)
 }
@@ -354,13 +355,13 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	defer db.Close()
 
 	db.Put([]byte("foo"), []byte("bar"))
-	db.DeleteWithOptions([]byte("foo"), WriteOptions{AwaitDurable: false})
+	db.DeleteWithOptions([]byte("foo"), config.WriteOptions{AwaitDurable: false})
 
 	value, err := db.Get(context.Background(), []byte("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, []byte("bar"), value)
 
-	_, err = db.GetWithOptions(context.Background(), []byte("foo"), ReadOptions{ReadLevel: Uncommitted})
+	_, err = db.GetWithOptions(context.Background(), []byte("foo"), config.ReadOptions{ReadLevel: config.Uncommitted})
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
@@ -398,7 +399,7 @@ func TestShouldReadFromCompactedDB(t *testing.T) {
 	options := testDBOptionsCompactor(
 		0,
 		127,
-		&CompactorOptions{
+		&config.CompactorOptions{
 			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
@@ -411,7 +412,7 @@ func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 	opts := testDBOptionsCompactor(
 		math.MaxUint32,
 		127,
-		&CompactorOptions{
+		&config.CompactorOptions{
 			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   256,
 		},
@@ -420,7 +421,7 @@ func TestShouldReadFromCompactedDBNoFilters(t *testing.T) {
 	doTestDeleteAndWaitForCompaction(t, opts)
 }
 
-func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
+func doTestShouldReadCompactedDB(t *testing.T, options config.DBOptions) {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
@@ -428,8 +429,8 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	manifestStore := newManifestStore(dbPath, bucket)
-	sm, err := loadStoredManifest(manifestStore)
+	manifestStore := store.NewManifestStore(dbPath, bucket)
+	sm, err := store.LoadStoredManifest(manifestStore)
 	require.NoError(t, err)
 	storedManifest, ok := sm.Get()
 	assert.True(t, ok)
@@ -485,7 +486,7 @@ func doTestShouldReadCompactedDB(t *testing.T, options DBOptions) {
 	assert.ErrorIs(t, err, common.ErrKeyNotFound)
 }
 
-func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
+func doTestDeleteAndWaitForCompaction(t *testing.T, options config.DBOptions) {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
 	dbPath := "/tmp/test_kv_store"
@@ -493,8 +494,8 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	manifestStore := newManifestStore(dbPath, bucket)
-	sm, err := loadStoredManifest(manifestStore)
+	manifestStore := store.NewManifestStore(dbPath, bucket)
+	sm, err := store.LoadStoredManifest(manifestStore)
 	require.NoError(t, err)
 	storedManifest, ok := sm.Get()
 	assert.True(t, ok)
@@ -542,13 +543,13 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options DBOptions) {
 }
 
 func waitForManifestCondition(
-	sm StoredManifest,
+	sm store.StoredManifest,
 	timeout time.Duration,
 	cond func(state *state.CoreStateSnapshot) bool,
 ) *state.CoreStateSnapshot {
 	start := time.Now()
 	for time.Since(start) < timeout {
-		dbState, err := sm.refresh()
+		dbState, err := sm.Refresh()
 		assert2.True(err == nil, "")
 		if cond(dbState) {
 			return dbState.Clone()
@@ -558,8 +559,8 @@ func waitForManifestCondition(
 	panic("manifest condition took longer than timeout")
 }
 
-func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
-	return DBOptions{
+func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) config.DBOptions {
+	return config.DBOptions{
 		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        minFilterKeys,
@@ -568,7 +569,7 @@ func testDBOptions(minFilterKeys uint32, l0SSTSizeBytes uint64) DBOptions {
 	}
 }
 
-func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *CompactorOptions) DBOptions {
+func testDBOptionsCompactor(minFilterKeys uint32, l0SSTSizeBytes uint64, compactorOptions *config.CompactorOptions) config.DBOptions {
 	dbOptions := testDBOptions(minFilterKeys, l0SSTSizeBytes)
 	dbOptions.CompactorOptions = compactorOptions
 	return dbOptions

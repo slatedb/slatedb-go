@@ -3,12 +3,10 @@ package compaction
 import (
 	"bytes"
 	"context"
+	"github.com/samber/mo"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/store"
-
-	"github.com/samber/mo"
 	"sort"
 )
 
@@ -58,15 +56,15 @@ func (s *SortedRun) Clone() *SortedRun {
 type SortedRunIterator struct {
 	currentKVIter mo.Option[*sstable.Iterator]
 	sstListIter   *SSTListIterator
-	tableStore    *store.TableStore
+	tableStore    sstable.TableStore
 	warn          types.ErrWarn
 }
 
-func NewSortedRunIterator(sr SortedRun, store *store.TableStore) (*SortedRunIterator, error) {
+func NewSortedRunIterator(sr SortedRun, store sstable.TableStore) (*SortedRunIterator, error) {
 	return newSortedRunIter(sr.SSTList, store, mo.None[[]byte]())
 }
 
-func NewSortedRunIteratorFromKey(sr SortedRun, key []byte, store *store.TableStore) (*SortedRunIterator, error) {
+func NewSortedRunIteratorFromKey(sr SortedRun, key []byte, store sstable.TableStore) (*SortedRunIterator, error) {
 	sstList := sr.SSTList
 	idx, ok := sr.indexOfSSTWithKey(key).Get()
 	if ok {
@@ -76,7 +74,7 @@ func NewSortedRunIteratorFromKey(sr SortedRun, key []byte, store *store.TableSto
 	return newSortedRunIter(sstList, store, mo.Some(key))
 }
 
-func newSortedRunIter(sstList []sstable.Handle, store *store.TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
+func newSortedRunIter(sstList []sstable.Handle, store sstable.TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*sstable.Iterator]()

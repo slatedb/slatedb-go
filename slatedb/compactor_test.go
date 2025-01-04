@@ -6,6 +6,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"log/slog"
@@ -31,12 +32,12 @@ func TestCompactorCompactsL0(t *testing.T) {
 	startTime := time.Now()
 	dbState := mo.None[*state.CoreStateSnapshot]()
 	for time.Since(startTime) < time.Second*10 {
-		sm, err := loadStoredManifest(manifestStore)
+		sm, err := store.LoadStoredManifest(manifestStore)
 		assert.NoError(t, err)
 		assert.True(t, sm.IsPresent())
 		storedManifest, _ := sm.Get()
-		if storedManifest.dbState().L0LastCompacted.IsPresent() {
-			dbState = mo.Some(storedManifest.dbState().Clone())
+		if storedManifest.DbState().L0LastCompacted.IsPresent() {
+			dbState = mo.Some(storedManifest.DbState().Clone())
 			break
 		}
 		time.Sleep(time.Millisecond * 50)
@@ -73,7 +74,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 func TestShouldWriteManifestSafely(t *testing.T) {
 	options := dbOptions(nil)
 	bucket, manifestStore, tableStore, db := buildTestDB(options)
-	sm, err := loadStoredManifest(manifestStore)
+	sm, err := store.LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	assert.True(t, sm.IsPresent())
 	storedManifest, _ := sm.Get()
@@ -109,7 +110,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Key aaa... will be compacted and Key jjj... will be in Level0
-	dbState, err := storedManifest.refresh()
+	dbState, err := storedManifest.Refresh()
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(dbState.L0))
 	assert.Equal(t, 1, len(dbState.Compacted))
@@ -126,7 +127,7 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 	assert.Equal(t, l0IDsToCompact[0].sstID(), dbState.L0LastCompacted)
 }
 
-func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *store.TableStore, *DB) {
+func buildTestDB(options config.DBOptions) (objstore.Bucket, *store.ManifestStore, *store.TableStore, *DB) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, options)
 	assert2.True(err == nil, "Failed to open test database")
@@ -134,13 +135,13 @@ func buildTestDB(options DBOptions) (objstore.Bucket, *ManifestStore, *store.Tab
 	conf.BlockSize = 32
 	conf.MinFilterKeys = 10
 	conf.Compression = options.CompressionCodec
-	manifestStore := newManifestStore(testPath, bucket)
+	manifestStore := store.NewManifestStore(testPath, bucket)
 	tableStore := store.NewTableStore(bucket, conf, testPath)
 	return bucket, manifestStore, tableStore, db
 }
 
-func dbOptions(compactorOptions *CompactorOptions) DBOptions {
-	return DBOptions{
+func dbOptions(compactorOptions *config.CompactorOptions) config.DBOptions {
+	return config.DBOptions{
 		FlushInterval:        100 * time.Millisecond,
 		ManifestPollInterval: 100 * time.Millisecond,
 		MinFilterKeys:        0,
@@ -150,9 +151,9 @@ func dbOptions(compactorOptions *CompactorOptions) DBOptions {
 	}
 }
 
-func compactorOptions() DBOptions {
-	return DBOptions{
-		CompactorOptions: &CompactorOptions{
+func compactorOptions() config.DBOptions {
+	return config.DBOptions{
+		CompactorOptions: &config.CompactorOptions{
 			PollInterval: 100 * time.Millisecond,
 			MaxSSTSize:   1024 * 1024 * 1024,
 		},

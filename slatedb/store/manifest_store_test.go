@@ -1,4 +1,4 @@
-package slatedb
+package store
 
 import (
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -10,13 +10,13 @@ import (
 
 func TestShouldFailWriteOnVersionConflict(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
-	storedManifest, err := loadStoredManifest(manifestStore)
+	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
@@ -30,10 +30,10 @@ func TestShouldFailWriteOnVersionConflict(t *testing.T) {
 
 func TestShouldWriteWithNewVersion(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	err = sm.updateDBState(coreState.Snapshot())
@@ -49,28 +49,28 @@ func TestShouldWriteWithNewVersion(t *testing.T) {
 
 func TestShouldUpdateLocalStateOnWrite(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	core := coreState.Snapshot()
 	core.NextWalSstID.Store(123)
 	err = sm.updateDBState(core)
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(123), sm.dbState().NextWalSstID.Load())
+	assert.Equal(t, uint64(123), sm.DbState().NextWalSstID.Load())
 }
 
 func TestShouldRefresh(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
-	storedManifest, err := loadStoredManifest(manifestStore)
+	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
@@ -80,116 +80,116 @@ func TestShouldRefresh(t *testing.T) {
 	err = sm.updateDBState(core)
 	assert.NoError(t, err)
 
-	refreshed, err := sm2.refresh()
+	refreshed, err := sm2.Refresh()
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(123), refreshed.NextWalSstID.Load())
-	assert.Equal(t, uint64(123), sm.dbState().NextWalSstID.Load())
+	assert.Equal(t, uint64(123), sm.DbState().NextWalSstID.Load())
 }
 
 func TestShouldBumpWriterEpoch(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	_, err := newStoredManifest(manifestStore, coreState)
+	_, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	for i := 1; i <= 5; i++ {
-		storedManifest, err := loadStoredManifest(manifestStore)
+		storedManifest, err := LoadStoredManifest(manifestStore)
 		assert.NoError(t, err)
 		sm, ok := storedManifest.Get()
 		assert.True(t, ok)
 
-		_, err = initFenceableManifestWriter(&sm)
+		_, err = InitFenceableManifestWriter(&sm)
 		assert.NoError(t, err)
 
 		info, err := manifestStore.readLatestManifest()
 		assert.NoError(t, err)
 		assert.True(t, info.IsPresent())
 		mInfo, _ := info.Get()
-		assert.Equal(t, uint64(i), mInfo.manifest.writerEpoch.Load())
+		assert.Equal(t, uint64(i), mInfo.manifest.WriterEpoch.Load())
 	}
 }
 
 func TestShouldFailOnWriterFenced(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
-	writer1, err := initFenceableManifestWriter(sm)
+	writer1, err := InitFenceableManifestWriter(sm)
 	assert.NoError(t, err)
 
-	storedManifest, err := loadStoredManifest(manifestStore)
+	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
-	writer2, err := initFenceableManifestWriter(&sm2)
+	writer2, err := InitFenceableManifestWriter(&sm2)
 	assert.NoError(t, err)
 
-	_, err = writer1.refresh()
+	_, err = writer1.Refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
 	core := coreState.Snapshot()
 	core.NextWalSstID.Store(123)
-	err = writer1.updateDBState(core)
+	err = writer1.UpdateDBState(core)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
-	refreshed, err := writer2.refresh()
+	refreshed, err := writer2.Refresh()
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), refreshed.NextWalSstID.Load())
 }
 
 func TestShouldBumpCompactorEpoch(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	_, err := newStoredManifest(manifestStore, coreState)
+	_, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
 
 	for i := 1; i <= 5; i++ {
-		storedManifest, err := loadStoredManifest(manifestStore)
+		storedManifest, err := LoadStoredManifest(manifestStore)
 		assert.NoError(t, err)
 		sm, ok := storedManifest.Get()
 		assert.True(t, ok)
 
-		_, err = initFenceableManifestCompactor(&sm)
+		_, err = InitFenceableManifestCompactor(&sm)
 		assert.NoError(t, err)
 
 		info, err := manifestStore.readLatestManifest()
 		assert.NoError(t, err)
 		assert.True(t, info.IsPresent())
 		mInfo, _ := info.Get()
-		assert.Equal(t, uint64(i), mInfo.manifest.compactorEpoch.Load())
+		assert.Equal(t, uint64(i), mInfo.manifest.CompactorEpoch.Load())
 	}
 }
 
 func TestShouldFailOnCompactorFenced(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	manifestStore := newManifestStore(rootPath, bucket)
+	manifestStore := NewManifestStore(rootPath, bucket)
 	coreState := state.NewCoreDBState()
 
-	sm, err := newStoredManifest(manifestStore, coreState)
+	sm, err := NewStoredManifest(manifestStore, coreState)
 	assert.NoError(t, err)
-	compactor1, err := initFenceableManifestCompactor(sm)
+	compactor1, err := InitFenceableManifestCompactor(sm)
 	assert.NoError(t, err)
 
-	storedManifest, err := loadStoredManifest(manifestStore)
+	storedManifest, err := LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	sm2, ok := storedManifest.Get()
 	assert.True(t, ok)
-	compactor2, err := initFenceableManifestCompactor(&sm2)
+	compactor2, err := InitFenceableManifestCompactor(&sm2)
 	assert.NoError(t, err)
 
-	_, err = compactor1.refresh()
+	_, err = compactor1.Refresh()
 	assert.ErrorIs(t, err, common.ErrFenced)
 	core := coreState.Snapshot()
 	core.NextWalSstID.Store(123)
-	err = compactor1.updateDBState(core)
+	err = compactor1.UpdateDBState(core)
 	assert.ErrorIs(t, err, common.ErrFenced)
 
-	refreshed, err := compactor2.refresh()
+	refreshed, err := compactor2.Refresh()
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), refreshed.NextWalSstID.Load())
 }

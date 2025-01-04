@@ -1,4 +1,4 @@
-package compaction
+package slatedb
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,14 +22,14 @@ func buildSRWithSSTs(
 	tableStore *store.TableStore,
 	keyGen common.OrderedBytesGenerator,
 	valGen common.OrderedBytesGenerator,
-) (SortedRun, error) {
+) (compaction.SortedRun, error) {
 
 	sstList := make([]sstable.Handle, 0, n)
 	for i := uint64(0); i < n; i++ {
 		writer := tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 		for j := uint64(0); j < keysPerSST; j++ {
 			if err := writer.Add(keyGen.Next(), mo.Some(valGen.Next())); err != nil {
-				return SortedRun{}, err
+				return compaction.SortedRun{}, err
 			}
 		}
 
@@ -36,7 +37,7 @@ func buildSRWithSSTs(
 		sstList = append(sstList, *sst)
 	}
 
-	return SortedRun{0, sstList}, nil
+	return compaction.SortedRun{ID: 0, SSTList: sstList}, nil
 }
 
 func TestOneSstSRIter(t *testing.T) {
@@ -55,8 +56,8 @@ func TestOneSstSRIter(t *testing.T) {
 	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	assert.NoError(t, err)
 
-	sr := SortedRun{0, []sstable.Handle{*sstHandle}}
-	iterator, err := NewSortedRunIterator(sr, tableStore)
+	sr := compaction.SortedRun{ID: 0, SSTList: []sstable.Handle{*sstHandle}}
+	iterator, err := compaction.NewSortedRunIterator(sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -91,8 +92,8 @@ func TestManySstSRIter(t *testing.T) {
 	sstHandle2, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	require.NoError(t, err)
 
-	sr := SortedRun{0, []sstable.Handle{*sstHandle, *sstHandle2}}
-	iterator, err := NewSortedRunIterator(sr, tableStore)
+	sr := compaction.SortedRun{ID: 0, SSTList: []sstable.Handle{*sstHandle, *sstHandle2}}
+	iterator, err := compaction.NewSortedRunIterator(sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -126,7 +127,7 @@ func TestSRIterFromKey(t *testing.T) {
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
 
-		kvIter, err := NewSortedRunIteratorFromKey(sr, fromKey, tableStore)
+		kvIter, err := compaction.NewSortedRunIteratorFromKey(sr, fromKey, tableStore)
 		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
@@ -155,7 +156,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := NewSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore)
+	kvIter, err := compaction.NewSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore)
 	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
@@ -181,7 +182,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := NewSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
+	kvIter, err := compaction.NewSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)

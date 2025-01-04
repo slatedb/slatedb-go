@@ -1,4 +1,4 @@
-package slatedb
+package store
 
 import (
 	"bytes"

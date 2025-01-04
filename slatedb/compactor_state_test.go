@@ -5,7 +5,9 @@ import (
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
+	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -67,7 +69,7 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 
 func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 	bucket, sm, compactorState := buildTestState(t)
-	option := DefaultDBOptions()
+	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
@@ -98,7 +100,7 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 		SSTList: []sstable.Handle{originalL0s[len(originalL0s)-1]},
 	})
 
-	option := DefaultDBOptions()
+	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
@@ -151,7 +153,7 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	})
 	assert.Equal(t, 0, len(compactorState.dbState.L0))
 
-	option := DefaultDBOptions()
+	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
@@ -169,10 +171,10 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	assert.Equal(t, expectedID, actualID)
 }
 
-func waitForManifestWithL0Len(storedManifest StoredManifest, size int) *state.CoreStateSnapshot {
+func waitForManifestWithL0Len(storedManifest store.StoredManifest, size int) *state.CoreStateSnapshot {
 	startTime := time.Now()
 	for time.Since(startTime) < time.Second*10 {
-		dbState, err := storedManifest.refresh()
+		dbState, err := storedManifest.Refresh()
 		assert2.True(err == nil, "")
 		if len(dbState.L0) == size {
 			return dbState.Clone()
@@ -192,11 +194,11 @@ func buildL0Compaction(sstList []sstable.Handle, destination uint32) Compaction 
 	return newCompaction(sources, destination)
 }
 
-func buildTestState(t *testing.T) (objstore.Bucket, StoredManifest, *CompactorState) {
+func buildTestState(t *testing.T) (objstore.Bucket, store.StoredManifest, *CompactorState) {
 	t.Helper()
 
 	bucket := objstore.NewInMemBucket()
-	option := DefaultDBOptions()
+	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert2.True(err == nil, "Could not open db")
@@ -207,14 +209,14 @@ func buildTestState(t *testing.T) (objstore.Bucket, StoredManifest, *CompactorSt
 	}
 	db.Close()
 
-	manifestStore := newManifestStore(testPath, bucket)
-	sm, err := loadStoredManifest(manifestStore)
+	manifestStore := store.NewManifestStore(testPath, bucket)
+	sm, err := store.LoadStoredManifest(manifestStore)
 	require.NoError(t, err)
 	require.NotNil(t, sm)
 
 	assert.True(t, err == nil, "Could not load stored manifest")
 	assert.True(t, sm.IsPresent(), "Could not find stored manifest")
 	storedManifest, _ := sm.Get()
-	compactorState := newCompactorState(storedManifest.dbState(), nil)
+	compactorState := newCompactorState(storedManifest.DbState(), nil)
 	return bucket, storedManifest, compactorState
 }
