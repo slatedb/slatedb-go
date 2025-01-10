@@ -2,6 +2,10 @@ package bloom
 
 import (
 	"encoding/binary"
+	"errors"
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"hash/crc32"
 	"hash/fnv"
 )
 
@@ -34,7 +38,6 @@ func (f *Filter) HasKey(key []byte) bool {
 // |  +-----------------------------------------+  |
 // |  |  Num of Probes (2 bytes)                |  |
 // |  +-----------------------------------------+  |
-// |  +-----------------------------------------+  |
 // |  |  Bit Array (N * bitsPerKey)             |  |
 // |  |  +-----------------------------------+  |  |
 // |  |  |  Bit 0                            |  |  |
@@ -42,25 +45,48 @@ func (f *Filter) HasKey(key []byte) bool {
 // |  |  |  ...                              |  |  |
 // |  |  +-----------------------------------+  |  |
 // |  +-----------------------------------------+  |
-// |                                               |
+// |  |  Checksum (4 bytes)                     |  |
+// |  +-----------------------------------------+  |
 // +-----------------------------------------------+
-func Encode(f Filter) []byte {
-	encoded := make([]byte, 2+len(f.Data))
-	binary.BigEndian.PutUint16(encoded[:2], f.NumProbes)
-	copy(encoded[2:], f.Data)
-	return encoded
+func Encode(f Filter, codec compress.Codec) ([]byte, error) {
+	buf := make([]byte, 2+len(f.Data))
+	binary.BigEndian.PutUint16(buf[:2], f.NumProbes)
+	copy(buf[2:], f.Data)
+
+	compressed, err := compress.Encode(buf, codec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Make a new buffer exactly the size of the compressed plus the checksum
+	buf = make([]byte, 0, len(compressed)+common.SizeOfUint32)
+	buf = append(buf, compressed...)
+	buf = binary.BigEndian.AppendUint32(buf, crc32.ChecksumIEEE(compressed))
+	return buf, nil
 }
 
 // Decode decodes the bloom filter from the provided byte slice using binary.BigEndian
-func Decode(data []byte) Filter {
+func Decode(data []byte, codec compress.Codec) (Filter, error) {
 	if len(data) < 2 {
-		return Filter{NumProbes: 0, Data: []byte{}}
+		return Filter{}, errors.New("corrupt filter: filter is too small; must be at least 2 bytes")
 	}
-	numProbes := binary.BigEndian.Uint16(data[:2])
+
+	checksumIndex := len(data) - common.SizeOfUint32
+	compressed := data[:checksumIndex]
+	if binary.BigEndian.Uint32(data[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
+		return Filter{}, common.ErrChecksumMismatch
+	}
+
+	buf, err := compress.Decode(compressed, codec)
+	if err != nil {
+		return Filter{}, err
+	}
+
+	numProbes := binary.BigEndian.Uint16(buf[:2])
 	return Filter{
 		NumProbes: numProbes,
-		Data:      data[2:],
-	}
+		Data:      buf[2:],
+	}, nil
 }
 
 type Builder struct {

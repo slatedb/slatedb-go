@@ -3,12 +3,15 @@ package block_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"hash/crc32"
 	"testing"
 )
 
@@ -328,6 +331,86 @@ func TestBlockFirstKey(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []byte("key1"), b.FirstKey)
+}
+
+func TestDecodeCorruptV0Block(t *testing.T) {
+
+	tests := []struct {
+		name        string
+		corruptFunc func([]byte) []byte
+		expectedErr string
+	}{
+		{
+			name: "TooSmall",
+			corruptFunc: func(data []byte) []byte {
+				return data[:5] // Make the block too small
+			},
+			expectedErr: "corrupt block: block is too small; must be at least 6 bytes",
+		},
+		{
+			name: "InvalidChecksum",
+			corruptFunc: func(data []byte) []byte {
+				data[len(data)-1]++ // Corrupt the last byte of the checksum
+				return data
+			},
+			expectedErr: "checksum mismatch",
+		},
+		{
+			name: "InvalidOffsetCount",
+			corruptFunc: func(data []byte) []byte {
+				// Set an impossibly large offset count
+				binary.BigEndian.PutUint16(data[len(data)-6:len(data)-4], 65535)
+
+				// Reapply checksum
+				data = data[:len(data)-common.SizeOfUint32]
+				data = binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(data))
+				return data
+			},
+			expectedErr: "corrupt block: invalid index offset",
+		},
+		{
+			name: "OffsetExceedsBounds",
+			corruptFunc: func(data []byte) []byte {
+				// Set an offset that exceeds the bounds
+				binary.BigEndian.PutUint16(data[len(data)-8:len(data)-6], 65535)
+
+				// Reapply checksum
+				data = data[:len(data)-common.SizeOfUint32]
+				data = binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(data))
+				return data
+			},
+			expectedErr: "exceeds key value bounds",
+		},
+		{
+			name: "NoOffsets",
+			corruptFunc: func(data []byte) []byte {
+				// Set offset count to 0
+				binary.BigEndian.PutUint16(data[len(data)-6:len(data)-4], 0)
+
+				// Reapply checksum
+				data = data[:len(data)-common.SizeOfUint32]
+				data = binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(data))
+				return data
+			},
+			expectedErr: "corrupt block: Block.Offsets must be greater than 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bb := block.NewBuilder(4096)
+			assert.True(t, bb.AddValue([]byte("key1"), []byte("value1")))
+			assert.True(t, bb.AddValue([]byte("key2"), []byte("value2")))
+			b, err := bb.Build()
+			require.NoError(t, err)
+			encoded, err := block.Encode(b, compress.CodecNone)
+			require.NoError(t, err)
+			corruptedBlock := tt.corruptFunc(encoded)
+			err = block.Decode(b, corruptedBlock, compress.CodecNone)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
 }
 
 func TestNewIteratorAtKeyWithCorruptedKeys(t *testing.T) {

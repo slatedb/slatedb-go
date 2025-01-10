@@ -59,11 +59,12 @@ func ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter]
 		return mo.None[bloom.Filter](), fmt.Errorf("while reading filter offset: %w", err)
 	}
 
-	filterData, err := compress.Decode(filterBytes, sstInfo.CompressionCodec)
+	filterData, err := bloom.Decode(filterBytes, sstInfo.CompressionCodec)
 	if err != nil {
 		return mo.Option[bloom.Filter]{}, err
 	}
-	return mo.Some(bloom.Decode(filterData)), nil
+
+	return mo.Some(filterData), nil
 }
 
 func ReadIndex(info *Info, obj common.ReadOnlyBlob) (*Index, error) {
@@ -75,23 +76,13 @@ func ReadIndex(info *Info, obj common.ReadOnlyBlob) (*Index, error) {
 		return nil, err
 	}
 
-	data, err := compress.Decode(indexBytes, info.CompressionCodec)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Index{Data: data}, nil
+	return DecodeIndex(indexBytes, info.CompressionCodec)
 }
 
 func ReadIndexRaw(info *Info, sstBytes []byte) (*Index, error) {
 	indexBytes := sstBytes[info.IndexOffset : info.IndexOffset+info.IndexLen]
 
-	data, err := compress.Decode(indexBytes, info.CompressionCodec)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Index{Data: data}, nil
+	return DecodeIndex(indexBytes, info.CompressionCodec)
 }
 
 // getBlockRange returns the (startOffset, endOffset) of the data in ssTable that contains the

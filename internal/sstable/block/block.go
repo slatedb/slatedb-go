@@ -111,10 +111,15 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 
 	for i := 0; i < int(offsetCount); i++ {
 		index := offsetStartIndex + (i * common.SizeOfUint16)
-		if index <= 0 || index >= len(buf) {
-			return fmt.Errorf("corrupt block: block offset[%d] is invalid", index)
+		// NOTE: This failing this assert condition cannot be the result of file corruption, as the
+		// `offsetStartIndex` check above ensures we are in bounds. This is only possible due to ram corruption.
+		assert.True(index >= 0 || index <= len(buf), "block offset[%d] is out of range", index)
+
+		offset := binary.BigEndian.Uint16(buf[index:])
+		if offset > uint16(offsetStartIndex) {
+			return fmt.Errorf("corrupt block: block offset[%d] = %d exceeds key value bounds", i, offset)
 		}
-		offsets = append(offsets, binary.BigEndian.Uint16(buf[index:]))
+		offsets = append(offsets, offset)
 	}
 
 	b.Data = buf[:offsetStartIndex]

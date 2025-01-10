@@ -55,8 +55,6 @@ func SstInfoToFlatBuf(info *Info) *flatbuf.SsTableInfoT {
 	}
 }
 
-// TODO(thrawn01): Use these instead of the FlatBufferBuilders above
-
 // EncodeInfo encodes the provided Info into flatbuf.SsTableInfoT flat []byte
 // format along with a checksum of flatbuf.SsTableInfoT
 func EncodeInfo(info *Info) []byte {
@@ -78,6 +76,25 @@ func EncodeInfo(info *Info) []byte {
 
 	// Add a checksum to the end of the slice
 	return binary.BigEndian.AppendUint32(b, crc32.ChecksumIEEE(b))
+}
+
+func DecodeIndex(buf []byte, codec compress.Codec) (*Index, error) {
+	if len(buf) <= common.SizeOfUint32 {
+		return nil, common.ErrEmptyBlockMeta
+	}
+
+	checksumIndex := len(buf) - common.SizeOfUint32
+	compressed := buf[:checksumIndex]
+	if binary.BigEndian.Uint32(buf[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
+		return nil, common.ErrChecksumMismatch
+	}
+
+	buf, err := compress.Decode(compressed, codec)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Index{Data: buf}, nil
 }
 
 func DecodeInfo(b []byte) (*Info, error) {
@@ -104,11 +121,19 @@ func DecodeInfo(b []byte) (*Info, error) {
 	return info, nil
 }
 
-func encodeIndex(index flatbuf.SsTableIndexT) []byte {
+func encodeIndex(index flatbuf.SsTableIndexT, codec compress.Codec) ([]byte, error) {
 	builder := flatbuffers.NewBuilder(0)
 	offset := index.Pack(builder)
 	builder.Finish(offset)
-	return builder.FinishedBytes()
+
+	compressed, err := compress.Encode(builder.FinishedBytes(), codec)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, 0, len(compressed)+common.SizeOfUint32)
+	buf = append(buf, compressed...)
+	return binary.BigEndian.AppendUint32(buf, crc32.ChecksumIEEE(compressed)), nil
 }
 
 // EncodeTable encodes the provided sstable.Table into the
