@@ -209,9 +209,11 @@ func TestSSTableBuildsFilterWithCorrectBitsPerKey(t *testing.T) {
 		encodedSST, err := builder.Build()
 		assert.NoError(t, err)
 		filter, _ := encodedSST.Bloom.Get()
-		// filters are encoded as a 2 byte number of probes followed by the filter
+		// filters are encoded as a 2 byte number of probes followed by the filter + 4 byte checksum
 		// Since we have added 8 keys, the filter will have (8 * FilterBitsPerKey) bits or FilterBitsPerKey bytes
-		assert.Equal(t, 2+int(filterBitsPerKey), len(bloom.Encode(filter)))
+		f, err := bloom.Encode(filter, compress.CodecNone)
+		assert.NoError(t, err)
+		assert.Equal(t, 2+int(filterBitsPerKey)+4, len(f))
 	}
 }
 
