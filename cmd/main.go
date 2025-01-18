@@ -22,7 +22,7 @@ func main() {
 	value := []byte("value1")
 
 	db.Put(key, value)
-	slog.With("key", string(key)).Info("Put into slatedb")
+	slog.With("key", string(key)).With("value", string(value)).Info("Put into slatedb")
 
 	data, _ := db.Get(ctx, key)
 	slog.With("key", string(key)).With("value", string(data)).Info("Get from slatedb")
