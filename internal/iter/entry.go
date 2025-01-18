@@ -2,6 +2,7 @@ package iter
 
 import (
 	"context"
+
 	"github.com/slatedb/slatedb-go/internal/types"
 )
 

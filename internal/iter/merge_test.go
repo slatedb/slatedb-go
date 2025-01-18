@@ -2,10 +2,12 @@ package iter_test
 
 import (
 	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/iter"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestMergeUniqueIteratorPrecedence(t *testing.T) {

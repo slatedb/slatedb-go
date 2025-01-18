@@ -1,17 +1,20 @@
 package slatedb
 
 import (
-	"github.com/kapetan-io/tackle/set"
-	"github.com/slatedb/slatedb-go/internal/assert"
-	"github.com/slatedb/slatedb-go/internal/sstable"
-	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
-	"github.com/slatedb/slatedb-go/slatedb/state"
 	"log/slog"
 	"math"
 	"strconv"
 
+	"github.com/kapetan-io/tackle/set"
+
+	"github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/sstable"
+	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/state"
+
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 

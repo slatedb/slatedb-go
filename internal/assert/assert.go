@@ -3,9 +3,11 @@ package assert
 import (
 	"context"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal/iter"
-	assert2 "github.com/stretchr/testify/assert"
 	"testing"
+
+	assert2 "github.com/stretchr/testify/assert"
+
+	"github.com/slatedb/slatedb-go/internal/iter"
 )
 
 func True(condition bool, errMsg string, arg ...any) {

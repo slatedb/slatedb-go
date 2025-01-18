@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"time"
 
-	"github.com/slatedb/slatedb-go/slatedb"
 	"github.com/thanos-io/objstore"
+
+	"github.com/slatedb/slatedb-go/slatedb"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 func main() {
-
 	bucket := objstore.NewInMemBucket()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -21,20 +22,20 @@ func main() {
 	value := []byte("value1")
 
 	db.Put(key, value)
-	fmt.Println("Put:", string(key), string(value))
+	slog.With("key", string(key)).Info("Put into slatedb")
 
 	data, _ := db.Get(ctx, key)
-	fmt.Println("Get:", string(key), string(data))
+	slog.With("key", string(key)).With("value", string(data)).Info("Get from slatedb")
 
 	db.Delete(key)
 	_, err := db.Get(ctx, key)
-	if err != nil && err.Error() == "key not found" {
-		fmt.Println("Delete:", string(key))
+	if errors.Is(err, common.ErrKeyNotFound) {
+		slog.With("key", string(key)).Info("Key deleted")
 	} else {
-		slog.Error("Unable to delete", "error", err)
+		slog.With("err", err).Error("Unable to delete")
 	}
 
 	if err := db.Close(); err != nil {
-		slog.Error("Error closing db", "error", err)
+		slog.With("err", err).Error("Error closing db")
 	}
 }

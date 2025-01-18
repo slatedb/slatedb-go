@@ -3,8 +3,10 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+
 	"github.com/gammazero/deque"
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"

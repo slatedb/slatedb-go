@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"errors"
+
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 

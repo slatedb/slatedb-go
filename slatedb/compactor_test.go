@@ -2,6 +2,11 @@ package slatedb
 
 import (
 	"context"
+	"log/slog"
+	"slices"
+	"testing"
+	"time"
+
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -9,10 +14,6 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-	"log/slog"
-	"slices"
-	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
