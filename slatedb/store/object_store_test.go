@@ -3,14 +3,16 @@ package store
 import (
 	"bytes"
 	"context"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/stretchr/testify/assert"
-	"github.com/thanos-io/objstore"
 	"io"
 	"path"
 	"sort"
 	"testing"
+
+	"github.com/samber/mo"
+	"github.com/stretchr/testify/assert"
+	"github.com/thanos-io/objstore"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 var rootPath = "/root/path"

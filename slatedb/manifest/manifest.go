@@ -1,8 +1,9 @@
 package manifest
 
 import (
-	"github.com/slatedb/slatedb-go/slatedb/state"
 	"sync/atomic"
+
+	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
 type Manifest struct {

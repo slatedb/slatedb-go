@@ -1,9 +1,11 @@
 package sstable
 
 import (
-	"github.com/slatedb/slatedb-go/internal/compress"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
 )
 
 func TestPrettyPrint(t *testing.T) {

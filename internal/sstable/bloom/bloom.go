@@ -3,10 +3,11 @@ package bloom
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/slatedb/slatedb-go/internal/compress"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"hash/crc32"
 	"hash/fnv"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type Filter struct {

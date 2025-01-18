@@ -3,11 +3,13 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/google/flatbuffers/go"
+	"hash/crc32"
+
+	flatbuffers "github.com/google/flatbuffers/go"
+
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"hash/crc32"
 )
 
 type Index struct {

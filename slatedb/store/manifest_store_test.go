@@ -1,11 +1,13 @@
 package store
 
 import (
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/state"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
-	"testing"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
 func TestShouldFailWriteOnVersionConflict(t *testing.T) {

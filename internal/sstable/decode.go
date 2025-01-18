@@ -3,7 +3,9 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
+
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"

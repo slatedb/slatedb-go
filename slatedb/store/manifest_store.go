@@ -4,17 +4,19 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/manifest"
-	"github.com/slatedb/slatedb-go/slatedb/state"
-	"github.com/thanos-io/objstore"
 	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/samber/mo"
+	"github.com/thanos-io/objstore"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/slatedb/manifest"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
 const manifestDir = "manifest"

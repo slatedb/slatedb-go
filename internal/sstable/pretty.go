@@ -3,8 +3,9 @@ package sstable
 import (
 	"bytes"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"strings"
+
+	"github.com/slatedb/slatedb-go/internal/sstable/block"
 )
 
 // PrettyPrint returns a string representation of the SSTable in a human-readable format

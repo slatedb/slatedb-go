@@ -3,11 +3,13 @@ package compaction
 import (
 	"bytes"
 	"context"
+	"sort"
+
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"sort"
 )
 
 // ------------------------------------------------

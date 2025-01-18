@@ -5,7 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math"
+	"sync"
+
 	"github.com/kapetan-io/tackle/set"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -13,12 +18,10 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-	"log/slog"
-	"math"
-	"sync"
+
+	"github.com/thanos-io/objstore"
 
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/thanos-io/objstore"
 )
 
 const BlockSize = 4096

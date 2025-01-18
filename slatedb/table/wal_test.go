@@ -2,9 +2,11 @@ package table
 
 import (
 	"bytes"
-	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 func TestWALOps(t *testing.T) {

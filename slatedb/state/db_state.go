@@ -1,17 +1,19 @@
 package state
 
 import (
-	"github.com/slatedb/slatedb-go/internal/assert"
-	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
-	"github.com/slatedb/slatedb-go/slatedb/table"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 
+	"github.com/slatedb/slatedb-go/internal/assert"
+	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/table"
+
 	"github.com/gammazero/deque"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 

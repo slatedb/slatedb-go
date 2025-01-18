@@ -3,9 +3,11 @@ package manifest
 import (
 	"bytes"
 	"encoding/binary"
+
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"

@@ -2,7 +2,7 @@ LINT = $(GOPATH)/bin/golangci-lint
 LINT_VERSION = v1.61.0
 
 $(LINT): ## Download Go linter
-        curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin $(LINT_VERSION)
+	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin $(LINT_VERSION)
 
 .PHONY: lint
 lint: $(LINT) ## Run Go linter

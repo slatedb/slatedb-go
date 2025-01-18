@@ -2,17 +2,19 @@ package slatedb
 
 import (
 	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-	"testing"
-	"time"
 )
 
 var testPath = "/test/db"

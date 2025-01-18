@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
+	"time"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"math"
-	"time"
 )
 
 var v0RowCodec v0Codec

@@ -5,8 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal/types"
 	"sort"
+
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 // Iterator iterates through KeyValue pairs present in the Block.

@@ -5,8 +5,15 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strconv"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -14,11 +21,6 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-	"strconv"
-	"testing"
 )
 
 type BytesBlob struct {

@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bytes"
+
 	"github.com/slatedb/slatedb-go/internal/compress"
 )
 

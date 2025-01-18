@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"container/heap"
 	"context"
+
 	"github.com/slatedb/slatedb-go/internal/types"
 )
 

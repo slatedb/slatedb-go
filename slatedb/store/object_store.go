@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/thanos-io/objstore"
+
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type ObjectMeta struct {

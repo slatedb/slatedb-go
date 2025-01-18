@@ -1,9 +1,11 @@
 package table
 
 import (
-	"github.com/samber/mo"
-	"github.com/slatedb/slatedb-go/internal/types"
 	"sync"
+
+	"github.com/samber/mo"
+
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 // ------------------------------------------------

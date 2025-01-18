@@ -2,13 +2,15 @@ package block
 
 import (
 	"bytes"
-	"github.com/kapetan-io/tackle/random"
-	"github.com/slatedb/slatedb-go/internal/compress"
-	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/kapetan-io/tackle/random"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/types"
 )
 
 func TestRowFlags(t *testing.T) {

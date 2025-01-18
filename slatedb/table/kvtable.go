@@ -1,10 +1,12 @@
 package table
 
 import (
+	"sync/atomic"
+
 	"github.com/huandu/skiplist"
 	"github.com/samber/mo"
+
 	"github.com/slatedb/slatedb-go/internal/types"
-	"sync/atomic"
 )
 
 // ------------------------------------------------
