@@ -23,14 +23,12 @@ package main
 
 import (
    "context"
-   "errors"
+   "fmt"
    "log/slog"
    "time"
 
-   "github.com/thanos-io/objstore"
-
    "github.com/slatedb/slatedb-go/slatedb"
-   "github.com/slatedb/slatedb-go/slatedb/common"
+   "github.com/thanos-io/objstore"
 )
 
 func main() {
@@ -43,21 +41,21 @@ func main() {
    value := []byte("value1")
 
    db.Put(key, value)
-   slog.With("key", string(key)).With("value", string(value)).Info("Put into slatedb")
+   fmt.Println("Put:", string(key), string(value))
 
    data, _ := db.Get(ctx, key)
-   slog.With("key", string(key)).With("value", string(data)).Info("Get from slatedb")
+   fmt.Println("Get:", string(key), string(data))
 
    db.Delete(key)
    _, err := db.Get(ctx, key)
-   if errors.Is(err, common.ErrKeyNotFound) {
-      slog.With("key", string(key)).Info("Key deleted")
+   if err != nil && err.Error() == "key not found" {
+      fmt.Println("Delete:", string(key))
    } else {
-      slog.With("err", err).Error("Unable to delete")
+      slog.Error("Unable to delete", "error", err)
    }
 
    if err := db.Close(); err != nil {
-      slog.With("err", err).Error("Error closing db")
+      slog.Error("Error closing db", "error", err)
    }
 }
 ```
@@ -74,11 +72,11 @@ SlateDB is licensed under the Apache License, Version 2.0.
 
 1. Why is there a Go port instead of using Go binding ?
 
-    We wanted developers using this library in Go to be able to easily understand and modify(if needed) the internals without having to learn a new language.
+   We wanted developers using this library in Go to be able to easily understand and modify(if needed) the internals without having to learn a new language.
 
-    Go developers will also have an option to use Go binding(when it is ready) if they can use cgo/ffi.
+   Go developers will also have an option to use Go binding(when it is ready) if they can use cgo/ffi.
 
 
 2. Is there a risk of a drift between the inner workings of the Rust and Go implementation?
 
-    We will try to keep it close to the Rust implementation.
+   We will try to keep it close to the Rust implementation.
