@@ -8,6 +8,10 @@ $(LINT): ## Download Go linter
 lint: $(LINT) ## Run Go linter
 	$(LINT) run -v ./...
 
+format_imports:
+	go install golang.org/x/tools/cmd/goimports@latest
+	goimports -l -w .
+
 fmt:
 	go fmt ./...
 
@@ -20,7 +24,7 @@ flatbuf:
 	go fmt ./internal/flatbuf/*.go
 
 .PHONY: build
-build: flatbuf fmt vet
+build: flatbuf fmt vet format_imports
 	go build -v -o bin/slatedb -race ./cmd
 
 test_coverage:

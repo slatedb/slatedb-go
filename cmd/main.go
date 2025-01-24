@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/slatedb/slatedb-go/slatedb"
 	"github.com/thanos-io/objstore"
+
+	"github.com/slatedb/slatedb-go/slatedb"
 )
 
 func main() {
