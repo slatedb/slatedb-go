@@ -1,9 +1,10 @@
 package config
 
 import (
-	"github.com/slatedb/slatedb-go/internal/compress"
 	"log/slog"
 	"time"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
 )
 
 // DBOptions Configuration opts for the database. These opts are set on client startup.

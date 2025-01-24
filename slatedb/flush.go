@@ -2,14 +2,16 @@ package slatedb
 
 import (
 	"errors"
-	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/store"
-	"github.com/slatedb/slatedb-go/slatedb/table"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/store"
+	"github.com/slatedb/slatedb-go/slatedb/table"
+
 	"github.com/oklog/ulid/v2"
+
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 

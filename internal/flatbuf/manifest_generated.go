@@ -3,8 +3,9 @@
 package flatbuf
 
 import (
-	flatbuffers "github.com/google/flatbuffers/go"
 	"strconv"
+
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 type CompressionCodec int8

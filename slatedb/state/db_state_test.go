@@ -1,12 +1,14 @@
 package state
 
 import (
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func addL0sToDBState(dbState *DBState, n uint32) {

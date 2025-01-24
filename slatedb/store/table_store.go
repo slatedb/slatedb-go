@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal/assert"
 	"io"
 	"path"
 	"slices"
@@ -12,13 +11,16 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/slatedb/slatedb-go/internal/assert"
+
 	"github.com/maypok86/otter"
 	"github.com/samber/mo"
+	"github.com/thanos-io/objstore"
+
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/thanos-io/objstore"
 )
 
 // ------------------------------------------------

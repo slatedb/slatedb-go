@@ -2,11 +2,13 @@ package sstable_test
 
 import (
 	"bytes"
-	"github.com/slatedb/slatedb-go/internal/compress"
-	"github.com/slatedb/slatedb-go/internal/sstable"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/internal/sstable"
 )
 
 func TestInfoClone(t *testing.T) {

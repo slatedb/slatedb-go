@@ -3,11 +3,13 @@ package bloom
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal/compress"
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 func TestFilterBuilder_Build(t *testing.T) {

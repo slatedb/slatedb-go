@@ -3,10 +3,11 @@ package sstable
 import (
 	"bytes"
 	"fmt"
-	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
 	"log/slog"
 	"strconv"
+
+	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
 )
 
 type IDType int

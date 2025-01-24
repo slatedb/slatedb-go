@@ -2,9 +2,11 @@ package iter_test
 
 import (
 	"context"
-	"github.com/slatedb/slatedb-go/internal/iter"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/slatedb/slatedb-go/internal/iter"
 )
 
 func TestNewEntryIterator(t *testing.T) {

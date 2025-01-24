@@ -72,11 +72,11 @@ SlateDB is licensed under the Apache License, Version 2.0.
 
 1. Why is there a Go port instead of using Go binding ?
 
-    We wanted developers using this library in Go to be able to easily understand and modify(if needed) the internals without having to learn a new language.
+   We wanted developers using this library in Go to be able to easily understand and modify(if needed) the internals without having to learn a new language.
 
-    Go developers will also have an option to use Go binding(when it is ready) if they can use cgo/ffi.
+   Go developers will also have an option to use Go binding(when it is ready) if they can use cgo/ffi.
 
 
 2. Is there a risk of a drift between the inner workings of the Rust and Go implementation?
 
-    We will try to keep it close to the Rust implementation.
+   We will try to keep it close to the Rust implementation.

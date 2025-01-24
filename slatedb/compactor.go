@@ -3,7 +3,13 @@ package slatedb
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/oklog/ulid/v2"
+
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/iter"
 	"github.com/slatedb/slatedb-go/internal/sstable"
@@ -12,10 +18,6 @@ import (
 	compaction2 "github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-	"log/slog"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type CompactionScheduler interface {

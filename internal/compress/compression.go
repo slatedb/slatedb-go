@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"compress/zlib"
 	"errors"
+	"io"
+
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
+
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
-	"io"
 )
 
 const (
