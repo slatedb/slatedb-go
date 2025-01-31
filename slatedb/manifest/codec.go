@@ -12,7 +12,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
@@ -94,10 +94,10 @@ func (f FlatBufferManifestCodec) parseFlatBufSSTInfo(info *flatbuf.SsTableInfoT)
 	}
 }
 
-func (f FlatBufferManifestCodec) parseFlatBufSortedRuns(fbSortedRuns []*flatbuf.SortedRunT) []compaction.SortedRun {
-	sortedRuns := make([]compaction.SortedRun, 0)
+func (f FlatBufferManifestCodec) parseFlatBufSortedRuns(fbSortedRuns []*flatbuf.SortedRunT) []compacted.SortedRun {
+	sortedRuns := make([]compacted.SortedRun, 0)
 	for _, run := range fbSortedRuns {
-		sortedRuns = append(sortedRuns, compaction.SortedRun{
+		sortedRuns = append(sortedRuns, compacted.SortedRun{
 			ID:      run.Id,
 			SSTList: f.parseFlatBufSSTList(run.Ssts),
 		})
@@ -173,7 +173,7 @@ func (fb *DBFlatBufferBuilder) compactedSSTID(id ulid.ULID) *flatbuf.CompactedSs
 	}
 }
 
-func (fb *DBFlatBufferBuilder) sortedRunsToFlatBuf(sortedRuns []compaction.SortedRun) []*flatbuf.SortedRunT {
+func (fb *DBFlatBufferBuilder) sortedRunsToFlatBuf(sortedRuns []compacted.SortedRun) []*flatbuf.SortedRunT {
 	sortedRunFBs := make([]*flatbuf.SortedRunT, 0)
 	for _, sortedRun := range sortedRuns {
 		sortedRunFBs = append(sortedRunFBs, &flatbuf.SortedRunT{
