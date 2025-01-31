@@ -9,6 +9,8 @@ import (
 	"math"
 	"sync"
 
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
+
 	"github.com/kapetan-io/tackle/set"
 
 	"github.com/slatedb/slatedb-go/internal/assert"
@@ -29,7 +31,7 @@ const BlockSize = 4096
 type DB struct {
 	manifest   *store.FenceableManifest
 	tableStore *store.TableStore
-	compactor  *Compactor
+	compactor  *compaction.Compactor
 	opts       config.DBOptions
 	state      *state.DBState
 
@@ -88,9 +90,9 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	// 2. loading manifest from object store and update current DBState. This happens every ManifestPollInterval milliseconds
 	db.spawnMemtableFlushTask(manifest, memtableFlushNotifierCh, db.memtableFlushTaskWG)
 
-	var compactor *Compactor
+	var compactor *compaction.Compactor
 	if db.opts.CompactorOptions != nil {
-		compactor, err = newCompactor(manifestStore, tableStore, db.opts)
+		compactor, err = compaction.NewCompactor(manifestStore, tableStore, db.opts)
 		if err != nil {
 			return nil, fmt.Errorf("while creating compactor: %w", err)
 		}
@@ -102,7 +104,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 
 func (db *DB) Close() error {
 	if db.compactor != nil {
-		db.compactor.close()
+		db.compactor.Close()
 	}
 
 	// notify flush task goroutine to shutdown and wait for it to shutdown cleanly
