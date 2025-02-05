@@ -7,7 +7,7 @@ import (
 
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 
 	"github.com/gammazero/deque"
@@ -25,7 +25,7 @@ import (
 type CoreDBState struct {
 	l0LastCompacted mo.Option[ulid.ULID]
 	l0              []sstable.Handle
-	compacted       []compaction.SortedRun
+	compacted       []compacted.SortedRun
 
 	// nextWalSstID is used as the ID of new ImmutableWAL created during WAL flush process
 	// It is initialized to 1 and keeps getting incremented by 1 for new ImmutableWALs
@@ -40,7 +40,7 @@ type CoreDBState struct {
 type CoreStateSnapshot struct {
 	L0LastCompacted       mo.Option[ulid.ULID]
 	L0                    []sstable.Handle
-	Compacted             []compaction.SortedRun
+	Compacted             []compacted.SortedRun
 	NextWalSstID          atomic.Uint64
 	LastCompactedWalSSTID atomic.Uint64
 }
@@ -62,7 +62,7 @@ func (s *CoreStateSnapshot) Clone() *CoreStateSnapshot {
 	for _, sst := range s.L0 {
 		l0 = append(l0, *sst.Clone())
 	}
-	compacted := make([]compaction.SortedRun, 0, len(s.Compacted))
+	compacted := make([]compacted.SortedRun, 0, len(s.Compacted))
 	for _, sr := range s.Compacted {
 		compacted = append(compacted, *sr.Clone())
 	}
@@ -80,7 +80,7 @@ func NewCoreDBState() *CoreDBState {
 	coreState := &CoreDBState{
 		l0LastCompacted: mo.None[ulid.ULID](),
 		l0:              make([]sstable.Handle, 0),
-		compacted:       []compaction.SortedRun{},
+		compacted:       []compacted.SortedRun{},
 	}
 	coreState.nextWalSstID.Store(1)
 	coreState.lastCompactedWalSSTID.Store(0)
@@ -92,7 +92,7 @@ func (c *CoreDBState) Snapshot() *CoreStateSnapshot {
 	for _, sst := range c.l0 {
 		l0 = append(l0, *sst.Clone())
 	}
-	compacted := make([]compaction.SortedRun, 0, len(c.compacted))
+	compacted := make([]compacted.SortedRun, 0, len(c.compacted))
 	for _, sr := range c.compacted {
 		compacted = append(compacted, *sr.Clone())
 	}

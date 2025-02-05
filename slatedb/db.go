@@ -9,12 +9,14 @@ import (
 	"math"
 	"sync"
 
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
+
 	"github.com/kapetan-io/tackle/set"
 
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
@@ -29,7 +31,7 @@ const BlockSize = 4096
 type DB struct {
 	manifest   *store.FenceableManifest
 	tableStore *store.TableStore
-	compactor  *Compactor
+	compactor  *compaction.Compactor
 	opts       config.DBOptions
 	state      *state.DBState
 
@@ -88,9 +90,9 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	// 2. loading manifest from object store and update current DBState. This happens every ManifestPollInterval milliseconds
 	db.spawnMemtableFlushTask(manifest, memtableFlushNotifierCh, db.memtableFlushTaskWG)
 
-	var compactor *Compactor
+	var compactor *compaction.Compactor
 	if db.opts.CompactorOptions != nil {
-		compactor, err = newCompactor(manifestStore, tableStore, db.opts)
+		compactor, err = compaction.NewCompactor(manifestStore, tableStore, db.opts)
 		if err != nil {
 			return nil, fmt.Errorf("while creating compactor: %w", err)
 		}
@@ -102,7 +104,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 
 func (db *DB) Close() error {
 	if db.compactor != nil {
-		db.compactor.close()
+		db.compactor.Close()
 	}
 
 	// notify flush task goroutine to shutdown and wait for it to shutdown cleanly
@@ -195,7 +197,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.Core.Compacted {
 		if db.srMayIncludeKey(sr, key) {
-			iter, err := compaction.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
+			iter, err := compacted.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -235,7 +237,7 @@ func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
 	return true
 }
 
-func (db *DB) srMayIncludeKey(sr compaction.SortedRun, key []byte) bool {
+func (db *DB) srMayIncludeKey(sr compacted.SortedRun, key []byte) bool {
 	sstOption := sr.SstWithKey(key)
 	if sstOption.IsAbsent() {
 		return false

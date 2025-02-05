@@ -1,4 +1,4 @@
-package slatedb
+package compaction
 
 import (
 	"github.com/slatedb/slatedb-go/internal/assert"
@@ -7,7 +7,7 @@ import (
 type SizeTieredCompactionScheduler struct{}
 
 func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorState) []Compaction {
-	dbState := state.dbState
+	dbState := state.DbState
 	// for now, just compact l0 down to a new sorted run each time
 	compactions := make([]Compaction, 0)
 	if len(dbState.L0) >= 4 {
@@ -15,7 +15,7 @@ func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorS
 		for _, sst := range dbState.L0 {
 			id, ok := sst.Id.CompactedID().Get()
 			assert.True(ok, "Expected valid compacted ID")
-			sources = append(sources, newSourceIDSST(id))
+			sources = append(sources, NewSourceIDSST(id))
 		}
 
 		nextSortedRunID := uint32(0)
@@ -23,7 +23,7 @@ func (s SizeTieredCompactionScheduler) maybeScheduleCompaction(state *CompactorS
 			nextSortedRunID = dbState.Compacted[0].ID + 1
 		}
 
-		compactions = append(compactions, newCompaction(sources, nextSortedRunID))
+		compactions = append(compactions, NewCompaction(sources, nextSortedRunID))
 	}
 	return compactions
 }
