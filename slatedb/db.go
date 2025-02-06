@@ -9,21 +9,17 @@ import (
 	"math"
 	"sync"
 
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
-
 	"github.com/kapetan-io/tackle/set"
-
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-
 	"github.com/thanos-io/objstore"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 const BlockSize = 4096
@@ -37,7 +33,7 @@ type DB struct {
 
 	// walFlushNotifierCh - When DB.Close is called, we send a notification to this channel
 	// and the goroutine running the walFlush task reads this channel and shuts down
-	walFlushNotifierCh chan bool
+	walFlushNotifierCh chan context.Context
 
 	// memtableFlushNotifierCh - When DB.Close is called, we send a Shutdown notification to this channel
 	// and the goroutine running the memtableFlush task reads this channel and shuts down
@@ -81,7 +77,7 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	}
 	db.manifest = manifest
 
-	db.walFlushNotifierCh = make(chan bool, math.MaxUint8)
+	db.walFlushNotifierCh = make(chan context.Context, math.MaxUint8)
 	// we start 2 background threads
 	// one thread for flushing WAL to object store and then to memtable. Flushing happens every FlushInterval Duration
 	db.spawnWALFlushTask(db.walFlushNotifierCh, db.walFlushTaskWG)
@@ -102,27 +98,49 @@ func OpenWithOptions(ctx context.Context, path string, bucket objstore.Bucket, o
 	return db, nil
 }
 
-func (db *DB) Close() error {
+func (db *DB) Close(ctx context.Context) error {
+	var errs []error
+
 	if db.compactor != nil {
-		db.compactor.Close()
+		if err := db.compactor.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	// notify flush task goroutine to shutdown and wait for it to shutdown cleanly
-	db.walFlushNotifierCh <- true
-	db.walFlushTaskWG.Wait()
+	db.walFlushNotifierCh <- ctx
+	done := make(chan struct{})
+	go func() {
+		db.walFlushTaskWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		errs = append(errs, ctx.Err())
+	}
 
 	// notify memTable flush task goroutine to shutdown and wait for it to shutdown cleanly
 	db.memtableFlushNotifierCh <- Shutdown
-	db.memtableFlushTaskWG.Wait()
+	done = make(chan struct{})
+	go func() {
+		db.memtableFlushTaskWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		errs = append(errs, ctx.Err())
+	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
-func (db *DB) Put(key []byte, value []byte) {
-	db.PutWithOptions(key, value, config.DefaultWriteOptions())
+func (db *DB) Put(ctx context.Context, key []byte, value []byte) error {
+	return db.PutWithOptions(ctx, key, value, config.DefaultWriteOptions())
 }
 
-func (db *DB) PutWithOptions(key []byte, value []byte, options config.WriteOptions) {
+func (db *DB) PutWithOptions(ctx context.Context, key []byte, value []byte, options config.WriteOptions) error {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.PutKVToWAL(key, value)
@@ -130,8 +148,9 @@ func (db *DB) PutWithOptions(key []byte, value []byte, options config.WriteOptio
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
 		// because client can read the key from memtable
-		currentWAL.Table().AwaitWALFlush()
+		return currentWAL.Table().AwaitWALFlush(ctx)
 	}
+	return nil
 }
 
 func (db *DB) Get(ctx context.Context, key []byte) ([]byte, error) {
@@ -181,8 +200,8 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 
 	// search for key in SSTs in L0
 	for _, sst := range snapshot.Core.L0 {
-		if db.sstMayIncludeKey(sst, key) {
-			iter, err := sstable.NewIteratorAtKey(&sst, key, db.tableStore.Clone())
+		if db.sstMayIncludeKey(ctx, sst, key) {
+			iter, err := sstable.NewIteratorAtKey(ctx, &sst, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -196,8 +215,8 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 
 	// search for key in compacted Sorted runs
 	for _, sr := range snapshot.Core.Compacted {
-		if db.srMayIncludeKey(sr, key) {
-			iter, err := compacted.NewSortedRunIteratorFromKey(sr, key, db.tableStore.Clone())
+		if db.srMayIncludeKey(ctx, sr, key) {
+			iter, err := compacted.NewSortedRunIteratorFromKey(ctx, sr, key, db.tableStore.Clone())
 			if err != nil {
 				return nil, err
 			}
@@ -212,24 +231,25 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 	return nil, common.ErrKeyNotFound
 }
 
-func (db *DB) Delete(key []byte) {
-	db.DeleteWithOptions(key, config.DefaultWriteOptions())
+func (db *DB) Delete(ctx context.Context, key []byte) error {
+	return db.DeleteWithOptions(ctx, key, config.DefaultWriteOptions())
 }
 
-func (db *DB) DeleteWithOptions(key []byte, options config.WriteOptions) {
+func (db *DB) DeleteWithOptions(ctx context.Context, key []byte, options config.WriteOptions) error {
 	assert.True(len(key) > 0, "key cannot be empty")
 
 	currentWAL := db.state.DeleteKVFromWAL(key)
 	if options.AwaitDurable {
-		currentWAL.Table().AwaitWALFlush()
+		return currentWAL.Table().AwaitWALFlush(ctx)
 	}
+	return nil
 }
 
-func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
+func (db *DB) sstMayIncludeKey(ctx context.Context, sst sstable.Handle, key []byte) bool {
 	if !sst.RangeCoversKey(key) {
 		return false
 	}
-	filter, err := db.tableStore.ReadFilter(&sst)
+	filter, err := db.tableStore.ReadFilter(ctx, &sst)
 	if err == nil && filter.IsPresent() {
 		bFilter, _ := filter.Get()
 		return bFilter.HasKey(key)
@@ -237,13 +257,13 @@ func (db *DB) sstMayIncludeKey(sst sstable.Handle, key []byte) bool {
 	return true
 }
 
-func (db *DB) srMayIncludeKey(sr compacted.SortedRun, key []byte) bool {
+func (db *DB) srMayIncludeKey(ctx context.Context, sr compacted.SortedRun, key []byte) bool {
 	sstOption := sr.SstWithKey(key)
 	if sstOption.IsAbsent() {
 		return false
 	}
 	sst, _ := sstOption.Get()
-	filter, err := db.tableStore.ReadFilter(&sst)
+	filter, err := db.tableStore.ReadFilter(ctx, &sst)
 	if err == nil && filter.IsPresent() {
 		bFilter, _ := filter.Get()
 		return bFilter.HasKey(key)
@@ -263,14 +283,14 @@ func (db *DB) replayWAL(ctx context.Context) error {
 	lastSSTID := walIDLastCompacted
 	for _, sstID := range walSSTList {
 		lastSSTID = sstID
-		sst, err := db.tableStore.OpenSST(sstable.NewIDWal(sstID))
+		sst, err := db.tableStore.OpenSST(ctx, sstable.NewIDWal(sstID))
 		if err != nil {
 			return err
 		}
 		assert.True(sst.Id.WalID().IsPresent(), "Invalid WAL ID")
 
 		// iterate through kv pairs in sst and populate walReplayBuf
-		iter, err := sstable.NewIterator(sst, db.tableStore.Clone())
+		iter, err := sstable.NewIterator(ctx, sst, db.tableStore.Clone())
 		if err != nil {
 			return err
 		}

@@ -3,19 +3,19 @@ package slatedb
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/samber/mo"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 )
 
 func buildSRWithSSTs(
@@ -35,7 +35,7 @@ func buildSRWithSSTs(
 			}
 		}
 
-		sst, _ := writer.Close()
+		sst, _ := writer.Close(context.Background())
 		sstList = append(sstList, *sst)
 	}
 
@@ -43,6 +43,9 @@ func buildSRWithSSTs(
 }
 
 func TestOneSstSRIter(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
+
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 3
@@ -55,11 +58,11 @@ func TestOneSstSRIter(t *testing.T) {
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
+	sstHandle, err := tableStore.WriteSST(ctx, sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	assert.NoError(t, err)
 
 	sr := compacted.SortedRun{ID: 0, SSTList: []sstable.Handle{*sstHandle}}
-	iterator, err := compacted.NewSortedRunIterator(sr, tableStore)
+	iterator, err := compacted.NewSortedRunIterator(ctx, sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -71,6 +74,9 @@ func TestOneSstSRIter(t *testing.T) {
 }
 
 func TestManySstSRIter(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
+
 	bucket := objstore.NewInMemBucket()
 	format := sstable.DefaultConfig()
 	format.MinFilterKeys = 3
@@ -82,7 +88,7 @@ func TestManySstSRIter(t *testing.T) {
 
 	encodedSST, err := builder.Build()
 	assert.NoError(t, err)
-	sstHandle, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
+	sstHandle, err := tableStore.WriteSST(ctx, sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	require.NoError(t, err)
 
 	builder = tableStore.TableBuilder()
@@ -91,11 +97,11 @@ func TestManySstSRIter(t *testing.T) {
 
 	encodedSST, err = builder.Build()
 	require.NoError(t, err)
-	sstHandle2, err := tableStore.WriteSST(sstable.NewIDCompacted(ulid.Make()), encodedSST)
+	sstHandle2, err := tableStore.WriteSST(ctx, sstable.NewIDCompacted(ulid.Make()), encodedSST)
 	require.NoError(t, err)
 
 	sr := compacted.SortedRun{ID: 0, SSTList: []sstable.Handle{*sstHandle, *sstHandle2}}
-	iterator, err := compacted.NewSortedRunIterator(sr, tableStore)
+	iterator, err := compacted.NewSortedRunIterator(ctx, sr, tableStore)
 	assert.NoError(t, err)
 	assert2.Next(t, iterator, []byte("key1"), []byte("value1"))
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
@@ -107,6 +113,8 @@ func TestManySstSRIter(t *testing.T) {
 }
 
 func TestSRIterFromKey(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 3
@@ -129,7 +137,7 @@ func TestSRIterFromKey(t *testing.T) {
 		fromKey := testCaseKeyGen.Next()
 		testCaseValGen.Next()
 
-		kvIter, err := compacted.NewSortedRunIteratorFromKey(sr, fromKey, tableStore)
+		kvIter, err := compacted.NewSortedRunIteratorFromKey(ctx, sr, fromKey, tableStore)
 		assert.NoError(t, err)
 
 		for j := 0; j < 30-i; j++ {
@@ -142,6 +150,9 @@ func TestSRIterFromKey(t *testing.T) {
 }
 
 func TestSRIterFromKeyLowerThanRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
+
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 3
@@ -158,7 +169,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := compacted.NewSortedRunIteratorFromKey(sr, []byte("aaaaaaaaaa"), tableStore)
+	kvIter, err := compacted.NewSortedRunIteratorFromKey(ctx, sr, []byte("aaaaaaaaaa"), tableStore)
 	assert.NoError(t, err)
 
 	for j := 0; j < 30; j++ {
@@ -170,6 +181,8 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 }
 
 func TestSRIterFromKeyHigherThanRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
 	bucket := objstore.NewInMemBucket()
 	conf := sstable.DefaultConfig()
 	conf.MinFilterKeys = 3
@@ -184,7 +197,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 	sr, err := buildSRWithSSTs(3, 10, tableStore, keyGen, valGen)
 	require.NoError(t, err)
 
-	kvIter, err := compacted.NewSortedRunIteratorFromKey(sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
+	kvIter, err := compacted.NewSortedRunIteratorFromKey(ctx, sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)

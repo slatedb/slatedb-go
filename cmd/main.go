@@ -21,13 +21,13 @@ func main() {
 	key := []byte("key1")
 	value := []byte("value1")
 
-	db.Put(key, value)
+	_ = db.Put(ctx, key, value)
 	fmt.Println("Put:", string(key), string(value))
 
 	data, _ := db.Get(ctx, key)
 	fmt.Println("Get:", string(key), string(data))
 
-	db.Delete(key)
+	_ = db.Delete(ctx, key)
 	_, err := db.Get(ctx, key)
 	if err != nil && err.Error() == "key not found" {
 		fmt.Println("Delete:", string(key))
@@ -35,7 +35,7 @@ func main() {
 		slog.Error("Unable to delete", "error", err)
 	}
 
-	if err := db.Close(); err != nil {
+	if err := db.Close(ctx); err != nil {
 		slog.Error("Error closing db", "error", err)
 	}
 }

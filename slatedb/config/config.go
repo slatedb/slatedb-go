@@ -134,6 +134,10 @@ type CompactorOptions struct {
 	// if a compaction must be scheduled
 	PollInterval time.Duration
 
+	// Timeout is the time compaction should wait before timing out network
+	// operations
+	Timeout time.Duration
+
 	// A compacted SSTable's maximum size (in bytes). If more data needs to be
 	// written to a Sorted Run during a compaction, a new SSTable will be created
 	// in the Sorted Run when this size is exceeded.
@@ -143,6 +147,8 @@ type CompactorOptions struct {
 func DefaultCompactorOptions() *CompactorOptions {
 	return &CompactorOptions{
 		PollInterval: 5 * time.Second,
-		MaxSSTSize:   1024 * 1024 * 1024,
+		// Ideally the timeout should be less than or equal to the poll interval.
+		Timeout:    5 * time.Second,
+		MaxSSTSize: 1024 * 1024 * 1024,
 	}
 }

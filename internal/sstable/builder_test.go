@@ -1,6 +1,7 @@
 package sstable_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -95,7 +96,7 @@ func TestBuilder(t *testing.T) {
 }
 
 func TestEncodeDecode(t *testing.T) {
-
+	ctx := context.Background()
 	input := [][]types.KeyValue{
 		{types.KeyValue{Key: []byte("key1"), Value: []byte("value1")}},
 		{types.KeyValue{Key: []byte("key2"), Value: []byte("value2")}},
@@ -125,7 +126,7 @@ func TestEncodeDecode(t *testing.T) {
 	blob := sstable.NewBytesBlob(encoded)
 
 	// Decode the Info from the table
-	info, err := sstable.ReadInfo(blob)
+	info, err := sstable.ReadInfo(ctx, blob)
 	assert.NoError(t, err)
 	assert.NotNil(t, info)
 	assert.Equal(t, table.Info.FirstKey, info.FirstKey)
@@ -133,12 +134,12 @@ func TestEncodeDecode(t *testing.T) {
 	assert.Equal(t, table.Info.IndexLen, info.IndexLen)
 
 	// Decode the index from the table
-	index, err := sstable.ReadIndex(info, blob)
+	index, err := sstable.ReadIndex(ctx, info, blob)
 	assert.NoError(t, err)
 	assert.NotNil(t, index)
 
 	// Read the first block from the table
-	blocks, err := sstable.ReadBlocks(info, index, common.Range{Start: 0, End: 3}, blob)
+	blocks, err := sstable.ReadBlocks(ctx, info, index, common.Range{Start: 0, End: 3}, blob)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(input))
 
@@ -153,7 +154,7 @@ func TestEncodeDecode(t *testing.T) {
 	assert2.NextEntry(t, it, []byte("key3"), []byte("value3"))
 
 	// Test bloom filter
-	filter, err := sstable.ReadFilter(info, blob)
+	filter, err := sstable.ReadFilter(ctx, info, blob)
 	assert.NoError(t, err)
 	assert.True(t, filter.IsPresent())
 	f, ok := filter.Get()

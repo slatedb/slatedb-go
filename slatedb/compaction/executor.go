@@ -54,7 +54,9 @@ func (e *Executor) loadIterators(compaction Job) (iter.KVIterator, error) {
 
 	l0Iters := make([]iter.KVIterator, 0)
 	for _, sst := range compaction.sstList {
-		sstIter, err := sstable.NewIterator(&sst, e.tableStore.Clone())
+		ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+		sstIter, err := sstable.NewIterator(ctx, &sst, e.tableStore.Clone())
+		cancel()
 		if err != nil {
 			return nil, err
 		}
@@ -63,15 +65,18 @@ func (e *Executor) loadIterators(compaction Job) (iter.KVIterator, error) {
 
 	srIters := make([]iter.KVIterator, 0)
 	for _, sr := range compaction.sortedRuns {
-		srIter, err := compacted.NewSortedRunIterator(sr, e.tableStore.Clone())
+		ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+		srIter, err := compacted.NewSortedRunIterator(ctx, sr, e.tableStore.Clone())
+		cancel()
 		if err != nil {
 			return nil, err
 		}
 		srIters = append(srIters, srIter)
 	}
 
-	ctx := context.TODO()
 	var l0MergeIter, srMergeIter iter.KVIterator
+	ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+	defer cancel()
 	if len(compaction.sortedRuns) == 0 {
 		l0MergeIter = iter.NewMergeSort(ctx, l0Iters...)
 		return l0MergeIter, nil
@@ -95,7 +100,9 @@ func (e *Executor) executeCompaction(compaction Job) (*compacted.SortedRun, erro
 	currentWriter := e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
 	currentSize := 0
 	for {
-		kv, ok := allIter.NextEntry(context.TODO())
+		ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+		kv, ok := allIter.NextEntry(ctx)
+		cancel()
 		if !ok {
 			if w := allIter.Warnings(); w != nil {
 				warn.Merge(w)
@@ -119,7 +126,9 @@ func (e *Executor) executeCompaction(compaction Job) (*compacted.SortedRun, erro
 			currentSize = 0
 			finishedWriter := currentWriter
 			currentWriter = e.tableStore.TableWriter(sstable.NewIDCompacted(ulid.Make()))
-			sst, err := finishedWriter.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+			sst, err := finishedWriter.Close(ctx)
+			cancel()
 			if err != nil {
 				return nil, err
 			}
@@ -127,7 +136,9 @@ func (e *Executor) executeCompaction(compaction Job) (*compacted.SortedRun, erro
 		}
 	}
 	if currentSize > 0 {
-		sst, err := currentWriter.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+		sst, err := currentWriter.Close(ctx)
+		cancel()
 		if err != nil {
 			return nil, err
 		}
