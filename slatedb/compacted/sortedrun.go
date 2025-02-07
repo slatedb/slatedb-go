@@ -62,21 +62,24 @@ type SortedRunIterator struct {
 	warn          types.ErrWarn
 }
 
-func NewSortedRunIterator(sr SortedRun, store sstable.TableStore) (*SortedRunIterator, error) {
-	return newSortedRunIter(sr.SSTList, store, mo.None[[]byte]())
+func NewSortedRunIterator(ctx context.Context, sr SortedRun, store sstable.TableStore) (*SortedRunIterator, error) {
+	return newSortedRunIter(ctx, sr.SSTList, store, mo.None[[]byte]())
 }
 
-func NewSortedRunIteratorFromKey(sr SortedRun, key []byte, store sstable.TableStore) (*SortedRunIterator, error) {
+func NewSortedRunIteratorFromKey(ctx context.Context, sr SortedRun, key []byte, store sstable.TableStore) (*SortedRunIterator, error) {
 	sstList := sr.SSTList
 	idx, ok := sr.indexOfSSTWithKey(key).Get()
 	if ok {
 		sstList = sr.SSTList[idx:]
 	}
 
-	return newSortedRunIter(sstList, store, mo.Some(key))
+	return newSortedRunIter(ctx, sstList, store, mo.Some(key))
 }
 
-func newSortedRunIter(sstList []sstable.Handle, store sstable.TableStore, fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
+func newSortedRunIter(ctx context.Context,
+	sstList []sstable.Handle,
+	store sstable.TableStore,
+	fromKey mo.Option[[]byte]) (*SortedRunIterator, error) {
 
 	sstListIter := newSSTListIterator(sstList)
 	currentKVIter := mo.None[*sstable.Iterator]()
@@ -86,12 +89,12 @@ func newSortedRunIter(sstList []sstable.Handle, store sstable.TableStore, fromKe
 		var err error
 		if fromKey.IsPresent() {
 			key, _ := fromKey.Get()
-			iter, err = sstable.NewIteratorAtKey(&sst, key, store)
+			iter, err = sstable.NewIteratorAtKey(ctx, &sst, key, store)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			iter, err = sstable.NewIterator(&sst, store)
+			iter, err = sstable.NewIterator(ctx, &sst, store)
 			if err != nil {
 				return nil, err
 			}
@@ -148,7 +151,7 @@ func (iter *SortedRunIterator) NextEntry(ctx context.Context) (types.RowEntry, b
 			return types.RowEntry{}, false
 		}
 
-		newKVIter, err := sstable.NewIterator(&sst, iter.tableStore)
+		newKVIter, err := sstable.NewIterator(ctx, &sst, iter.tableStore)
 		if err != nil {
 			iter.warn.Add("while creating SSTable iterator: %s", err.Error())
 			return types.RowEntry{}, false

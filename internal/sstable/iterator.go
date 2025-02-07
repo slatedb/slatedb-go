@@ -11,8 +11,8 @@ import (
 )
 
 type TableStore interface {
-	ReadIndex(*Handle) (*Index, error)
-	ReadBlocksUsingIndex(*Handle, common.Range, *Index) ([]block.Block, error)
+	ReadIndex(context.Context, *Handle) (*Index, error)
+	ReadBlocksUsingIndex(context.Context, *Handle, common.Range, *Index) ([]block.Block, error)
 }
 
 // Iterator iterates through KeyValue pairs present in the SSTable.
@@ -26,8 +26,8 @@ type Iterator struct {
 	nextBlock uint64
 }
 
-func NewIterator(handle *Handle, store TableStore) (*Iterator, error) {
-	index, err := store.ReadIndex(handle)
+func NewIterator(ctx context.Context, handle *Handle, store TableStore) (*Iterator, error) {
+	index, err := store.ReadIndex(ctx, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -40,8 +40,8 @@ func NewIterator(handle *Handle, store TableStore) (*Iterator, error) {
 	}, nil
 }
 
-func NewIteratorAtKey(handle *Handle, key []byte, store TableStore) (*Iterator, error) {
-	index, err := store.ReadIndex(handle)
+func NewIteratorAtKey(ctx context.Context, handle *Handle, key []byte, store TableStore) (*Iterator, error) {
+	index, err := store.ReadIndex(ctx, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (iter *Iterator) Next(ctx context.Context) (types.KeyValue, bool) {
 func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.blockIter == nil {
-			it, err := iter.nextBlockIter()
+			it, err := iter.nextBlockIter(ctx)
 			if err != nil {
 				// TODO(thrawn01): This could be a transient error, or a corruption error
 				//  we need to handle each differently.
@@ -107,14 +107,14 @@ func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 }
 
 // nextBlockIter fetches the next block and returns an iterator for that block
-func (iter *Iterator) nextBlockIter() (*block.Iterator, error) {
+func (iter *Iterator) nextBlockIter(ctx context.Context) (*block.Iterator, error) {
 	if iter.nextBlock >= uint64(iter.index.BlockMetaLength()) {
 		return nil, nil // No more blocks to read
 	}
 
 	// Fetch the next block
 	rng := common.Range{Start: iter.nextBlock, End: iter.nextBlock + 1}
-	blocks, err := iter.store.ReadBlocksUsingIndex(iter.handle, rng, iter.index)
+	blocks, err := iter.store.ReadBlocksUsingIndex(ctx, iter.handle, rng, iter.index)
 	if err != nil {
 		return nil, fmt.Errorf("while reading block range [%d:%d]: %w", rng.Start, rng.End, err)
 	}

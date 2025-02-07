@@ -11,16 +11,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/slatedb/slatedb-go/internal/assert"
-
 	"github.com/maypok86/otter"
 	"github.com/samber/mo"
-	"github.com/thanos-io/objstore"
-
+	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/thanos-io/objstore"
 )
 
 // ------------------------------------------------
@@ -86,7 +84,7 @@ func (ts *TableStore) TableBuilder() *sstable.Builder {
 	return sstable.NewBuilder(ts.sstConfig)
 }
 
-func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstable.Handle, error) {
+func (ts *TableStore) WriteSST(ctx context.Context, id sstable.ID, encodedSST *sstable.Table) (*sstable.Handle, error) {
 	sstPath := ts.sstPath(id)
 
 	blocksData := make([]byte, 0)
@@ -94,7 +92,7 @@ func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstab
 		blocksData = append(blocksData, encodedSST.Blocks.At(i)...)
 	}
 
-	err := ts.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
+	err := ts.bucket.Upload(ctx, sstPath, bytes.NewReader(blocksData))
 	if err != nil {
 		return nil, fmt.Errorf("during object write: %w", err)
 	}
@@ -103,9 +101,9 @@ func (ts *TableStore) WriteSST(id sstable.ID, encodedSST *sstable.Table) (*sstab
 	return sstable.NewHandle(id, encodedSST.Info), nil
 }
 
-func (ts *TableStore) OpenSST(id sstable.ID) (*sstable.Handle, error) {
+func (ts *TableStore) OpenSST(ctx context.Context, id sstable.ID) (*sstable.Handle, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(id)}
-	sstInfo, err := sstable.ReadInfo(obj)
+	sstInfo, err := sstable.ReadInfo(ctx, obj)
 	if err != nil {
 		return nil, fmt.Errorf("while reading sst info: %w", err)
 	}
@@ -113,23 +111,24 @@ func (ts *TableStore) OpenSST(id sstable.ID) (*sstable.Handle, error) {
 	return sstable.NewHandle(id, sstInfo), nil
 }
 
-func (ts *TableStore) ReadBlocks(sstHandle *sstable.Handle, blocksRange common.Range) ([]block.Block, error) {
+func (ts *TableStore) ReadBlocks(ctx context.Context, sstHandle *sstable.Handle, blocksRange common.Range) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	index, err := sstable.ReadIndex(sstHandle.Info, obj)
+	index, err := sstable.ReadIndex(ctx, sstHandle.Info, obj)
 	if err != nil {
 		return nil, err
 	}
-	return sstable.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
+	return sstable.ReadBlocks(ctx, sstHandle.Info, index, blocksRange, obj)
 }
 
 // Reads specified blocks from an SSTable using the provided index.
 func (ts *TableStore) ReadBlocksUsingIndex(
+	ctx context.Context,
 	sstHandle *sstable.Handle,
 	blocksRange common.Range,
 	index *sstable.Index,
 ) ([]block.Block, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	return sstable.ReadBlocks(sstHandle.Info, index, blocksRange, obj)
+	return sstable.ReadBlocks(ctx, sstHandle.Info, index, blocksRange, obj)
 }
 
 func (ts *TableStore) cacheFilter(sstID sstable.ID, filter mo.Option[bloom.Filter]) {
@@ -138,7 +137,7 @@ func (ts *TableStore) cacheFilter(sstID sstable.ID, filter mo.Option[bloom.Filte
 	ts.filterCache.Set(sstID, filter)
 }
 
-func (ts *TableStore) ReadFilter(sstHandle *sstable.Handle) (mo.Option[bloom.Filter], error) {
+func (ts *TableStore) ReadFilter(ctx context.Context, sstHandle *sstable.Handle) (mo.Option[bloom.Filter], error) {
 	ts.mu.RLock()
 	val, ok := ts.filterCache.Get(sstHandle.Id)
 	ts.mu.RUnlock()
@@ -147,7 +146,7 @@ func (ts *TableStore) ReadFilter(sstHandle *sstable.Handle) (mo.Option[bloom.Fil
 	}
 
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	filtr, err := sstable.ReadFilter(sstHandle.Info, obj)
+	filtr, err := sstable.ReadFilter(ctx, sstHandle.Info, obj)
 	if err != nil {
 		return mo.None[bloom.Filter](), err
 	}
@@ -156,9 +155,9 @@ func (ts *TableStore) ReadFilter(sstHandle *sstable.Handle) (mo.Option[bloom.Fil
 	return filtr, nil
 }
 
-func (ts *TableStore) ReadIndex(sstHandle *sstable.Handle) (*sstable.Index, error) {
+func (ts *TableStore) ReadIndex(ctx context.Context, sstHandle *sstable.Handle) (*sstable.Index, error) {
 	obj := ReadOnlyObject{ts.bucket, ts.sstPath(sstHandle.Id)}
-	index, err := sstable.ReadIndex(sstHandle.Info, obj)
+	index, err := sstable.ReadIndex(ctx, sstHandle.Info, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +240,7 @@ func (w *EncodedSSTableWriter) Written() uint64 {
 	return w.blocksWritten
 }
 
-func (w *EncodedSSTableWriter) Close() (*sstable.Handle, error) {
+func (w *EncodedSSTableWriter) Close(ctx context.Context) (*sstable.Handle, error) {
 	encodedSST, err := w.builder.Build()
 	if err != nil {
 		return nil, fmt.Errorf("SST build failed: %w", err)
@@ -256,7 +255,7 @@ func (w *EncodedSSTableWriter) Close() (*sstable.Handle, error) {
 	}
 
 	sstPath := w.tableStore.sstPath(w.sstID)
-	err = w.tableStore.bucket.Upload(context.Background(), sstPath, bytes.NewReader(blocksData))
+	err = w.tableStore.bucket.Upload(ctx, sstPath, bytes.NewReader(blocksData))
 	if err != nil {
 		return nil, common.ErrObjectStore
 	}
@@ -274,16 +273,16 @@ type ReadOnlyObject struct {
 	path   string
 }
 
-func (r ReadOnlyObject) Len() (int, error) {
-	attr, err := r.bucket.Attributes(context.Background(), r.path)
+func (r ReadOnlyObject) Len(ctx context.Context) (int, error) {
+	attr, err := r.bucket.Attributes(ctx, r.path)
 	if err != nil {
 		return 0, fmt.Errorf("while fetching object attributes: %w", err)
 	}
 	return int(attr.Size), nil
 }
 
-func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
-	read, err := r.bucket.GetRange(context.Background(), r.path, int64(rng.Start), int64(rng.End-rng.Start))
+func (r ReadOnlyObject) ReadRange(ctx context.Context, rng common.Range) ([]byte, error) {
+	read, err := r.bucket.GetRange(ctx, r.path, int64(rng.Start), int64(rng.End-rng.Start))
 	if err != nil {
 		return nil, fmt.Errorf("while fetching object range [%d:%d]: %w", rng.Start, rng.End-rng.Start, err)
 	}
@@ -296,8 +295,8 @@ func (r ReadOnlyObject) ReadRange(rng common.Range) ([]byte, error) {
 	return data, nil
 }
 
-func (r ReadOnlyObject) Read() ([]byte, error) {
-	read, err := r.bucket.Get(context.Background(), r.path)
+func (r ReadOnlyObject) Read(ctx context.Context) ([]byte, error) {
+	read, err := r.bucket.Get(ctx, r.path)
 	if err != nil {
 		return nil, fmt.Errorf("while fetching object '%s': %w", r.path, err)
 	}

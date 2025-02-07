@@ -1,21 +1,20 @@
 package slatedb
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/slatedb/slatedb-go/internal/sstable"
+	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/slatedb/slatedb-go/slatedb/table"
-
-	"github.com/oklog/ulid/v2"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
-func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *sync.WaitGroup) {
+func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan context.Context, walFlushTaskWG *sync.WaitGroup) {
 	walFlushTaskWG.Add(1)
 	go func() {
 		defer walFlushTaskWG.Done()
@@ -24,11 +23,13 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 		for {
 			select {
 			case <-ticker.C:
-				if err := db.FlushWAL(); err != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), db.opts.FlushInterval)
+				if err := db.FlushWAL(ctx); err != nil {
 					db.opts.Log.Warn("Flush WAL failed", "error", err)
 				}
-			case <-walFlushNotifierCh:
-				if err := db.FlushWAL(); err != nil {
+				cancel()
+			case ctx := <-walFlushNotifierCh:
+				if err := db.FlushWAL(ctx); err != nil {
 					db.opts.Log.Warn("Flush WAL failed", "error", err)
 				}
 				return
@@ -40,13 +41,9 @@ func (db *DB) spawnWALFlushTask(walFlushNotifierCh <-chan bool, walFlushTaskWG *
 // FlushWAL
 // 1. Convert mutable WAL to Immutable WAL
 // 2. Flush each Immutable WAL to object store and then to memtable
-func (db *DB) FlushWAL() error {
+func (db *DB) FlushWAL(ctx context.Context) error {
 	db.state.FreezeWAL()
-	err := db.flushImmWALs()
-	if err != nil {
-		return err
-	}
-	return nil
+	return db.flushImmWALs(ctx)
 }
 
 // For each Immutable WAL
@@ -54,7 +51,7 @@ func (db *DB) FlushWAL() error {
 // Flush Immutable WAL to mutable Memtable
 // If memtable has reached size L0SSTBytes then convert memtable to Immutable memtable
 // Notify any client(with AwaitDurable set to true) that flush has happened
-func (db *DB) flushImmWALs() error {
+func (db *DB) flushImmWALs(ctx context.Context) error {
 	for {
 		oldestWal := db.state.OldestImmWAL()
 		if oldestWal.IsAbsent() {
@@ -63,7 +60,7 @@ func (db *DB) flushImmWALs() error {
 
 		immWal := oldestWal.MustGet()
 		// Flush Immutable WAL to Object store
-		_, err := db.flushImmWAL(immWal)
+		_, err := db.flushImmWAL(ctx, immWal)
 		if err != nil {
 			return err
 		}
@@ -77,9 +74,9 @@ func (db *DB) flushImmWALs() error {
 	return nil
 }
 
-func (db *DB) flushImmWAL(immWAL *table.ImmutableWAL) (*sstable.Handle, error) {
+func (db *DB) flushImmWAL(ctx context.Context, immWAL *table.ImmutableWAL) (*sstable.Handle, error) {
 	walID := sstable.NewIDWal(immWAL.ID())
-	return db.flushImmTable(walID, immWAL.Iter())
+	return db.flushImmTable(ctx, walID, immWAL.Iter())
 }
 
 func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.Memtable) {
@@ -99,7 +96,7 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 	memtable.SetLastWalID(immWal.ID())
 }
 
-func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstable.Handle, error) {
+func (db *DB) flushImmTable(ctx context.Context, id sstable.ID, iter *table.KVTableIterator) (*sstable.Handle, error) {
 	sstBuilder := db.tableStore.TableBuilder()
 	for {
 		entry, err := iter.NextEntry()
@@ -122,7 +119,7 @@ func (db *DB) flushImmTable(id sstable.ID, iter *table.KVTableIterator) (*sstabl
 		return nil, err
 	}
 
-	sst, err := db.tableStore.WriteSST(id, encodedSST)
+	sst, err := db.tableStore.WriteSST(ctx, id, encodedSST)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +229,9 @@ func (m *MemtableFlusher) flushImmMemtablesToL0() error {
 		}
 
 		id := sstable.NewIDCompacted(ulid.Make())
-		sstHandle, err := m.db.flushImmTable(id, immMemtable.MustGet().Iter())
+		ctx, cancel := context.WithTimeout(context.Background(), m.db.opts.FlushInterval)
+		sstHandle, err := m.db.flushImmTable(ctx, id, immMemtable.MustGet().Iter())
+		cancel()
 		if err != nil {
 			return err
 		}

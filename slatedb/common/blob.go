@@ -1,7 +1,9 @@
 package common
 
+import "context"
+
 type ReadOnlyBlob interface {
-	Len() (int, error)
-	ReadRange(r Range) ([]byte, error)
-	Read() ([]byte, error)
+	Len(ctx context.Context) (int, error)
+	ReadRange(ctx context.Context, r Range) ([]byte, error)
+	Read(ctx context.Context) ([]byte, error)
 }

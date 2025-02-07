@@ -1,6 +1,7 @@
 package compaction
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync"
@@ -97,9 +98,19 @@ func (o *Orchestrator) spawnLoop(opts config.DBOptions) {
 	}()
 }
 
-func (o *Orchestrator) shutdown() {
+func (o *Orchestrator) shutdown(ctx context.Context) error {
 	o.compactorMsgCh <- CompactorShutdown
-	o.waitGroup.Wait()
+	done := make(chan struct{})
+	go func() {
+		o.waitGroup.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
 func (o *Orchestrator) loadManifest() error {

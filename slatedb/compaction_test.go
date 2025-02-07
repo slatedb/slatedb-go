@@ -7,33 +7,34 @@ import (
 	"testing"
 	"time"
 
-	"github.com/slatedb/slatedb-go/slatedb/compacted"
-	"github.com/slatedb/slatedb-go/slatedb/compaction"
-	"github.com/stretchr/testify/require"
-
+	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
+	"github.com/slatedb/slatedb-go/slatedb/compacted"
+	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
-
-	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 )
 
 var testPath = "/test/db"
 
 func TestCompactorCompactsL0(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	defer cancel()
+
 	options := dbOptions(compactorOptions().CompactorOptions)
 	_, manifestStore, tableStore, db := buildTestDB(options)
-	defer db.Close()
+	defer func() { _ = db.Close(ctx) }()
 	for i := 0; i < 4; i++ {
-		db.Put(repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48))
-		db.Put(repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48))
+		require.NoError(t, db.Put(ctx, repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48)))
+		require.NoError(t, db.Put(ctx, repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48)))
 	}
 
 	startTime := time.Now()
@@ -58,7 +59,7 @@ func TestCompactorCompactsL0(t *testing.T) {
 	assert.Equal(t, 1, len(compactedSSTList))
 
 	sst := compactedSSTList[0]
-	iter, err := sstable.NewIterator(&sst, tableStore)
+	iter, err := sstable.NewIterator(ctx, &sst, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
 		kv, ok := iter.Next(context.Background())
@@ -79,15 +80,17 @@ func TestCompactorCompactsL0(t *testing.T) {
 }
 
 func TestShouldWriteManifestSafely(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
 	options := dbOptions(nil)
 	bucket, manifestStore, tableStore, db := buildTestDB(options)
 	sm, err := store.LoadStoredManifest(manifestStore)
 	assert.NoError(t, err)
 	assert.True(t, sm.IsPresent())
 	storedManifest, _ := sm.Get()
-	db.Put(repeatedChar('a', 32), repeatedChar('b', 96))
-	err = db.Close()
-	assert.NoError(t, err)
+	require.NoError(t, db.Put(ctx, repeatedChar('a', 32), repeatedChar('b', 96)))
+	require.NoError(t, db.Close(ctx))
 
 	orchestrator, err := compaction.NewOrchestrator(compactorOptions(), manifestStore, tableStore)
 	assert.NoError(t, err)
@@ -101,9 +104,8 @@ func TestShouldWriteManifestSafely(t *testing.T) {
 
 	db, err = OpenWithOptions(context.Background(), testPath, bucket, options)
 	assert.NoError(t, err)
-	db.Put(repeatedChar('j', 32), repeatedChar('k', 96))
-	err = db.Close()
-	assert.NoError(t, err)
+	require.NoError(t, db.Put(ctx, repeatedChar('j', 32), repeatedChar('k', 96)))
+	require.NoError(t, db.Close(ctx))
 
 	err = orchestrator.SubmitCompaction(compaction.NewCompaction(l0IDsToCompact, 0))
 	assert.NoError(t, err)
@@ -219,15 +221,18 @@ func TestShouldRemoveCompactionWhenCompactionFinished(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
 	bucket, sm, compactorState := buildTestState(t)
 	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
-	defer db.Close()
-	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
-	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
+	defer func() { _ = db.Close(ctx) }()
 
+	require.NoError(t, db.Put(ctx, repeatedChar('a', 16), repeatedChar('b', 48)))
+	require.NoError(t, db.Put(ctx, repeatedChar('j', 16), repeatedChar('k', 48)))
 	writerDBState := waitForManifestWithL0Len(sm, len(compactorState.DbState.L0)+1)
 
 	compactorState.RefreshDBState(writerDBState)
@@ -239,6 +244,9 @@ func TestShouldRefreshDBStateCorrectlyWhenNeverCompacted(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectly(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
 	bucket, sm, compactorState := buildTestState(t)
 	originalL0s := compactorState.DbState.Clone().L0
 	compactedID, ok := originalL0s[len(originalL0s)-1].Id.CompactedID().Get()
@@ -255,9 +263,10 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
-	defer db.Close()
-	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
-	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
+	defer func() { _ = db.Close(ctx) }()
+
+	require.NoError(t, db.Put(ctx, repeatedChar('a', 16), repeatedChar('b', 48)))
+	require.NoError(t, db.Put(ctx, repeatedChar('j', 16), repeatedChar('k', 48)))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)
 	dbStateBeforeMerge := compactorState.DbState.Clone()
 
@@ -286,6 +295,9 @@ func TestShouldRefreshDBStateCorrectly(t *testing.T) {
 }
 
 func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
 	bucket, sm, compactorState := buildTestState(t)
 	originalL0s := compactorState.DbState.Clone().L0
 
@@ -308,9 +320,10 @@ func TestShouldRefreshDBStateCorrectlyWhenAllL0Compacted(t *testing.T) {
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
 	assert.NoError(t, err)
-	defer db.Close()
-	db.Put(repeatedChar('a', 16), repeatedChar('b', 48))
-	db.Put(repeatedChar('j', 16), repeatedChar('k', 48))
+	defer func() { _ = db.Close(ctx) }()
+
+	require.NoError(t, db.Put(ctx, repeatedChar('a', 16), repeatedChar('b', 48)))
+	require.NoError(t, db.Put(ctx, repeatedChar('j', 16), repeatedChar('k', 48)))
 	writerDBState := waitForManifestWithL0Len(sm, len(originalL0s)+1)
 
 	compactorState.RefreshDBState(writerDBState)
@@ -346,19 +359,24 @@ func buildL0Compaction(sstList []sstable.Handle, destination uint32) compaction.
 }
 
 func buildTestState(t *testing.T) (objstore.Bucket, store.StoredManifest, *compaction.CompactorState) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
 	t.Helper()
 
 	bucket := objstore.NewInMemBucket()
 	option := config.DefaultDBOptions()
 	option.L0SSTSizeBytes = 128
 	db, err := OpenWithOptions(context.Background(), testPath, bucket, option)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+
 	assert2.True(err == nil, "Could not open db")
 	l0Count := 5
 	for i := 0; i < l0Count; i++ {
-		db.Put(repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48))
-		db.Put(repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48))
+		require.NoError(t, db.Put(ctx, repeatedChar(rune('a'+i), 16), repeatedChar(rune('b'+i), 48)))
+		require.NoError(t, db.Put(ctx, repeatedChar(rune('j'+i), 16), repeatedChar(rune('k'+i), 48)))
 	}
-	db.Close()
+	require.NoError(t, db.Close(ctx))
 
 	manifestStore := store.NewManifestStore(testPath, bucket)
 	sm, err := store.LoadStoredManifest(manifestStore)

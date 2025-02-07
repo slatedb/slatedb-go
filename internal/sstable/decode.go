@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 
@@ -21,8 +22,8 @@ func DefaultConfig() Config {
 	}
 }
 
-func ReadInfo(obj common.ReadOnlyBlob) (*Info, error) {
-	size, err := obj.Len()
+func ReadInfo(ctx context.Context, obj common.ReadOnlyBlob) (*Info, error) {
+	size, err := obj.Len(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -32,13 +33,13 @@ func ReadInfo(obj common.ReadOnlyBlob) (*Info, error) {
 
 	// Get the metadata. Last 4 bytes are the metadata offset of SsTableInfo
 	offsetIndex := uint64(size - 4)
-	offsetBytes, err := obj.ReadRange(common.Range{Start: offsetIndex, End: uint64(size)})
+	offsetBytes, err := obj.ReadRange(ctx, common.Range{Start: offsetIndex, End: uint64(size)})
 	if err != nil {
 		return nil, err
 	}
 
 	metadataOffset := binary.BigEndian.Uint32(offsetBytes)
-	metadataBytes, err := obj.ReadRange(common.Range{Start: uint64(metadataOffset), End: offsetIndex})
+	metadataBytes, err := obj.ReadRange(ctx, common.Range{Start: uint64(metadataOffset), End: offsetIndex})
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func ReadInfo(obj common.ReadOnlyBlob) (*Info, error) {
 	return DecodeInfo(metadataBytes)
 }
 
-func ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
+func ReadFilter(ctx context.Context, sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter], error) {
 	if sstInfo.FilterLen < 1 {
 		return mo.None[bloom.Filter](), nil
 	}
@@ -56,7 +57,7 @@ func ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter]
 		End:   sstInfo.FilterOffset + sstInfo.FilterLen,
 	}
 
-	filterBytes, err := obj.ReadRange(filterOffsetRange)
+	filterBytes, err := obj.ReadRange(ctx, filterOffsetRange)
 	if err != nil {
 		return mo.None[bloom.Filter](), fmt.Errorf("while reading filter offset: %w", err)
 	}
@@ -69,8 +70,8 @@ func ReadFilter(sstInfo *Info, obj common.ReadOnlyBlob) (mo.Option[bloom.Filter]
 	return mo.Some(filterData), nil
 }
 
-func ReadIndex(info *Info, obj common.ReadOnlyBlob) (*Index, error) {
-	indexBytes, err := obj.ReadRange(common.Range{
+func ReadIndex(ctx context.Context, info *Info, obj common.ReadOnlyBlob) (*Index, error) {
+	indexBytes, err := obj.ReadRange(ctx, common.Range{
 		Start: info.IndexOffset,
 		End:   info.IndexOffset + info.IndexLen,
 	})
@@ -103,7 +104,7 @@ func getBlockRange(rng common.Range, sstInfo *Info, index *Index) common.Range {
 
 // ReadBlocks reads the complete data required into a byte slice (dataBytes)
 // and then breaks the data up into slice of Blocks (decodedBlocks) which is returned
-func ReadBlocks(info *Info, index *Index, r common.Range, obj common.ReadOnlyBlob) ([]block.Block, error) {
+func ReadBlocks(ctx context.Context, info *Info, index *Index, r common.Range, obj common.ReadOnlyBlob) ([]block.Block, error) {
 	if r.Start >= r.End {
 		return nil, fmt.Errorf("block start '%d' range cannot be greater than end range '%d'", r.Start, r.End)
 	}
@@ -117,7 +118,7 @@ func ReadBlocks(info *Info, index *Index, r common.Range, obj common.ReadOnlyBlo
 	}
 
 	rng := getBlockRange(r, info, index)
-	dataBytes, err := obj.ReadRange(rng)
+	dataBytes, err := obj.ReadRange(ctx, rng)
 	if err != nil {
 		return nil, fmt.Errorf("while reading block range [%d:%d]: %w", rng.Start, rng.End, err)
 	}

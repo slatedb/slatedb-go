@@ -1,6 +1,7 @@
 package compaction
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/oklog/ulid/v2"
@@ -114,8 +115,8 @@ func NewCompactor(manifestStore *store.ManifestStore, tableStore *store.TableSto
 	}, nil
 }
 
-func (c *Compactor) Close() {
-	c.orchestrator.shutdown()
+func (c *Compactor) Close(ctx context.Context) error {
+	return c.orchestrator.shutdown(ctx)
 }
 
 func spawnAndRunCompactionOrchestrator(

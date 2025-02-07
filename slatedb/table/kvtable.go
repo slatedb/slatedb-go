@@ -1,6 +1,7 @@
 package table
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/huandu/skiplist"
@@ -88,8 +89,13 @@ func (t *KVTable) existingKVSize(key []byte) int64 {
 
 // AwaitWALFlush - This is called during DB.Put/DB.Delete to wait till the WAL is
 // durably committed to object store
-func (t *KVTable) AwaitWALFlush() {
-	<-t.isDurableCh
+func (t *KVTable) AwaitWALFlush(ctx context.Context) error {
+	select {
+	case <-t.isDurableCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // NotifyWALFlushed - This is called by WALFlushTask goroutine to notify any client waiting
