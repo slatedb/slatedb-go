@@ -3,7 +3,7 @@ package block
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
+	"github.com/slatedb/slatedb-go/internal"
 	"math"
 	"time"
 
@@ -190,7 +190,7 @@ func (c v0Codec) Encode(r Row) []byte {
 
 func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	if len(data) < 13 { // Minimum size: keyPrefixLen + KeySuffixLen + Seq + Flags
-		return nil, errors.New(v0ErrPrefix + "data length too short to decode a row")
+		return nil, internal.Err(v0ErrPrefix + "data length too short to decode a row")
 	}
 
 	var offset int
@@ -203,12 +203,12 @@ func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	offset += 2
 
 	if r.keyPrefixLen > uint16(len(firstKey)) {
-		return nil, errors.New(v0ErrPrefix + "key prefix length exceeds length of first key in block")
+		return nil, internal.Err(v0ErrPrefix + "key prefix length exceeds length of first key in block")
 	}
 
 	// Decode keySuffix
 	if len(data[offset:]) < int(keySuffixLen) {
-		return nil, errors.New(v0ErrPrefix + "key suffix length exceeds length of block")
+		return nil, internal.Err(v0ErrPrefix + "key suffix length exceeds length of block")
 	}
 	r.keySuffix = make([]byte, keySuffixLen)
 	copy(r.keySuffix, data[offset:offset+int(keySuffixLen)])
@@ -225,7 +225,7 @@ func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	// Decode expire_ts and create_ts if present
 	if flags&flagHasExpire != 0 {
 		if len(data[offset:]) < 8 {
-			return nil, errors.New(v0ErrPrefix + "data length too short for expire")
+			return nil, internal.Err(v0ErrPrefix + "data length too short for expire")
 		}
 		expire := int64(binary.BigEndian.Uint64(data[offset:]))
 		r.ExpireAt = time.UnixMilli(expire)
@@ -233,7 +233,7 @@ func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	}
 	if flags&flagHasCreate != 0 {
 		if len(data[offset:]) < 8 {
-			return nil, errors.New(v0ErrPrefix + "data length too short for create")
+			return nil, internal.Err(v0ErrPrefix + "data length too short for create")
 		}
 		create := int64(binary.BigEndian.Uint64(data[offset:]))
 		r.CreatedAt = time.UnixMilli(create)
@@ -243,12 +243,12 @@ func (c v0Codec) Decode(data []byte, firstKey []byte) (*Row, error) {
 	// Decode value for non-tombstones
 	if flags&flagTombstone == 0 {
 		if len(data[offset:]) < 4 {
-			return nil, errors.New(v0ErrPrefix + "data length too short for for value length")
+			return nil, internal.Err(v0ErrPrefix + "data length too short for for value length")
 		}
 		valueLen := binary.BigEndian.Uint32(data[offset:])
 		offset += 4
 		if len(data[offset:]) < int(valueLen) {
-			return nil, errors.New(v0ErrPrefix + "data length too short for for value")
+			return nil, internal.Err(v0ErrPrefix + "data length too short for for value")
 		}
 		value := make([]byte, valueLen)
 		copy(value, data[offset:offset+int(valueLen)])
@@ -267,7 +267,7 @@ func (c v0Codec) PeekAtKey(data []byte, firstKey []byte) (Row, error) {
 	var r Row
 
 	if len(data) < 4 { // Minimum size: keyPrefixLen + KeySuffixLen
-		return Row{}, errors.New(v0ErrPrefix + "data length too short to peek at row")
+		return Row{}, internal.Err(v0ErrPrefix + "data length too short to peek at row")
 	}
 
 	// Decode keyPrefixLen and KeySuffixLen
@@ -277,11 +277,11 @@ func (c v0Codec) PeekAtKey(data []byte, firstKey []byte) (Row, error) {
 	offset += 2
 
 	if r.keyPrefixLen > uint16(len(firstKey)) {
-		return Row{}, errors.New(v0ErrPrefix + "key prefix length exceeds length of first key in block")
+		return Row{}, internal.Err(v0ErrPrefix + "key prefix length exceeds length of first key in block")
 	}
 
 	if len(data[offset:]) < int(keySuffixLen) {
-		return Row{}, errors.New(v0ErrPrefix + "key suffix length exceeds length of block")
+		return Row{}, internal.Err(v0ErrPrefix + "key suffix length exceeds length of block")
 	}
 	r.keySuffix = data[offset : offset+int(keySuffixLen)]
 	return r, nil

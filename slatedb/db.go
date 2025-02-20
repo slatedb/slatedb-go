@@ -10,10 +10,10 @@ import (
 	"sync"
 
 	"github.com/kapetan-io/tackle/set"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
@@ -23,6 +23,33 @@ import (
 )
 
 const BlockSize = 4096
+
+// ErrInternal indicates an internal error outside the control of slatedb
+// has occurred. For instance, if the `DBOptions.on_corruption` callback
+// was invoked and returned an error.
+//
+// This error indicates a fatal error has occurred, as such, any value
+// returned along with this error should be considered inconsistent.
+type ErrInternal = internal.ExportedInternalError
+
+// ErrRetryable indicates a Transient error has occurred. For instance
+// an IO or network timeout has occurred. This error indicates the
+// request was unable to complete, and should be retried.
+type ErrRetryable = internal.ExportedRetryableError
+
+// ErrInvalidArgument indicates the request contained invalid parameters.
+// For instance, if a `Get()` was called with an empty or nil key.
+//
+// This error indicates the request cannot be completed as requested, the
+// caller must modify one or more arguments of the call for the request to
+// complete.
+type ErrInvalidArgument = internal.ExportedInvalidArgument
+
+// ErrKeyNotFound indicates the requested key was not found in the
+// database.
+var ErrKeyNotFound = errors.New("key not found")
+
+// TODO(thrawn01): Export the Corruption Types here
 
 type DB struct {
 	manifest   *store.FenceableManifest
@@ -141,7 +168,9 @@ func (db *DB) Put(ctx context.Context, key []byte, value []byte) error {
 }
 
 func (db *DB) PutWithOptions(ctx context.Context, key []byte, value []byte, options config.WriteOptions) error {
-	assert.True(len(key) > 0, "key cannot be empty")
+	if len(key) == 0 {
+		return internal.ErrInvalidArgument("argument 'key' cannot be empty or nil")
+	}
 
 	currentWAL := db.state.PutKVToWAL(key, value)
 	if options.AwaitDurable {
@@ -228,7 +257,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 		}
 	}
 
-	return nil, common.ErrKeyNotFound
+	return nil, ErrKeyNotFound
 }
 
 func (db *DB) Delete(ctx context.Context, key []byte) error {
@@ -236,7 +265,9 @@ func (db *DB) Delete(ctx context.Context, key []byte) error {
 }
 
 func (db *DB) DeleteWithOptions(ctx context.Context, key []byte, options config.WriteOptions) error {
-	assert.True(len(key) > 0, "key cannot be empty")
+	if len(key) == 0 {
+		return internal.ErrInvalidArgument("argument 'key' cannot be empty or nil")
+	}
 
 	currentWAL := db.state.DeleteKVFromWAL(key)
 	if options.AwaitDurable {
@@ -336,7 +367,7 @@ func (db *DB) maybeFreezeMemtable(dbState *state.DBState, walID uint64) {
 func (db *DB) FlushMemtableToL0() error {
 	lastWalID := db.state.Memtable().LastWalID()
 	if lastWalID.IsAbsent() {
-		return errors.New("WAL is not yet flushed to Memtable")
+		return internal.Err("assertion failed; WAL is not yet flushed to Memtable")
 	}
 
 	walID, _ := lastWalID.Get()
@@ -396,7 +427,7 @@ func newDB(
 
 func checkValue(val types.Value) ([]byte, error) {
 	if val.GetValue().IsAbsent() { // key is tombstoned/deleted
-		return nil, common.ErrKeyNotFound
+		return nil, ErrKeyNotFound
 	} else { // key is present
 		value, _ := val.GetValue().Get()
 		return value, nil

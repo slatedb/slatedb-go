@@ -3,6 +3,7 @@ package slatedb
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/types"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
@@ -51,7 +51,7 @@ func TestPutGetDelete(t *testing.T) {
 
 	require.NoError(t, db.Delete(ctx, key))
 	_, err = db.Get(ctx, key)
-	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+	assert.True(t, errors.Is(err, ErrKeyNotFound))
 }
 
 func TestGetNonExistingKey(t *testing.T) {
@@ -68,7 +68,7 @@ func TestGetNonExistingKey(t *testing.T) {
 	require.NoError(t, db.FlushMemtableToL0())
 
 	_, err = db.Get(ctx, []byte("key2"))
-	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 }
 
 func TestGetWithNonDurableWritesAndFlushToL0(t *testing.T) {
@@ -387,7 +387,7 @@ func TestShouldDeleteWithoutAwaitingFlush(t *testing.T) {
 	assert.Equal(t, []byte("bar"), value)
 
 	_, err = db.GetWithOptions(ctx, []byte("foo"), config.ReadOptions{ReadLevel: config.Uncommitted})
-	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 }
 
 func TestSnapshotState(t *testing.T) {
@@ -517,7 +517,7 @@ func doTestShouldReadCompactedDB(t *testing.T, options config.DBOptions) {
 	}
 
 	_, err = db.Get(context.Background(), []byte("abc"))
-	assert.ErrorIs(t, err, common.ErrKeyNotFound)
+	assert.ErrorIs(t, err, ErrKeyNotFound)
 }
 
 func doTestDeleteAndWaitForCompaction(t *testing.T, options config.DBOptions) {
@@ -566,9 +566,9 @@ func doTestDeleteAndWaitForCompaction(t *testing.T, options config.DBOptions) {
 	// verify that keys are deleted
 	for i := 1; i < 4; i++ {
 		_, err := db.Get(context.Background(), repeatedChar(rune('a'+i), 32))
-		assert.ErrorIs(t, err, common.ErrKeyNotFound)
+		assert.ErrorIs(t, err, ErrKeyNotFound)
 		_, err = db.Get(context.Background(), repeatedChar(rune('m'+i), 32))
-		assert.ErrorIs(t, err, common.ErrKeyNotFound)
+		assert.ErrorIs(t, err, ErrKeyNotFound)
 	}
 
 	// verify that new keys added after deleting existing keys are present

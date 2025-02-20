@@ -3,11 +3,10 @@ package store
 import (
 	"testing"
 
+	"github.com/slatedb/slatedb-go/internal"
+	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
-	"github.com/slatedb/slatedb-go/slatedb/state"
 )
 
 func TestShouldFailWriteOnVersionConflict(t *testing.T) {
@@ -27,7 +26,7 @@ func TestShouldFailWriteOnVersionConflict(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = sm2.updateDBState(coreState.Snapshot())
-	assert.ErrorIs(t, err, common.ErrManifestVersionExists)
+	assert.ErrorIs(t, err, internal.ErrAlreadyExists)
 }
 
 func TestShouldWriteWithNewVersion(t *testing.T) {
@@ -131,11 +130,11 @@ func TestShouldFailOnWriterFenced(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = writer1.Refresh()
-	assert.ErrorIs(t, err, common.ErrFenced)
+	assert.ErrorIs(t, err, internal.ErrFenced)
 	core := coreState.Snapshot()
 	core.NextWalSstID.Store(123)
 	err = writer1.UpdateDBState(core)
-	assert.ErrorIs(t, err, common.ErrFenced)
+	assert.ErrorIs(t, err, internal.ErrFenced)
 
 	refreshed, err := writer2.Refresh()
 	assert.NoError(t, err)
@@ -185,11 +184,11 @@ func TestShouldFailOnCompactorFenced(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = compactor1.Refresh()
-	assert.ErrorIs(t, err, common.ErrFenced)
+	assert.ErrorIs(t, err, internal.ErrFenced)
 	core := coreState.Snapshot()
 	core.NextWalSstID.Store(123)
 	err = compactor1.UpdateDBState(core)
-	assert.ErrorIs(t, err, common.ErrFenced)
+	assert.ErrorIs(t, err, internal.ErrFenced)
 
 	refreshed, err := compactor2.Refresh()
 	assert.NoError(t, err)

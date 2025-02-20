@@ -2,10 +2,10 @@ package bloom
 
 import (
 	"encoding/binary"
-	"errors"
 	"hash/crc32"
 	"hash/fnv"
 
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
@@ -69,13 +69,13 @@ func Encode(f Filter, codec compress.Codec) ([]byte, error) {
 // Decode decodes the bloom filter from the provided byte slice using binary.BigEndian
 func Decode(data []byte, codec compress.Codec) (Filter, error) {
 	if len(data) < 2 {
-		return Filter{}, errors.New("corrupt filter: filter is too small; must be at least 2 bytes")
+		return Filter{}, internal.Err("corrupt filter: filter is too small; must be at least 2 bytes")
 	}
 
 	checksumIndex := len(data) - common.SizeOfUint32
 	compressed := data[:checksumIndex]
 	if binary.BigEndian.Uint32(data[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
-		return Filter{}, common.ErrChecksumMismatch
+		return Filter{}, internal.Err("corrupt filter: invalid checksum")
 	}
 
 	buf, err := compress.Decode(compressed, codec)
