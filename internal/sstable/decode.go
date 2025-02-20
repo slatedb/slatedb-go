@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/samber/mo"
-
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/sstable/bloom"
@@ -28,7 +28,7 @@ func ReadInfo(ctx context.Context, obj common.ReadOnlyBlob) (*Info, error) {
 		return nil, err
 	}
 	if size <= 4 {
-		return nil, common.ErrEmptySSTable
+		return nil, internal.Err("corrupted SSTable; too short")
 	}
 
 	// Get the metadata. Last 4 bytes are the metadata offset of SsTableInfo

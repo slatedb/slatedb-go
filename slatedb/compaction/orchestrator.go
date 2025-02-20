@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/config"
 	"github.com/slatedb/slatedb-go/slatedb/store"
@@ -40,7 +40,7 @@ func NewOrchestrator(
 		return nil, err
 	}
 	if sm.IsAbsent() {
-		return nil, common.ErrInvalidDBState
+		return nil, internal.Err("assertion failed; stored manifest is absent")
 	}
 	storedManifest, _ := sm.Get()
 
@@ -233,7 +233,7 @@ func (o *Orchestrator) writeManifest() error {
 
 		core := o.State.DbState.Clone()
 		err = o.manifest.UpdateDBState(core)
-		if errors.Is(err, common.ErrManifestVersionExists) {
+		if errors.Is(err, internal.ErrAlreadyExists) {
 			o.log.Warn("conflicting manifest version. retry write", "error", err)
 			continue
 		}

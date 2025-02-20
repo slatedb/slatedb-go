@@ -6,7 +6,7 @@ import (
 	"hash/crc32"
 
 	flatbuffers "github.com/google/flatbuffers/go"
-
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 	"github.com/slatedb/slatedb-go/slatedb/common"
@@ -82,13 +82,13 @@ func EncodeInfo(info *Info) []byte {
 
 func DecodeIndex(buf []byte, codec compress.Codec) (*Index, error) {
 	if len(buf) <= common.SizeOfUint32 {
-		return nil, common.ErrEmptyBlockMeta
+		return nil, internal.Err("corrupted index; too short")
 	}
 
 	checksumIndex := len(buf) - common.SizeOfUint32
 	compressed := buf[:checksumIndex]
 	if binary.BigEndian.Uint32(buf[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
-		return nil, common.ErrChecksumMismatch
+		return nil, internal.Err("corrupted index; checksum mismatch")
 	}
 
 	buf, err := compress.Decode(compressed, codec)
@@ -101,14 +101,14 @@ func DecodeIndex(buf []byte, codec compress.Codec) (*Index, error) {
 
 func DecodeInfo(b []byte) (*Info, error) {
 	if len(b) <= common.SizeOfUint32 {
-		return nil, common.ErrEmptyBlockMeta
+		return nil, internal.Err("corrupted info; too short")
 	}
 
 	// last 4 bytes hold the checksum
 	checksumIndex := len(b) - common.SizeOfUint32
 	checksum := binary.BigEndian.Uint32(b[checksumIndex:])
 	if checksum != crc32.ChecksumIEEE(b[:checksumIndex]) {
-		return nil, common.ErrChecksumMismatch
+		return nil, internal.Err("corrupted info; checksum mismatch")
 	}
 
 	fbInfo := flatbuf.GetRootAsSsTableInfo(b, 0)

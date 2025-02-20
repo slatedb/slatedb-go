@@ -3,13 +3,12 @@ package compress
 import (
 	"bytes"
 	"compress/zlib"
-	"errors"
+	"github.com/slatedb/slatedb-go/internal"
 	"io"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
-
 	"github.com/slatedb/slatedb-go/internal/flatbuf"
 )
 
@@ -19,6 +18,8 @@ const (
 	CodecZlib
 	CodecLz4
 	CodecZstd
+
+	ErrInvalidCodec = "corrupted; invalid compression codec"
 )
 
 type Codec int8
@@ -54,7 +55,7 @@ func CodecFromFlatBuf(f flatbuf.CompressionCodec) Codec {
 	case flatbuf.CompressionCodecZstd:
 		return CodecZstd
 	default:
-		panic(ErrInvalidCodec.Error())
+		panic(ErrInvalidCodec)
 	}
 }
 
@@ -71,11 +72,9 @@ func CodecToFlatBuf(c Codec) flatbuf.CompressionCodec {
 	case CodecZstd:
 		return flatbuf.CompressionCodecZstd
 	default:
-		panic(ErrInvalidCodec.Error())
+		panic(ErrInvalidCodec)
 	}
 }
-
-var ErrInvalidCodec = errors.New("invalid compression codec")
 
 // Encode the provided byte slice
 func Encode(buf []byte, codec Codec) ([]byte, error) {
@@ -119,7 +118,7 @@ func Encode(buf []byte, codec Codec) ([]byte, error) {
 		}
 		return b.Bytes(), nil
 	default:
-		return nil, ErrInvalidCodec
+		return nil, internal.Err(ErrInvalidCodec)
 	}
 }
 
@@ -153,6 +152,6 @@ func Decode(buf []byte, codec Codec) ([]byte, error) {
 		return io.ReadAll(r)
 
 	default:
-		return nil, ErrInvalidCodec
+		return nil, internal.Err(ErrInvalidCodec)
 	}
 }

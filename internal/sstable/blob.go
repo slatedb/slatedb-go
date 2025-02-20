@@ -2,7 +2,7 @@ package sstable
 
 import (
 	"context"
-	"errors"
+	"github.com/slatedb/slatedb-go/internal"
 
 	"github.com/slatedb/slatedb-go/slatedb/common"
 )
@@ -22,7 +22,7 @@ func (b *bytesBlob) Len(_ context.Context) (int, error) {
 
 func (b *bytesBlob) ReadRange(_ context.Context, r common.Range) ([]byte, error) {
 	if r.Start > uint64(len(b.data)) || r.End > uint64(len(b.data)) || r.Start > r.End {
-		return nil, errors.New("invalid range")
+		return nil, internal.Err("corrupted; [%d:%d] is an invalid range", r.Start, r.End)
 	}
 	return b.data[r.Start:r.End], nil
 }

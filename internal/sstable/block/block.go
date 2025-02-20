@@ -4,18 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/crc32"
 
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
-)
-
-var (
-	ErrEmptyBlock = errors.New("empty block")
 )
 
 type Block struct {
@@ -81,14 +77,14 @@ func Encode(b *Block, codec compress.Codec) ([]byte, error) {
 // Decode converts the encoded byte slice into the provided Block
 func Decode(b *Block, input []byte, codec compress.Codec) error {
 	if len(input) < 6 {
-		return errors.New("corrupt block: block is too small; must be at least 6 bytes")
+		return internal.Err("corrupted block: block is too small; must be at least 6 bytes")
 	}
 
 	// last 4 bytes hold the checksum
 	checksumIndex := len(input) - common.SizeOfUint32
 	compressed := input[:checksumIndex]
 	if binary.BigEndian.Uint32(input[checksumIndex:]) != crc32.ChecksumIEEE(compressed) {
-		return common.ErrChecksumMismatch
+		return internal.Err("corrupted block: checksum mismatch")
 	}
 
 	buf, err := compress.Decode(compressed, codec)
@@ -97,7 +93,7 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 	}
 
 	if len(buf) < common.SizeOfUint16 {
-		return errors.New("corrupt block: uncompressed block is too small; must be at least 2 bytes")
+		return internal.Err("corrupted block: uncompressed block is too small; must be at least 2 bytes")
 	}
 
 	// The last 2 bytes hold the offset count
@@ -106,7 +102,7 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 
 	offsetStartIndex := offsetCountIndex - (int(offsetCount) * common.SizeOfUint16)
 	if offsetStartIndex <= 0 {
-		return fmt.Errorf("corrupt block: invalid index offset '%d'; cannot be negative", offsetStartIndex)
+		return internal.Err("corrupted block: invalid index offset '%d'; cannot be negative", offsetStartIndex)
 	}
 	offsets := make([]uint16, 0, offsetCount)
 
@@ -118,7 +114,7 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 
 		offset := binary.BigEndian.Uint16(buf[index:])
 		if offset > uint16(offsetStartIndex) {
-			return fmt.Errorf("corrupt block: block offset[%d] = %d exceeds key value bounds", i, offset)
+			return internal.Err("corrupted block: block offset[%d] = %d exceeds key value bounds", i, offset)
 		}
 		offsets = append(offsets, offset)
 	}
@@ -127,7 +123,7 @@ func Decode(b *Block, input []byte, codec compress.Codec) error {
 	b.Offsets = offsets
 
 	if len(b.Offsets) == 0 {
-		return fmt.Errorf("corrupt block: Block.Offsets must be greater than 0")
+		return internal.Err("corrupted block: Block.Offsets must be greater than 0")
 	}
 
 	// Extract the first key in the block
@@ -198,7 +194,7 @@ func (b *Builder) IsEmpty() bool {
 
 func (b *Builder) Build() (*Block, error) {
 	if b.IsEmpty() {
-		return nil, ErrEmptyBlock
+		return nil, internal.Err("assertion failed; block cannot be empty")
 	}
 	return &Block{
 		FirstKey: b.firstKey,

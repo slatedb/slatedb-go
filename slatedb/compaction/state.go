@@ -6,16 +6,13 @@ import (
 	"strconv"
 
 	"github.com/kapetan-io/tackle/set"
-
+	"github.com/oklog/ulid/v2"
+	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/state"
-
-	"github.com/oklog/ulid/v2"
-	"github.com/samber/mo"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 // ------------------------------------------------
@@ -42,14 +39,14 @@ func (c *CompactorState) SubmitCompaction(compaction Compaction) error {
 	_, ok := c.Compactions[compaction.destination]
 	if ok {
 		// we already have an ongoing compaction for this destination
-		return common.ErrInvalidCompaction
+		return internal.Err("ongoing compaction exists for this destination")
 	}
 
 	for _, sr := range c.DbState.Compacted {
 		if sr.ID == compaction.destination {
 			if !c.oneOfTheSourceSRMatchesDestination(compaction) {
 				// the compaction overwrites an existing sr but doesn't include the sr
-				return common.ErrInvalidCompaction
+				return internal.Err("compaction destination already exists for this compaction")
 			}
 			break
 		}

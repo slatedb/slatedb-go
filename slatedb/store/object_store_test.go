@@ -9,10 +9,9 @@ import (
 	"testing"
 
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/objstore"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 var rootPath = "/root/path"
@@ -25,7 +24,7 @@ func TestDelegatingShouldFailPutIfExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = store.putIfNotExists("obj", []byte("data2"))
-	assert.Error(t, err, common.ErrObjectExists)
+	assert.Error(t, err, internal.ErrAlreadyExists)
 
 	data, err := store.get("obj")
 	assert.NoError(t, err)

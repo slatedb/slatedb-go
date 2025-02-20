@@ -3,16 +3,14 @@ package store
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"path"
 	"slices"
 	"time"
 
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/thanos-io/objstore"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
 )
 
 type ObjectMeta struct {
@@ -45,15 +43,15 @@ func (d *DelegatingObjectStore) putIfNotExists(objPath string, data []byte) erro
 	fullPath := path.Join(d.rootPath, objPath)
 	exists, err := d.bucket.Exists(context.Background(), fullPath)
 	if err != nil {
-		return common.ErrObjectStore
+		return internal.ErrRetryable("during bucket exists check: %s", err)
 	}
 	if exists {
-		return common.ErrObjectExists
+		return internal.ErrAlreadyExists
 	}
 
 	err = d.bucket.Upload(context.Background(), fullPath, bytes.NewReader(data))
 	if err != nil {
-		return common.ErrObjectStore
+		return internal.ErrRetryable("during bucket upload: %s", err)
 	}
 	return nil
 }
@@ -62,12 +60,12 @@ func (d *DelegatingObjectStore) get(objPath string) ([]byte, error) {
 	fullPath := path.Join(d.rootPath, objPath)
 	reader, err := d.bucket.Get(context.Background(), fullPath)
 	if err != nil {
-		return nil, common.ErrObjectStore
+		return nil, internal.ErrRetryable("during bucket get: %s", err)
 	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("while reading data: %w", err)
+		return nil, internal.ErrRetryable("while reading data from bucket: %s", err)
 	}
 	return data, nil
 }
@@ -87,7 +85,7 @@ func (d *DelegatingObjectStore) list(objPath mo.Option[string]) ([]ObjectMeta, e
 	}
 	err := d.bucket.IterWithAttributes(context.Background(), fullPath, iterFn, objStoreIterOptions(d.bucket)...)
 	if err != nil {
-		return nil, common.ErrObjectStore
+		return nil, internal.ErrRetryable("during bucket listing: %s", err)
 	}
 
 	return objMetaList, nil

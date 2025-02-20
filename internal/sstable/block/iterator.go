@@ -3,8 +3,8 @@ package block
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"github.com/slatedb/slatedb-go/internal"
 	"sort"
 
 	"github.com/slatedb/slatedb-go/internal/types"
@@ -30,7 +30,7 @@ func NewIterator(block *Block) *Iterator {
 // key greater than the given key if the exact key given is not in the block.
 func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 	if len(block.Offsets) <= 0 {
-		return nil, errors.New("number of block.Offsets must be greater than zero")
+		return nil, internal.Err("number of block.Offsets must be greater than zero")
 	}
 	var warn types.ErrWarn
 
@@ -43,7 +43,7 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 		// If we couldn't find a first full key, and there are no warnings
 		// we must assume the block is empty or not a block
 		if warn.Empty() {
-			return nil, fmt.Errorf("corrupt block; no full key found")
+			return nil, fmt.Errorf("corrupted block; no full key found")
 		}
 		return nil, &warn
 	}

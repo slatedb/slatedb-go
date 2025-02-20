@@ -7,14 +7,13 @@ import (
 	"hash/crc32"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	assert2 "github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/compress"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 	"github.com/slatedb/slatedb-go/internal/types"
 	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewBuilder(t *testing.T) {
@@ -347,7 +346,7 @@ func TestDecodeCorruptV0Block(t *testing.T) {
 			corruptFunc: func(data []byte) []byte {
 				return data[:5] // Make the block too small
 			},
-			expectedErr: "corrupt block: block is too small; must be at least 6 bytes",
+			expectedErr: "corrupted block: block is too small; must be at least 6 bytes",
 		},
 		{
 			name: "InvalidChecksum",
@@ -368,7 +367,7 @@ func TestDecodeCorruptV0Block(t *testing.T) {
 				data = binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(data))
 				return data
 			},
-			expectedErr: "corrupt block: invalid index offset",
+			expectedErr: "corrupted block: invalid index offset",
 		},
 		{
 			name: "OffsetExceedsBounds",
@@ -394,7 +393,7 @@ func TestDecodeCorruptV0Block(t *testing.T) {
 				data = binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(data))
 				return data
 			},
-			expectedErr: "corrupt block: Block.Offsets must be greater than 0",
+			expectedErr: "corrupted block: Block.Offsets must be greater than 0",
 		},
 	}
 

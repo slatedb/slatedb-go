@@ -2,7 +2,6 @@ package store
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"path"
 	"slices"
@@ -12,11 +11,10 @@ import (
 	"time"
 
 	"github.com/samber/mo"
-	"github.com/thanos-io/objstore"
-
-	"github.com/slatedb/slatedb-go/slatedb/common"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/slatedb/manifest"
 	"github.com/slatedb/slatedb-go/slatedb/state"
+	"github.com/thanos-io/objstore"
 )
 
 const manifestDir = "manifest"
@@ -107,7 +105,7 @@ func (f *FenceableManifest) storedEpoch() uint64 {
 
 func (f *FenceableManifest) checkEpoch() error {
 	if f.localEpoch.Load() < f.storedEpoch() {
-		return common.ErrFenced
+		return internal.ErrFenced
 	}
 	if f.localEpoch.Load() > f.storedEpoch() {
 		panic("the stored epoch is lower than the local epoch")
@@ -198,7 +196,7 @@ func (s *StoredManifest) Refresh() (*state.CoreStateSnapshot, error) {
 		return nil, err
 	}
 	if stored.IsAbsent() {
-		return nil, common.ErrInvalidDBState
+		return nil, internal.Err("assertion failed; stored manifest is absent")
 	}
 
 	storedInfo, _ := stored.Get()
@@ -249,10 +247,7 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *manifest.Manifest) er
 	filepath := s.manifestPath(fmt.Sprintf("%020d.%s", id, s.manifestSuffix))
 	err := s.objectStore.putIfNotExists(filepath, s.codec.Encode(manifest))
 	if err != nil {
-		if errors.Is(err, common.ErrObjectExists) {
-			return common.ErrManifestVersionExists
-		}
-		return common.ErrObjectStore
+		return err
 	}
 	return nil
 }
@@ -260,7 +255,7 @@ func (s *ManifestStore) writeManifest(id uint64, manifest *manifest.Manifest) er
 func (s *ManifestStore) listManifests() ([]ManifestFileMetadata, error) {
 	objMetaList, err := s.objectStore.list(mo.Some(manifestDir))
 	if err != nil {
-		return nil, common.ErrObjectStore
+		return nil, err
 	}
 
 	manifests := make([]ManifestFileMetadata, 0)
@@ -310,14 +305,15 @@ func (s *ManifestStore) readLatestManifest() (mo.Option[manifestInfo], error) {
 
 func (s *ManifestStore) parseID(filepath string, expectedExt string) (uint64, error) {
 	if path.Ext(filepath) != expectedExt {
-		return 0, common.ErrInvalidDBState
+		return 0, internal.Err("expected file extension '%s' on '%s'", expectedExt, filepath)
 	}
 
 	base := path.Base(filepath)
 	idStr := strings.Replace(base, expectedExt, "", 1)
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		return 0, common.ErrInvalidDBState
+		return 0, internal.Err("invalid database state; file name '%s' should be "+
+			"parsable as an uint: %s", filepath, err)
 	}
 
 	return id, nil
