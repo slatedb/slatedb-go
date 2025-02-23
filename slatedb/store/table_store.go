@@ -13,6 +13,7 @@ import (
 
 	"github.com/maypok86/otter"
 	"github.com/samber/mo"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/assert"
 	"github.com/slatedb/slatedb-go/internal/sstable"
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
@@ -257,7 +258,7 @@ func (w *EncodedSSTableWriter) Close(ctx context.Context) (*sstable.Handle, erro
 	sstPath := w.tableStore.sstPath(w.sstID)
 	err = w.tableStore.bucket.Upload(ctx, sstPath, bytes.NewReader(blocksData))
 	if err != nil {
-		return nil, common.ErrObjectStore
+		return nil, internal.ErrRetryable("during bucket upload: %s", err)
 	}
 
 	w.tableStore.cacheFilter(w.sstID, encodedSST.Bloom)

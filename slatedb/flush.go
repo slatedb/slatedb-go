@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/sstable"
-	"github.com/slatedb/slatedb-go/slatedb/common"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/slatedb/slatedb-go/slatedb/table"
 )
@@ -211,7 +211,7 @@ func (m *MemtableFlusher) writeManifestSafely() error {
 		}
 
 		err = m.writeManifest()
-		if errors.Is(err, common.ErrManifestVersionExists) {
+		if errors.Is(err, internal.ErrAlreadyExists) {
 			m.log.Warn("conflicting manifest version. retry write", "error", err)
 		} else if err != nil {
 			return err
