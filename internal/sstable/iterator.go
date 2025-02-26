@@ -56,24 +56,6 @@ func NewIteratorAtKey(ctx context.Context, handle *Handle, key []byte, store Tab
 	return iter, nil
 }
 
-func (iter *Iterator) Next(ctx context.Context) (types.KeyValue, bool) {
-	for {
-		keyVal, ok := iter.NextEntry(ctx)
-		if !ok {
-			return types.KeyValue{}, false
-		}
-
-		if keyVal.Value.IsTombstone() {
-			continue
-		}
-
-		return types.KeyValue{
-			Key:   keyVal.Key,
-			Value: keyVal.Value.Value,
-		}, true
-	}
-}
-
 func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.blockIter == nil {

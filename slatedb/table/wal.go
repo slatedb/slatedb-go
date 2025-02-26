@@ -23,22 +23,16 @@ func NewWAL() *WAL {
 	}
 }
 
-func (w *WAL) Put(key []byte, value []byte) int64 {
+func (w *WAL) Put(entry types.RowEntry) int64 {
 	w.Lock()
 	defer w.Unlock()
-	return w.table.put(key, value)
+	return w.table.put(entry)
 }
 
 func (w *WAL) Get(key []byte) mo.Option[types.Value] {
 	w.RLock()
 	defer w.RUnlock()
 	return w.table.get(key)
-}
-
-func (w *WAL) Delete(key []byte) {
-	w.Lock()
-	defer w.Unlock()
-	w.table.delete(key)
 }
 
 func (w *WAL) Table() *KVTable {

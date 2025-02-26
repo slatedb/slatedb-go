@@ -48,18 +48,6 @@ func NewMergeSort(ctx context.Context, iterators ...KVIterator) *MergeSort {
 	return ms
 }
 
-func (m *MergeSort) Next(ctx context.Context) (types.KeyValue, bool) {
-	for {
-		entry, ok := m.NextEntry(ctx)
-		if !ok {
-			return types.KeyValue{}, false
-		}
-		if !entry.Value.IsTombstone() {
-			return types.KeyValue{Key: entry.Key, Value: entry.Value.Value}, true
-		}
-	}
-}
-
 // NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 // a tombstone of a deleted key-value pair.
 func (m *MergeSort) NextEntry(ctx context.Context) (types.RowEntry, bool) {

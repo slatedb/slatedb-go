@@ -378,7 +378,7 @@ func TestOneBlockSSTIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 	assert2.Next(t, iterator, []byte("key4"), []byte("value4"))
 
-	_, ok := iterator.Next(context.Background())
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 
@@ -416,7 +416,7 @@ func TestManyBlockSSTIter(t *testing.T) {
 		}
 	}
 
-	_, ok := iterator.Next(context.Background())
+	_, ok := iterator.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 
@@ -451,7 +451,7 @@ func TestIterFromKey(t *testing.T) {
 				t.FailNow()
 			}
 		}
-		_, ok := kvIter.Next(context.Background())
+		_, ok := kvIter.NextEntry(context.Background())
 		assert.False(t, ok)
 	}
 }
@@ -480,7 +480,7 @@ func TestIterFromKeySmallerThanFirst(t *testing.T) {
 	for i := 0; i < nKeys; i++ {
 		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	_, ok := kvIter.Next(context.Background())
+	_, ok := kvIter.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 
@@ -502,7 +502,7 @@ func TestIterFromKeyLargerThanLast(t *testing.T) {
 	kvIter, err := sstable.NewIteratorAtKey(ctx, sst, []byte("zzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
 
-	_, ok := kvIter.Next(context.Background())
+	_, ok := kvIter.NextEntry(context.Background())
 	assert.False(t, ok)
 }
 

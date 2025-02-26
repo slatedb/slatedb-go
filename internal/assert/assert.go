@@ -34,12 +34,12 @@ func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 // Next is a test helper to assert the next call to Next() returns the required value
 func Next(t *testing.T, iter iter.KVIterator, key []byte, value []byte) bool {
 	t.Helper()
-	kv, _ := iter.Next(context.Background())
+	e, _ := iter.NextEntry(context.Background())
 	//assert.True(t, ok)
-	if !assert2.Equal(t, key, kv.Key) {
+	if !assert2.Equal(t, key, e.Key) {
 		return false
 	}
-	if !assert2.Equal(t, value, kv.Value) {
+	if !assert2.Equal(t, value, e.Value.Value) {
 		return false
 	}
 	return true

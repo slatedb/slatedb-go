@@ -110,23 +110,6 @@ func newSortedRunIter(ctx context.Context,
 	}, nil
 }
 
-func (iter *SortedRunIterator) Next(ctx context.Context) (types.KeyValue, bool) {
-	for {
-		keyVal, ok := iter.NextEntry(ctx)
-		if !ok {
-			return types.KeyValue{}, false
-		}
-		if keyVal.Value.IsTombstone() {
-			continue
-		}
-
-		return types.KeyValue{
-			Key:   keyVal.Key,
-			Value: keyVal.Value.Value,
-		}, true
-	}
-}
-
 func (iter *SortedRunIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.currentKVIter.IsAbsent() {

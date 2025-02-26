@@ -172,7 +172,13 @@ func (db *DB) PutWithOptions(ctx context.Context, key []byte, value []byte, opti
 		return internal.ErrInvalidArgument("argument 'key' cannot be empty or nil")
 	}
 
-	currentWAL := db.state.PutKVToWAL(key, value)
+	currentWAL := db.state.WalPut(types.RowEntry{
+		Value: types.Value{
+			Kind:  types.KindKeyValue,
+			Value: value,
+		},
+		Key: key,
+	})
 	if options.AwaitDurable {
 		// we wait for WAL to be flushed to memtable and then we send a notification
 		// to goroutine to flush memtable to L0. we do not wait till its flushed to L0
@@ -269,7 +275,12 @@ func (db *DB) DeleteWithOptions(ctx context.Context, key []byte, options config.
 		return internal.ErrInvalidArgument("argument 'key' cannot be empty or nil")
 	}
 
-	currentWAL := db.state.DeleteKVFromWAL(key)
+	currentWAL := db.state.WalPut(types.RowEntry{
+		Value: types.Value{
+			Kind: types.KindTombStone,
+		},
+		Key: key,
+	})
 	if options.AwaitDurable {
 		return currentWAL.Table().AwaitWALFlush(ctx)
 	}
@@ -336,12 +347,8 @@ func (db *DB) replayWAL(ctx context.Context) error {
 		}
 
 		// update memtable with kv pairs in walReplayBuf
-		for _, kvDel := range walReplayBuf {
-			if kvDel.Value.IsTombstone() {
-				db.state.DeleteKVFromMemtable(kvDel.Key)
-			} else {
-				db.state.PutKVToMemtable(kvDel.Key, kvDel.Value.Value)
-			}
+		for _, entry := range walReplayBuf {
+			db.state.MemTablePut(entry)
 		}
 
 		db.maybeFreezeMemtable(db.state, sstID)

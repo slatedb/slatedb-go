@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/slatedb/slatedb-go/internal"
 	"sort"
 
+	"github.com/slatedb/slatedb-go/internal"
 	"github.com/slatedb/slatedb-go/internal/types"
 )
 
-// Iterator iterates through KeyValue pairs present in the Block.
+// Iterator iterates through KeyValues present in the Block.
 type Iterator struct {
 	block       *Block
 	offsetIndex uint64
@@ -79,22 +79,6 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 		block:       block,
 		warn:        warn,
 	}, nil
-}
-
-func (iter *Iterator) Next(ctx context.Context) (types.KeyValue, bool) {
-	for {
-		entry, ok := iter.NextEntry(ctx)
-		if !ok {
-			return types.KeyValue{}, false
-		}
-		if entry.Value.IsTombstone() {
-			continue
-		}
-		return types.KeyValue{
-			Key:   entry.Key,
-			Value: entry.Value.Value,
-		}, true
-	}
 }
 
 func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {

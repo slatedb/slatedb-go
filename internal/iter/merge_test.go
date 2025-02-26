@@ -32,7 +32,7 @@ func TestMergeUniqueIteratorPrecedence(t *testing.T) {
 	assert2.NextEntry(t, mergeIter, []byte("cccc"), []byte("use this one c"))
 	assert2.NextEntry(t, mergeIter, []byte("xxxx"), []byte("use this one x"))
 
-	_, ok := mergeIter.Next(context.Background())
+	_, ok := mergeIter.NextEntry(context.Background())
 	assert.False(t, ok, "Expected no more entries")
 }
 
@@ -65,7 +65,7 @@ func TestMergeUnique(t *testing.T) {
 	assert2.NextEntry(t, mergeIter, []byte("yyyy"), []byte("25252525"))
 	assert2.NextEntry(t, mergeIter, []byte("zzzz"), []byte("26262626"))
 
-	_, ok := mergeIter.Next(context.Background())
+	_, ok := mergeIter.NextEntry(context.Background())
 	assert.False(t, ok, "Expected no more entries")
 }
 
@@ -88,7 +88,7 @@ func TestMergeSortTwoIterators(t *testing.T) {
 	assert2.NextEntry(t, mergeIter, []byte("yyyy"), []byte("25252525"))
 	assert2.NextEntry(t, mergeIter, []byte("zzzz"), []byte("26262626"))
 
-	_, ok := mergeIter.Next(context.Background())
+	_, ok := mergeIter.NextEntry(context.Background())
 	assert.False(t, ok, "Expected no more entries")
 }
 
@@ -106,6 +106,6 @@ func TestMergeSortTwoIteratorsPrecedence(t *testing.T) {
 	assert2.NextEntry(t, mergeIter, []byte("cccc"), []byte("use this one c"))
 	assert2.NextEntry(t, mergeIter, []byte("xxxx"), []byte("24242424"))
 
-	_, ok := mergeIter.Next(context.Background())
+	_, ok := mergeIter.NextEntry(context.Background())
 	assert.False(t, ok, "Expected no more entries")
 }

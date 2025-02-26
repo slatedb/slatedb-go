@@ -27,23 +27,17 @@ func NewMemtable() *Memtable {
 	}
 }
 
-// Put adds KeyValue and returns the size in bytes of the KeyValue added
-func (m *Memtable) Put(key []byte, value []byte) int64 {
+// Put adds RowEntry and returns the size in bytes of the RowEntry added
+func (m *Memtable) Put(entry types.RowEntry) int64 {
 	m.Lock()
 	defer m.Unlock()
-	return m.table.put(key, value)
+	return m.table.put(entry)
 }
 
 func (m *Memtable) Get(key []byte) mo.Option[types.Value] {
 	m.RLock()
 	defer m.RUnlock()
 	return m.table.get(key)
-}
-
-func (m *Memtable) Delete(key []byte) {
-	m.Lock()
-	defer m.Unlock()
-	m.table.delete(key)
 }
 
 func (m *Memtable) Size() int64 {
