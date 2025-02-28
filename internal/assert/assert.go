@@ -16,10 +16,10 @@ func True(condition bool, errMsg string, arg ...any) {
 	}
 }
 
-// NextEntry is a test helper to assert the next call to NextEntry() returns the required value
+// NextEntry is a test helper to verify if iter.Next() returns the required key and value
 func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 	t.Helper()
-	entry, ok := iter.NextEntry(context.Background())
+	entry, ok := iter.Next(context.Background())
 	assert2.True(t, ok)
 	assert2.Equal(t, key, entry.Key)
 	if value == nil {
@@ -34,7 +34,7 @@ func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 // Next is a test helper to assert the next call to Next() returns the required value
 func Next(t *testing.T, iter iter.KVIterator, key []byte, value []byte) bool {
 	t.Helper()
-	e, _ := iter.NextEntry(context.Background())
+	e, _ := iter.Next(context.Background())
 	//assert.True(t, ok)
 	if !assert2.Equal(t, key, e.Key) {
 		return false

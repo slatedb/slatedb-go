@@ -68,7 +68,7 @@ func TestOneSstSRIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
-	next, ok := iterator.NextEntry(context.Background())
+	next, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, next)
 }
@@ -107,7 +107,7 @@ func TestManySstSRIter(t *testing.T) {
 	assert2.Next(t, iterator, []byte("key2"), []byte("value2"))
 	assert2.Next(t, iterator, []byte("key3"), []byte("value3"))
 
-	next, ok := iterator.NextEntry(context.Background())
+	next, ok := iterator.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, next)
 }
@@ -143,7 +143,7 @@ func TestSRIterFromKey(t *testing.T) {
 		for j := 0; j < 30-i; j++ {
 			assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 		}
-		next, ok := kvIter.NextEntry(context.Background())
+		next, ok := kvIter.Next(context.Background())
 		assert.False(t, ok)
 		assert.Equal(t, types.RowEntry{}, next)
 	}
@@ -175,7 +175,7 @@ func TestSRIterFromKeyLowerThanRange(t *testing.T) {
 	for j := 0; j < 30; j++ {
 		assert2.Next(t, kvIter, expectedKeyGen.Next(), expectedValGen.Next())
 	}
-	next, ok := kvIter.NextEntry(context.Background())
+	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, next)
 }
@@ -199,7 +199,7 @@ func TestSRIterFromKeyHigherThanRange(t *testing.T) {
 
 	kvIter, err := compacted.NewSortedRunIteratorFromKey(ctx, sr, []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), tableStore)
 	assert.NoError(t, err)
-	next, ok := kvIter.NextEntry(context.Background())
+	next, ok := kvIter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, next)
 }

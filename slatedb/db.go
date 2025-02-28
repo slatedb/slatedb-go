@@ -241,7 +241,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 				return nil, err
 			}
 
-			kv, ok := iter.NextEntry(ctx)
+			kv, ok := iter.Next(ctx)
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.Value)
 			}
@@ -256,7 +256,7 @@ func (db *DB) GetWithOptions(ctx context.Context, key []byte, options config.Rea
 				return nil, err
 			}
 
-			kv, ok := iter.NextEntry(ctx)
+			kv, ok := iter.Next(ctx)
 			if ok && bytes.Equal(kv.Key, key) {
 				return checkValue(kv.Value)
 			}
@@ -339,7 +339,7 @@ func (db *DB) replayWAL(ctx context.Context) error {
 
 		walReplayBuf := make([]types.RowEntry, 0)
 		for {
-			kvDel, ok := iter.NextEntry(ctx)
+			kvDel, ok := iter.Next(ctx)
 			if !ok {
 				break
 			}

@@ -82,7 +82,7 @@ func (db *DB) flushImmWAL(ctx context.Context, immWAL *table.ImmutableWAL) (*sst
 func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.Memtable) {
 	iter := immWal.Iter()
 	for {
-		entry, err := iter.NextEntry()
+		entry, err := iter.Next()
 		if err != nil || entry.IsAbsent() {
 			break
 		}
@@ -95,7 +95,7 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 func (db *DB) flushImmTable(ctx context.Context, id sstable.ID, iter *table.KVTableIterator) (*sstable.Handle, error) {
 	sstBuilder := db.tableStore.TableBuilder()
 	for {
-		entry, err := iter.NextEntry()
+		entry, err := iter.Next()
 		if err != nil || entry.IsAbsent() {
 			break
 		}

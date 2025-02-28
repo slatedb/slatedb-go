@@ -62,19 +62,19 @@ func TestCompactorCompactsL0(t *testing.T) {
 	iter, err := sstable.NewIterator(ctx, &sst, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
-		e, ok := iter.NextEntry(context.Background())
+		e, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('a'+i), 16), e.Key)
 		assert.Equal(t, repeatedChar(rune('b'+i), 48), e.Value.Value)
 	}
 	for i := 0; i < 4; i++ {
-		e, ok := iter.NextEntry(context.Background())
+		e, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.Equal(t, repeatedChar(rune('j'+i), 16), e.Key)
 		assert.Equal(t, repeatedChar(rune('k'+i), 48), e.Value.Value)
 	}
 
-	next, ok := iter.NextEntry(context.Background())
+	next, ok := iter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, next)
 }

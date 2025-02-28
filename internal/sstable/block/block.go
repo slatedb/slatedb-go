@@ -207,7 +207,7 @@ func PrettyPrint(block *Block) string {
 	buf := new(bytes.Buffer)
 	it := NewIterator(block)
 	for _, offset := range block.Offsets {
-		kv, ok := it.NextEntry(context.Background())
+		kv, ok := it.Next(context.Background())
 		if !ok {
 			if warn := it.Warnings(); warn != nil {
 				_, _ = fmt.Fprintf(buf, "WARN: %s\n", warn.String())
@@ -224,7 +224,7 @@ func PrettyPrint(block *Block) string {
 			_, _ = fmt.Fprintf(buf, "  Value: []byte(\"%s\") - %d bytes\n", Truncate(v, 30), len(v))
 		}
 	}
-	if _, ok := it.NextEntry(context.Background()); ok {
+	if _, ok := it.Next(context.Background()); ok {
 		_, _ = fmt.Fprintf(buf, "WARN: there are more blocks than offsets")
 	}
 	return buf.String()

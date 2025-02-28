@@ -7,9 +7,9 @@ import (
 )
 
 type KVIterator interface {
-	// NextEntry Returns the next entry in the iterator, which may be a key-value pair or
+	// Next Returns the next entry in the iterator, which may be a key-value pair or
 	// a tombstone of a deleted key-value pair.
-	NextEntry(context.Context) (types.RowEntry, bool)
+	Next(context.Context) (types.RowEntry, bool)
 
 	// Warnings returns any warnings issued during iteration which should be logged by the caller
 	Warnings() *types.ErrWarn
@@ -29,7 +29,7 @@ func NewEntryIterator(entries ...types.RowEntry) *EntryIterator {
 	}
 }
 
-func (k *EntryIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
+func (k *EntryIterator) Next(ctx context.Context) (types.RowEntry, bool) {
 	if k.index < len(k.entries) {
 		entry := k.entries[k.index]
 		k.index++
