@@ -16,7 +16,7 @@ func True(condition bool, errMsg string, arg ...any) {
 	}
 }
 
-// NextEntry is a test helper to assert the next call to NextEntry() returns the required value
+// NextEntry is a test helper to verify if iter.Next() returns the required key and value
 func NextEntry(t *testing.T, iter iter.KVIterator, key []byte, value []byte) {
 	t.Helper()
 	entry, ok := iter.Next(context.Background())
