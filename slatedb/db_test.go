@@ -151,23 +151,23 @@ func TestPutFlushesMemtable(t *testing.T) {
 		iter, err := sstable.NewIterator(ctx, &sst, tableStore)
 		require.NoError(t, err)
 
-		kv, ok := iter.Next(ctx)
+		e, ok := iter.NextEntry(ctx)
 		assert.True(t, ok)
 		key := repeatedChar(rune('a'+i), 16)
 		value := repeatedChar(rune('b'+i), 50)
-		assert.Equal(t, key, kv.Key)
-		assert.Equal(t, value, kv.Value)
+		assert.Equal(t, key, e.Key)
+		assert.Equal(t, value, e.Value.Value)
 
-		kv, ok = iter.Next(ctx)
+		e, ok = iter.NextEntry(ctx)
 		assert.True(t, ok)
 		key = repeatedChar(rune('j'+i), 16)
 		value = repeatedChar(rune('k'+i), 50)
-		assert.Equal(t, key, kv.Key)
-		assert.Equal(t, value, kv.Value)
+		assert.Equal(t, key, e.Key)
+		assert.Equal(t, value, e.Value.Value)
 
-		kv, ok = iter.Next(ctx)
+		e, ok = iter.NextEntry(ctx)
 		assert.False(t, ok)
-		assert.Equal(t, types.KeyValue{}, kv)
+		assert.Equal(t, types.RowEntry{}, e)
 	}
 }
 
@@ -199,31 +199,37 @@ func TestFlushWhileIterating(t *testing.T) {
 	defer func() { _ = db.Close(ctx) }()
 
 	wal := db.state.WAL()
-	wal.Put([]byte("abc1111"), []byte("value1111"))
-	wal.Put([]byte("abc2222"), []byte("value2222"))
-	wal.Put([]byte("abc3333"), []byte("value3333"))
+	wal.Put(types.RowEntry{
+		Key:   []byte("abc1111"),
+		Value: types.Value{Value: []byte("value1111"), Kind: types.KindKeyValue}})
+	wal.Put(types.RowEntry{
+		Key:   []byte("abc2222"),
+		Value: types.Value{Value: []byte("value2222"), Kind: types.KindKeyValue}})
+	wal.Put(types.RowEntry{
+		Key:   []byte("abc3333"),
+		Value: types.Value{Value: []byte("value3333"), Kind: types.KindKeyValue}})
 
 	iter := wal.Iter()
 
-	next, err := iter.Next()
+	next, err := iter.NextEntry()
 	require.NoError(t, err)
-	kv, _ := next.Get()
-	assert.Equal(t, []byte("abc1111"), kv.Key)
-	assert.Equal(t, []byte("value1111"), kv.Value)
+	e, _ := next.Get()
+	assert.Equal(t, []byte("abc1111"), e.Key)
+	assert.Equal(t, []byte("value1111"), e.Value.Value)
 
 	require.NoError(t, db.FlushWAL(ctx))
 
-	next, err = iter.Next()
+	next, err = iter.NextEntry()
 	require.NoError(t, err)
-	kv, _ = next.Get()
-	assert.Equal(t, []byte("abc2222"), kv.Key)
-	assert.Equal(t, []byte("value2222"), kv.Value)
+	e, _ = next.Get()
+	assert.Equal(t, []byte("abc2222"), e.Key)
+	assert.Equal(t, []byte("value2222"), e.Value.Value)
 
-	next, err = iter.Next()
+	next, err = iter.NextEntry()
 	require.NoError(t, err)
-	kv, _ = next.Get()
-	assert.Equal(t, []byte("abc3333"), kv.Key)
-	assert.Equal(t, []byte("value3333"), kv.Value)
+	e, _ = next.Get()
+	assert.Equal(t, []byte("abc3333"), e.Key)
+	assert.Equal(t, []byte("value3333"), e.Value.Value)
 }
 
 func TestFlushMemtableToL0(t *testing.T) {

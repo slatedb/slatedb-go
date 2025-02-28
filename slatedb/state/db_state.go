@@ -1,6 +1,7 @@
 package state
 
 import (
+	"github.com/slatedb/slatedb-go/internal/types"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -180,30 +181,18 @@ func (s *DBState) LastCompactedWALID() uint64 {
 	return s.core.lastCompactedWalSSTID.Load()
 }
 
-func (s *DBState) PutKVToWAL(key []byte, value []byte) *table.WAL {
+func (s *DBState) WalPut(entry types.RowEntry) *table.WAL {
 	s.Lock()
 	defer s.Unlock()
-	s.wal.Put(key, value)
+	s.wal.Put(entry)
 	return s.wal
 }
 
-func (s *DBState) DeleteKVFromWAL(key []byte) *table.WAL {
+func (s *DBState) MemTablePut(entry types.RowEntry) *table.Memtable {
 	s.Lock()
 	defer s.Unlock()
-	s.wal.Delete(key)
-	return s.wal
-}
-
-func (s *DBState) PutKVToMemtable(key []byte, value []byte) {
-	s.Lock()
-	defer s.Unlock()
-	s.memtable.Put(key, value)
-}
-
-func (s *DBState) DeleteKVFromMemtable(key []byte) {
-	s.Lock()
-	defer s.Unlock()
-	s.memtable.Delete(key)
+	s.memtable.Put(entry)
+	return s.memtable
 }
 
 func (s *DBState) CoreStateSnapshot() *CoreStateSnapshot {

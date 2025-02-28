@@ -7,9 +7,6 @@ import (
 )
 
 type KVIterator interface {
-	// Next Returns the next non-deleted key-value pair in the iterator.
-	Next(context.Context) (types.KeyValue, bool)
-
 	// NextEntry Returns the next entry in the iterator, which may be a key-value pair or
 	// a tombstone of a deleted key-value pair.
 	NextEntry(context.Context) (types.RowEntry, bool)
@@ -30,17 +27,6 @@ func NewEntryIterator(entries ...types.RowEntry) *EntryIterator {
 		entries: entries,
 		index:   0,
 	}
-}
-
-func (k *EntryIterator) Next(ctx context.Context) (types.KeyValue, bool) {
-	for k.index < len(k.entries) {
-		entry := k.entries[k.index]
-		k.index++
-		if !entry.Value.IsTombstone() {
-			return types.KeyValue{Key: entry.Key, Value: entry.Value.Value}, true
-		}
-	}
-	return types.KeyValue{}, false
 }
 
 func (k *EntryIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {

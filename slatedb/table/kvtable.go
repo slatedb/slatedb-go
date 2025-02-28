@@ -46,28 +46,14 @@ func (t *KVTable) get(key []byte) mo.Option[types.Value] {
 	return mo.Some(types.ValueFromBytes(val))
 }
 
-func (t *KVTable) put(key []byte, value []byte) int64 {
-	oldSize := t.existingKVSize(key)
-	valueDel := types.Value{
-		Kind:  types.KindKeyValue,
-		Value: value,
-	}
-	valueBytes := valueDel.ToBytes()
-	t.skl.Set(key, valueBytes)
+func (t *KVTable) put(entry types.RowEntry) int64 {
+	oldSize := t.existingKVSize(entry.Key)
+	valueBytes := entry.Value.ToBytes()
+	t.skl.Set(entry.Key, valueBytes)
 
-	newSize := int64(len(key) + len(valueBytes))
+	newSize := int64(len(entry.Key) + len(valueBytes))
 	t.size.Add(newSize - oldSize)
 	return newSize
-}
-
-func (t *KVTable) delete(key []byte) {
-	oldSize := t.existingKVSize(key)
-	valueDel := types.Value{Kind: types.KindTombStone}
-	valueBytes := valueDel.ToBytes()
-	t.skl.Set(key, valueBytes)
-
-	newSize := int64(len(key) + len(valueBytes))
-	t.size.Add(newSize - oldSize)
 }
 
 func (t *KVTable) iter() *KVTableIterator {
@@ -143,28 +129,6 @@ type KVTableIterator struct {
 func newKVTableIterator(element *skiplist.Element) *KVTableIterator {
 	return &KVTableIterator{
 		element: element,
-	}
-}
-
-func (iter *KVTableIterator) Next() (mo.Option[types.KeyValue], error) {
-	for {
-		entry, err := iter.NextEntry()
-		if err != nil {
-			return mo.None[types.KeyValue](), err
-		}
-		keyVal, ok := entry.Get()
-		if ok {
-			if keyVal.Value.IsTombstone() {
-				continue
-			}
-
-			return mo.Some(types.KeyValue{
-				Key:   keyVal.Key,
-				Value: keyVal.Value.Value,
-			}), nil
-		} else {
-			return mo.None[types.KeyValue](), nil
-		}
 	}
 }
 

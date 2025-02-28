@@ -8,7 +8,7 @@ import (
 
 // Info contains meta information on the SSTable when it is serialized.
 // This is used when we read SSTable as a slice of bytes from object storage and we want to parse the slice of bytes
-// Each SSTable is a list of blocks and each block is a list of KeyValue pairs.
+// Each SSTable is a list of blocks and each block is a list of KeyValues
 type Info struct {
 	// contains the FirstKey of the SSTable
 	FirstKey []byte

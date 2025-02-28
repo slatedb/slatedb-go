@@ -86,12 +86,8 @@ func (db *DB) flushImmWALToMemtable(immWal *table.ImmutableWAL, memtable *table.
 		if err != nil || entry.IsAbsent() {
 			break
 		}
-		kv, _ := entry.Get()
-		if kv.Value.IsTombstone() {
-			memtable.Delete(kv.Key)
-		} else {
-			memtable.Put(kv.Key, kv.Value.Value)
-		}
+		e, _ := entry.Get()
+		memtable.Put(e)
 	}
 	memtable.SetLastWalID(immWal.ID())
 }

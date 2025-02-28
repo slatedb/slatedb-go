@@ -62,21 +62,21 @@ func TestCompactorCompactsL0(t *testing.T) {
 	iter, err := sstable.NewIterator(ctx, &sst, tableStore)
 	assert.NoError(t, err)
 	for i := 0; i < 4; i++ {
-		kv, ok := iter.Next(context.Background())
+		e, ok := iter.NextEntry(context.Background())
 		assert.True(t, ok)
-		assert.Equal(t, repeatedChar(rune('a'+i), 16), kv.Key)
-		assert.Equal(t, repeatedChar(rune('b'+i), 48), kv.Value)
+		assert.Equal(t, repeatedChar(rune('a'+i), 16), e.Key)
+		assert.Equal(t, repeatedChar(rune('b'+i), 48), e.Value.Value)
 	}
 	for i := 0; i < 4; i++ {
-		kv, ok := iter.Next(context.Background())
+		e, ok := iter.NextEntry(context.Background())
 		assert.True(t, ok)
-		assert.Equal(t, repeatedChar(rune('j'+i), 16), kv.Key)
-		assert.Equal(t, repeatedChar(rune('k'+i), 48), kv.Value)
+		assert.Equal(t, repeatedChar(rune('j'+i), 16), e.Key)
+		assert.Equal(t, repeatedChar(rune('k'+i), 48), e.Value.Value)
 	}
 
-	next, ok := iter.Next(context.Background())
+	next, ok := iter.NextEntry(context.Background())
 	assert.False(t, ok)
-	assert.Equal(t, types.KeyValue{}, next)
+	assert.Equal(t, types.RowEntry{}, next)
 }
 
 func TestShouldWriteManifestSafely(t *testing.T) {
