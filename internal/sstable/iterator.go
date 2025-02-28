@@ -56,7 +56,7 @@ func NewIteratorAtKey(ctx context.Context, handle *Handle, key []byte, store Tab
 	return iter, nil
 }
 
-func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
+func (iter *Iterator) Next(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.blockIter == nil {
 			it, err := iter.nextBlockIter(ctx)
@@ -73,7 +73,7 @@ func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
 			iter.blockIter = it
 		}
 
-		kv, ok := iter.blockIter.NextEntry(ctx)
+		kv, ok := iter.blockIter.Next(ctx)
 		if !ok {
 			if warn := iter.blockIter.Warnings(); warn != nil {
 				iter.warn.Merge(warn)

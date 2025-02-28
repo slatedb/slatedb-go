@@ -110,14 +110,14 @@ func newSortedRunIter(ctx context.Context,
 	}, nil
 }
 
-func (iter *SortedRunIterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
+func (iter *SortedRunIterator) Next(ctx context.Context) (types.RowEntry, bool) {
 	for {
 		if iter.currentKVIter.IsAbsent() {
 			return types.RowEntry{}, false
 		}
 
 		kvIter, _ := iter.currentKVIter.Get()
-		kv, ok := kvIter.NextEntry(ctx)
+		kv, ok := kvIter.Next(ctx)
 		if ok {
 			return kv, true
 		} else {

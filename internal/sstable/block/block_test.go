@@ -126,14 +126,14 @@ func TestBlockIterator(t *testing.T) {
 
 	iter := block.NewIterator(b)
 	for i := 0; i < len(kvPairs); i++ {
-		entry, ok := iter.NextEntry(context.Background())
+		entry, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.Equal(t, kvPairs[i].Key, entry.Key)
 		assert.Equal(t, kvPairs[i].Value, entry.Value.Value)
 		assert.False(t, entry.Value.IsTombstone())
 	}
 
-	kvDel, ok := iter.NextEntry(context.Background())
+	kvDel, ok := iter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, kvDel)
 }
@@ -159,13 +159,13 @@ func TestNewIteratorAtKey(t *testing.T) {
 
 		// Verify that iterator starts from index 1 which contains key "kratos"
 		for i := 1; i < len(kvPairs); i++ {
-			e, ok := iter.NextEntry(context.Background())
+			e, ok := iter.Next(context.Background())
 			assert.True(t, ok)
 			assert.True(t, bytes.Equal(e.Key, kvPairs[i].Key))
 			assert.True(t, bytes.Equal(e.Value.Value, kvPairs[i].Value))
 		}
 
-		e, ok := iter.NextEntry(context.Background())
+		e, ok := iter.Next(context.Background())
 		assert.False(t, ok)
 		assert.Equal(t, types.RowEntry{}, e)
 	})
@@ -176,13 +176,13 @@ func TestNewIteratorAtKey(t *testing.T) {
 
 		// Verify that iterator starts from index 0 which contains key "donkey"
 		for i := 0; i < len(kvPairs); i++ {
-			e, ok := iter.NextEntry(context.Background())
+			e, ok := iter.Next(context.Background())
 			assert.True(t, ok)
 			assert.True(t, bytes.Equal(e.Key, kvPairs[i].Key))
 			assert.True(t, bytes.Equal(e.Value.Value, kvPairs[i].Value))
 		}
 
-		e, ok := iter.NextEntry(context.Background())
+		e, ok := iter.Next(context.Background())
 		assert.False(t, ok)
 		assert.Equal(t, types.RowEntry{}, e)
 	})
@@ -209,14 +209,14 @@ func TestNewIteratorAtKeyNonExistingKey(t *testing.T) {
 	// Verify that iterator starts from index 1 which contains key "kratos"
 	// which is near to `ka`
 	for i := 1; i < len(kvPairs); i++ {
-		kvDel, ok := iter.NextEntry(context.Background())
+		kvDel, ok := iter.Next(context.Background())
 		assert.True(t, ok)
 		assert.True(t, bytes.Equal(kvDel.Key, kvPairs[i].Key))
 		assert.True(t, bytes.Equal(kvDel.Value.Value, kvPairs[i].Value))
 		assert.False(t, kvDel.Value.IsTombstone())
 	}
 
-	kvDel, ok := iter.NextEntry(context.Background())
+	kvDel, ok := iter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, kvDel)
 }
@@ -239,7 +239,7 @@ func TestIterFromEnd(t *testing.T) {
 	iter, err := block.NewIteratorAtKey(b, []byte("zzz"))
 	require.NoError(t, err)
 	// Verify that iterator starts from index 1 which contains key "kratos"
-	e, ok := iter.NextEntry(context.Background())
+	e, ok := iter.Next(context.Background())
 	assert.False(t, ok)
 	assert.Equal(t, types.RowEntry{}, e)
 }
@@ -519,7 +519,7 @@ func TestNewIteratorAtKeyWithCorruptedKeys(t *testing.T) {
 		// The iterator should start from the fourth key
 		assert2.Next(t, iter, []byte("key4"), []byte("value4"))
 		assert2.Next(t, iter, []byte("key5"), []byte("value5"))
-		_, ok := iter.NextEntry(context.Background())
+		_, ok := iter.Next(context.Background())
 		assert.False(t, ok)
 		assert.False(t, iter.Warnings().Empty())
 		//t.Logf("Warnings: %s", iter.Warnings())

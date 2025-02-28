@@ -63,7 +63,7 @@ func TestMemtableIter(t *testing.T) {
 
 	// Verify that iterator returns keys in sorted order
 	for i := 0; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		e, ok := next.Get()
 		assert.True(t, ok)
@@ -78,13 +78,13 @@ func TestMemtableIterTombstone(t *testing.T) {
 
 	// verify that iter.Next() is present after adding a key
 	memtable.Put(types.RowEntry{Key: []byte("abc333"), Value: types.Value{Value: []byte("value3"), Kind: types.KindKeyValue}})
-	next, err := memtable.Iter().NextEntry()
+	next, err := memtable.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
 	// verify that iter.Next() returns tombstone after marking a key as deleted
 	memtable.Put(types.RowEntry{Key: []byte("abc333"), Value: types.Value{Kind: types.KindTombStone}})
-	next, err = memtable.Iter().NextEntry()
+	next, err = memtable.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 	kv, ok := next.Get()
@@ -113,7 +113,7 @@ func TestMemtableRangeFromExistingKey(t *testing.T) {
 
 	// Verify that iterator starts from index 2 which contains key abc333
 	for i := 2; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		e, ok := next.Get()
 		assert.True(t, ok)
@@ -144,7 +144,7 @@ func TestMemtableRangeFromNonExistingKey(t *testing.T) {
 
 	// Verify that iterator starts from index 3 which contains key abc444
 	for i := 3; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		e, ok := next.Get()
 		assert.True(t, ok)
@@ -179,7 +179,7 @@ func TestImmMemtableOps(t *testing.T) {
 
 	// Verify that iterator returns keys in sorted order
 	for i := 0; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		e, ok := next.Get()
 		assert.True(t, ok)

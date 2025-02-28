@@ -132,7 +132,7 @@ func newKVTableIterator(element *skiplist.Element) *KVTableIterator {
 	}
 }
 
-func (iter *KVTableIterator) NextEntry() (mo.Option[types.RowEntry], error) {
+func (iter *KVTableIterator) Next() (mo.Option[types.RowEntry], error) {
 	elem := iter.element
 	if elem == nil {
 		return mo.None[types.RowEntry](), nil

@@ -81,7 +81,7 @@ func NewIteratorAtKey(block *Block, key []byte) (*Iterator, error) {
 	}, nil
 }
 
-func (iter *Iterator) NextEntry(ctx context.Context) (types.RowEntry, bool) {
+func (iter *Iterator) Next(ctx context.Context) (types.RowEntry, bool) {
 	if iter.offsetIndex >= uint64(len(iter.block.Offsets)) {
 		return types.RowEntry{}, false
 	}

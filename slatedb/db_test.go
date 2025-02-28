@@ -151,21 +151,21 @@ func TestPutFlushesMemtable(t *testing.T) {
 		iter, err := sstable.NewIterator(ctx, &sst, tableStore)
 		require.NoError(t, err)
 
-		e, ok := iter.NextEntry(ctx)
+		e, ok := iter.Next(ctx)
 		assert.True(t, ok)
 		key := repeatedChar(rune('a'+i), 16)
 		value := repeatedChar(rune('b'+i), 50)
 		assert.Equal(t, key, e.Key)
 		assert.Equal(t, value, e.Value.Value)
 
-		e, ok = iter.NextEntry(ctx)
+		e, ok = iter.Next(ctx)
 		assert.True(t, ok)
 		key = repeatedChar(rune('j'+i), 16)
 		value = repeatedChar(rune('k'+i), 50)
 		assert.Equal(t, key, e.Key)
 		assert.Equal(t, value, e.Value.Value)
 
-		e, ok = iter.NextEntry(ctx)
+		e, ok = iter.Next(ctx)
 		assert.False(t, ok)
 		assert.Equal(t, types.RowEntry{}, e)
 	}
@@ -211,7 +211,7 @@ func TestFlushWhileIterating(t *testing.T) {
 
 	iter := wal.Iter()
 
-	next, err := iter.NextEntry()
+	next, err := iter.Next()
 	require.NoError(t, err)
 	e, _ := next.Get()
 	assert.Equal(t, []byte("abc1111"), e.Key)
@@ -219,13 +219,13 @@ func TestFlushWhileIterating(t *testing.T) {
 
 	require.NoError(t, db.FlushWAL(ctx))
 
-	next, err = iter.NextEntry()
+	next, err = iter.Next()
 	require.NoError(t, err)
 	e, _ = next.Get()
 	assert.Equal(t, []byte("abc2222"), e.Key)
 	assert.Equal(t, []byte("value2222"), e.Value.Value)
 
-	next, err = iter.NextEntry()
+	next, err = iter.Next()
 	require.NoError(t, err)
 	e, _ = next.Get()
 	assert.Equal(t, []byte("abc3333"), e.Key)

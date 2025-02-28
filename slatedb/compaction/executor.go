@@ -101,7 +101,7 @@ func (e *Executor) executeCompaction(compaction Job) (*compacted.SortedRun, erro
 	currentSize := 0
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
-		kv, ok := allIter.NextEntry(ctx)
+		kv, ok := allIter.Next(ctx)
 		cancel()
 		if !ok {
 			if w := allIter.Warnings(); w != nil {

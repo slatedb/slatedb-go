@@ -55,7 +55,7 @@ func TestWALIter(t *testing.T) {
 
 	// Verify that iterator returns entries in sorted order
 	for i := 0; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		entry, ok := next.Get()
 		assert.True(t, ok)
@@ -70,13 +70,13 @@ func TestWALIterTombstone(t *testing.T) {
 
 	// verify that iter.Next() is present after adding a key
 	wal.Put(types.RowEntry{Key: []byte("abc333"), Value: types.Value{Value: []byte("value3"), Kind: types.KindKeyValue}})
-	next, err := wal.Iter().NextEntry()
+	next, err := wal.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 
 	// verify that iter.Next() returns a tombstone after putting a tombstone
 	wal.Put(types.RowEntry{Key: []byte("abc333"), Value: types.Value{Kind: types.KindTombStone}})
-	next, err = wal.Iter().NextEntry()
+	next, err = wal.Iter().Next()
 	assert.NoError(t, err)
 	assert.True(t, next.IsPresent())
 	entry, ok := next.Get()
@@ -108,7 +108,7 @@ func TestImmWALOps(t *testing.T) {
 
 	// Verify that iterator returns entries in sorted order
 	for i := 0; i < len(entries); i++ {
-		next, err := iter.NextEntry()
+		next, err := iter.Next()
 		assert.NoError(t, err)
 		entry, ok := next.Get()
 		assert.True(t, ok)

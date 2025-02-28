@@ -35,7 +35,7 @@ func NewMergeSort(ctx context.Context, iterators ...KVIterator) *MergeSort {
 
 	// Initialize the heap with the first element from each iterator
 	for i, iter := range iterators {
-		if kv, ok := iter.NextEntry(ctx); ok {
+		if kv, ok := iter.Next(ctx); ok {
 			heap.Push(&ms.heap, heapItem{kv: kv, index: i})
 		}
 
@@ -48,15 +48,15 @@ func NewMergeSort(ctx context.Context, iterators ...KVIterator) *MergeSort {
 	return ms
 }
 
-// NextEntry Returns the next entry in the iterator, which may be a key-value pair or
+// Next Returns the next entry in the iterator, which may be a key-value pair or
 // a tombstone of a deleted key-value pair.
-func (m *MergeSort) NextEntry(ctx context.Context) (types.RowEntry, bool) {
+func (m *MergeSort) Next(ctx context.Context) (types.RowEntry, bool) {
 	for m.heap.Len() > 0 {
 		item := heap.Pop(&m.heap).(heapItem)
 		result := item.kv
 
 		// Push the next item from the same iterator
-		if nextKV, ok := m.iterators[item.index].NextEntry(ctx); ok {
+		if nextKV, ok := m.iterators[item.index].Next(ctx); ok {
 			heap.Push(&m.heap, heapItem{kv: nextKV, index: item.index})
 		} else {
 			m.warn.Merge(m.iterators[item.index].Warnings())
