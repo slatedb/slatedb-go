@@ -107,6 +107,14 @@ func (c *CoreDBState) Snapshot() *CoreStateSnapshot {
 	return coreState
 }
 
+func (c *CoreDBState) NextWALID() uint64 {
+	return c.nextWalSstID.Load()
+}
+
+func (c *CoreDBState) LastCompactedWALID() uint64 {
+	return c.lastCompactedWalSSTID.Load()
+}
+
 func LogState(log *slog.Logger, c *CoreDBState) {
 	log.Info("DB Levels:")
 	log.Info("-----------------")

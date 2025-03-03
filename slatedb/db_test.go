@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -32,7 +33,6 @@ func TestPutGetDelete(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	db, err := OpenWithOptions(ctx, "/tmp/test_kv_store", bucket, testDBOptions(0, 1024))
 	require.NoError(t, err)
-	defer func() { _ = db.Close(ctx) }()
 
 	key := []byte("key1")
 	value := []byte("value1")
@@ -52,6 +52,14 @@ func TestPutGetDelete(t *testing.T) {
 	require.NoError(t, db.Delete(ctx, key))
 	_, err = db.Get(ctx, key)
 	assert.True(t, errors.Is(err, ErrKeyNotFound))
+	require.NoError(t, db.Close(ctx))
+
+	m := bucket.Objects()
+	require.Contains(t, m, "/tmp/test_kv_store/manifest/00000000000000000003.manifest")
+	s, err := DumpManifest(m["/tmp/test_kv_store/manifest/00000000000000000003.manifest"])
+	assert.Contains(t, s, "NextWalID: 4")
+	fmt.Println(s)
+	require.NoError(t, err)
 }
 
 func TestGetNonExistingKey(t *testing.T) {

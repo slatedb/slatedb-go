@@ -8,7 +8,7 @@ import (
 	"github.com/slatedb/slatedb-go/internal/sstable/block"
 )
 
-// PrettyPrint returns a string representation of the SSTable in a human-readable format
+// Dump returns a string representation of the SSTable in a human-readable format
 //
 // SSTable Info:
 //
@@ -52,7 +52,7 @@ import (
 //	      Offset: 0
 //	          Key: []byte("key4") - 4 bytes
 //	        Value: []byte("value4") - 6 bytes
-func PrettyPrint(table *Table) string {
+func Dump(table *Table) string {
 	var buf bytes.Buffer
 
 	// Print SSTable Info
