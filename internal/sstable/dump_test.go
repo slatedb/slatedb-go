@@ -3,12 +3,11 @@ package sstable
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/slatedb/slatedb-go/internal/compress"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPrettyPrint(t *testing.T) {
+func TestDump(t *testing.T) {
 	conf := Config{
 		Compression:      compress.CodecNone,
 		BlockSize:        45,
@@ -29,7 +28,7 @@ func TestPrettyPrint(t *testing.T) {
 	table, err := builder.Build()
 	assert.NoError(t, err)
 
-	prettyOutput := PrettyPrint(table)
+	prettyOutput := Dump(table)
 	//t.Logf("%s", prettyOutput)
 
 	// Add some basic assertions

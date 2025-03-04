@@ -17,6 +17,7 @@ import (
 	"github.com/slatedb/slatedb-go/slatedb/compacted"
 	"github.com/slatedb/slatedb-go/slatedb/compaction"
 	"github.com/slatedb/slatedb-go/slatedb/config"
+	"github.com/slatedb/slatedb-go/slatedb/manifest"
 	"github.com/slatedb/slatedb-go/slatedb/state"
 	"github.com/slatedb/slatedb-go/slatedb/store"
 	"github.com/thanos-io/objstore"
@@ -439,4 +440,57 @@ func checkValue(val types.Value) ([]byte, error) {
 		value, _ := val.GetValue().Get()
 		return value, nil
 	}
+}
+
+func DumpManifest(b []byte) (string, error) {
+	codec := &manifest.FlatBufferManifestCodec{}
+	m, err := codec.Decode(b)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("Manifest:\n")
+	buf.WriteString(fmt.Sprintf("  WriterEpoch: %d\n", m.WriterEpoch.Load()))
+	buf.WriteString(fmt.Sprintf("  CompactorEpoch: %d\n", m.CompactorEpoch.Load()))
+	buf.WriteString("  Core:\n")
+	buf.WriteString(fmt.Sprintf("    NextWalID: %d\n", m.Core.NextWALID()))
+	buf.WriteString(fmt.Sprintf("    LastCompactedWalID: %d\n", m.Core.LastCompactedWALID()))
+
+	snapshot := m.Core.Snapshot()
+	if snapshot.L0LastCompacted.IsPresent() {
+		l0LastCompacted, _ := snapshot.L0LastCompacted.Get()
+		buf.WriteString(fmt.Sprintf("    L0LastCompacted: %s\n", l0LastCompacted.String()))
+	}
+
+	buf.WriteString("    L0:\n")
+	for i, sst := range snapshot.L0 {
+		buf.WriteString(fmt.Sprintf("      SST %d:\n", i))
+		buf.WriteString(fmt.Sprintf("        ID: %s\n", sst.Id.Value))
+		buf.WriteString(fmt.Sprintf("        FirstKey: %s\n", string(sst.Info.FirstKey)))
+		buf.WriteString(fmt.Sprintf("        IndexOffset: %d\n", sst.Info.IndexOffset))
+		buf.WriteString(fmt.Sprintf("        IndexLen: %d\n", sst.Info.IndexLen))
+		buf.WriteString(fmt.Sprintf("        FilterOffset: %d\n", sst.Info.FilterOffset))
+		buf.WriteString(fmt.Sprintf("        FilterLen: %d\n", sst.Info.FilterLen))
+		buf.WriteString(fmt.Sprintf("        CompressionCodec: %v\n", sst.Info.CompressionCodec))
+	}
+
+	buf.WriteString("    Compacted:\n")
+	for i, sr := range snapshot.Compacted {
+		buf.WriteString(fmt.Sprintf("      SortedRun %d:\n", i))
+		buf.WriteString(fmt.Sprintf("        ID: %d\n", sr.ID))
+		buf.WriteString(fmt.Sprintf("        SST Count: %d\n", len(sr.SSTList)))
+		for j, sst := range sr.SSTList {
+			buf.WriteString(fmt.Sprintf("        SST %d:\n", j))
+			buf.WriteString(fmt.Sprintf("          ID: %s\n", sst.Id.Value))
+			buf.WriteString(fmt.Sprintf("          FirstKey: %s\n", string(sst.Info.FirstKey)))
+			buf.WriteString(fmt.Sprintf("          IndexOffset: %d\n", sst.Info.IndexOffset))
+			buf.WriteString(fmt.Sprintf("          IndexLen: %d\n", sst.Info.IndexLen))
+			buf.WriteString(fmt.Sprintf("          FilterOffset: %d\n", sst.Info.FilterOffset))
+			buf.WriteString(fmt.Sprintf("          FilterLen: %d\n", sst.Info.FilterLen))
+			buf.WriteString(fmt.Sprintf("          CompressionCodec: %v\n", sst.Info.CompressionCodec))
+		}
+	}
+
+	return buf.String(), nil
 }
